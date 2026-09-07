@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#f6f2e6" />
+    <meta
+      name="description"
+      content="A first-person ink-and-paper parkour shooter. Grapple, vault and fight across an ever-changing city."
+    />
+    <title>doodlesCreed — The city is your sketchbook</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <canvas id="world" aria-label="First-person 3D game world"></canvas>
+    <div id="paper-grain"></div>
+    <div id="hurt"></div>
+    <div id="loading">
+      <div class="loading-pencil">✎</div>
+      <strong>Drawing the district…</strong
+      ><span>Good things start with a blank page.</span>
+    </div>
+    <section id="menu" class="screen hidden" aria-label="Main menu">
+      <header class="masthead">
+        <a class="brand" href="/" aria-label="doodlesCreed home"
+          ><span class="brand-mark">dc</span> doodlesCreed<span class="version"
+            >VOL. 01</span
+          ></a
+        >
+        <div class="nav-actions">
+          <button id="help" class="text-button">
+            HOW TO PLAY <span>↗</span></button
+          ><button id="settings" class="icon-button" aria-label="Settings">
+            ⚙
+          </button>
+        </div>
+      </header>
+      <main class="menu-copy">
+        <div class="eyebrow"><i></i> A FIRST-PERSON PARKOUR SHOOTER</div>
+        <h1>
+          doodles<span>Creed<span class="title-dot">.</span></span>
+        </h1>
+        <div class="title-underline"></div>
+        <p class="tagline">The city is your sketchbook.</p>
+        <p class="description">
+          Run the walls. Swing the skyline. Leave your mark.<br />A new city,
+          and a thousand ways through it.
+        </p>
+        <div class="mode-switch" aria-label="Solo game mode">
+          <button id="contract-mode" class="selected" aria-pressed="true">
+            DISTRICT RUN</button
+          ><button id="roam-mode" aria-pressed="false">FREE ROAM</button>
+        </div>
+        <button id="play" class="primary-button">
+          <span>ENTER THE DISTRICT</span><span class="arrow">↗</span>
+        </button>
+        <button id="online" class="secondary-button">
+          <span class="people-icon">♧</span> PLAY WITH FRIENDS
+          <span class="tiny-tag">ONLINE · 2–8</span>
+        </button>
+        <div class="seed-row">
+          <label for="seed">CITY SEED</label
+          ><input
+            id="seed"
+            value="notebook"
+            maxlength="40"
+            spellcheck="false"
+            aria-label="City seed"
+          /><button
+            id="reroll"
+            aria-label="Generate a new city seed"
+            title="Redraw the city"
+          >
+            ↻
+          </button>
+        </div>
+        <div class="menu-controls">
+          <span><kbd>WASD</kbd> move</span><span><kbd>SPACE</kbd> parkour</span
+          ><span><kbd>Q</kbd> grapple</span>
+        </div>
+      </main>
+      <div class="city-note">
+        <span>yes, you can climb that.</span
+        ><svg viewBox="0 0 180 120" aria-hidden="true">
+          <path d="M15 12C145 0 165 43 97 98M97 98l7-26M97 98l27-7" />
+        </svg>
+      </div>
+      <div class="district-stamp">
+        <span class="stamp-dot"></span>
+        <div>
+          <b>THE PAPER DISTRICT</b
+          ><span
+            >PROCEDURAL CITY / <em id="building-count">25</em> BUILDINGS</span
+          >
+        </div>
+        <span class="stamp-number">01</span>
+      </div>
+      <footer class="menu-footer">
+        <span>A LITTLE INK. A LOT OF MOMENTUM.</span
+        ><span
+          >HEADPHONES ON. GRAVITY OPTIONAL.
+          <span class="desktop-note">DESKTOP + MOUSE</span></span
+        >
+      </footer>
+    </section>
+    <section id="hud" class="hidden" aria-label="Game HUD">
+      <div class="hud-top-left">
+        <div class="district-label">
+          DISTRICT <b id="district-number">01</b
+          ><span id="mode-label">THE PAPER DISTRICT</span>
+        </div>
+        <div id="mission-title">LEAVE YOUR MARK</div>
+        <div id="mission">Erase 6 rivals · Find 3 rooftop marks</div>
+        <div id="mission-progress">
+          <span id="kill-objective">○ 0 / 6 RIVALS</span
+          ><span id="beacon-objective">◇ 0 / 3 MARKS</span>
+        </div>
+      </div>
+      <div id="compass">N <span>· · ·</span> NE <span>· · ·</span> E</div>
+      <div class="hud-top-right">
+        <span id="room-badge"></span>
+        <div><b id="score">0000</b><small>STYLE POINTS</small></div>
+        <span id="timer">00:00</span>
+      </div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i><span></span></div>
+      <div id="hook-reticle"></div>
+      <div id="hitmarker">×</div>
+      <div id="grapple-status"></div>
+      <div id="notice"></div>
+      <div id="feed"></div>
+      <div id="world-markers"></div>
+      <div class="hud-bottom-left">
+        <div class="health-row">
+          <span class="health-cross">+</span><b id="health">100</b
+          ><span>INK<br />LEFT</span>
+        </div>
+        <div class="health-bar"><i id="health-fill"></i></div>
+        <div class="flow-line">
+          <span id="action">RUN</span><b id="speed">0</b><span>m/s</span>
+          <div class="speed-bar"><i id="speed-fill"></i></div>
+        </div>
+      </div>
+      <div class="hud-bottom-center">
+        <div class="hook-bar"><i id="hook-fill"></i></div>
+        <span
+          ><kbd>Q</kbd> HOOK <span>·</span> HOLD TO REEL <span>·</span>
+          <kbd>SPACE</kbd> RELEASE</span
+        >
+      </div>
+      <div class="hud-bottom-right">
+        <div id="weapon-name">INKRIFLE</div>
+        <div class="ammo-row">
+          <b id="ammo">30</b><span>/ <span id="mag-size">30</span></span>
+        </div>
+        <div id="reload-label">FULL AUTO · R TO RELOAD</div>
+        <div id="weapon-slots">
+          <span class="active">1 RIFLE</span><span>2 SHOTGUN</span
+          ><span>3 PISTOL</span>
+        </div>
+      </div>
+      <div id="board" class="hidden"></div>
+      <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE</div>
+    </section>
+    <dialog id="dialog">
+      <button id="close-dialog" class="close-button" aria-label="Close dialog">
+        ×
+      </button>
+      <div id="dialog-content"></div>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
