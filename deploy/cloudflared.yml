@@ -1,0 +1,8 @@
+tunnel: 3e92b9e8-780c-4e1b-80bf-0b1b6e96525d
+credentials-file: /home/ubuntu/.cloudflared/3e92b9e8-780c-4e1b-80bf-0b1b6e96525d.json
+ingress:
+  - hostname: doodlerust.stvl.dev
+    service: http://127.0.0.1:4173
+  - hostname: doodlescreed.cutslop.com
+    service: http://127.0.0.1:4173
+  - service: http_status:404

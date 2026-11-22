@@ -131,7 +131,7 @@ try {
   mark("Space vaults a physical low barrier");
   await get(() => {
     const g = window.__doodles,
-      b = g.city.buildings[12];
+      b = g.city.buildings.find((b) => b.facing === 0 && b.floors >= 3);
     g.player.reset([b.x, 0.2, b.z + b.d / 2 + 6]);
     g.player.yaw = 0;
     g.player.pitch = Math.atan2(b.height - 0.12 - 1.8, 6);
@@ -150,8 +150,8 @@ try {
   mark("Q attaches and reels a grapple; Space launches off the rope");
   await get(() => {
     const g = window.__doodles,
-      b = g.city.buildings[12];
-    g.player.reset([b.x, 0.25, b.z + b.d / 2 + 2]);
+      b = g.city.buildings.find((b) => b.facing === 0 && b.floors >= 3);
+    g.player.reset(b.entrance);
     g.player.yaw = 0;
     g.player.pitch = 0;
   });
@@ -161,7 +161,7 @@ try {
   assert.ok(
     await get(() => {
       const g = window.__doodles,
-        b = g.city.buildings[12];
+        b = g.city.buildings.find((b) => b.facing === 0 && b.floors >= 3);
       return g.player.position.z < b.z + b.d / 2;
     }),
   );
@@ -169,9 +169,9 @@ try {
   mark("The front entrance is physically walkable");
   const rooftop = await get(() => {
     const g = window.__doodles,
-      b = g.city.buildings[12];
-    g.player.reset([b.x, 0.25, b.z + b.d / 2 + 2]);
-    const route = [[b.x, 0.2, b.z + b.d / 2 - 1], ...b.route];
+      b = g.city.buildings.find((b) => b.facing === 0 && b.floors >= 3);
+    g.player.reset(b.entrance);
+    const route = [b.inside, ...b.route];
     for (const v of route) {
       for (let i = 0; i < 1600; i++) {
         const dx = v[0] - g.player.position.x,
@@ -210,8 +210,9 @@ try {
   await resume(page);
   await page.mouse.down();
   await get(() => {
-    const g = window.__doodles,
-      t = g.combat.bots[0].p.clone();
+    const g = window.__doodles;
+    g.combat.bots[0].p.set(15, 0.16, 16);
+    const t = g.combat.bots[0].p.clone();
     t.y += 1.4;
     const dir = t.sub(g.player.eye);
     g.player.yaw = Math.atan2(-dir.x, -dir.z);

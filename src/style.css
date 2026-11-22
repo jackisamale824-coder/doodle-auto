@@ -4,9 +4,9 @@
 @import "@fontsource/dm-sans/latin-500.css";
 @import "@fontsource/dm-sans/latin-700.css";
 :root {
-  --ink: #253ba9;
+  --ink: #222bc3;
   --muted: #727792;
-  --paper: #f6f2e6;
+  --paper: #f7f5e9;
   --red: #d23c45;
   --gold: #e6b54e;
   --line: #293eaa30;
@@ -53,14 +53,6 @@ a:focus-visible {
   height: 100%;
   display: block;
 }
-#paper-grain {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.15;
-  z-index: 3;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Cpath fill='%23000' filter='url(%23n)' opacity='.25' d='M0 0h180v180H0z'/%3E%3C/svg%3E");
-}
 .screen {
   position: fixed;
   inset: 0;
@@ -70,9 +62,9 @@ a:focus-visible {
   background: linear-gradient(
     90deg,
     var(--paper) 0%,
-    #f6f2e6f8 26%,
-    #f6f2e6de 39%,
-    #f6f2e619 64%,
+    #f7f5e9f8 26%,
+    #f7f5e9de 39%,
+    #f7f5e919 64%,
     transparent 100%
   );
 }
@@ -83,7 +75,7 @@ a:focus-visible {
   pointer-events: none;
   background: repeating-linear-gradient(
     transparent 0 35px,
-    #253ba90a 35px 36px
+    #222bc30a 35px 36px
   );
   mask-image: linear-gradient(to right, black, transparent);
 }
@@ -236,14 +228,14 @@ h1 > span {
   font-size: 12px;
   letter-spacing: 1.4px;
   font-weight: 700;
-  box-shadow: 4px 5px 0 #253ba923;
+  box-shadow: 4px 5px 0 #222bc323;
   transition:
     transform 0.15s,
     box-shadow 0.15s;
 }
 .primary-button:hover {
   transform: translateY(-3px) rotate(-0.3deg);
-  box-shadow: 5px 8px 0 #253ba925;
+  box-shadow: 5px 8px 0 #222bc325;
 }
 .primary-button .arrow {
   font-family: "Patrick Hand";
@@ -255,7 +247,7 @@ h1 > span {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f6f2e690;
+  background: #f7f5e990;
   border: 1.5px solid var(--ink);
   border-radius: 5px 3px 6px 3px;
   padding: 15px 20px;
@@ -266,7 +258,7 @@ h1 > span {
   transition: background 0.15s;
 }
 .secondary-button:hover {
-  background: #253ba90d;
+  background: #222bc30d;
 }
 .tiny-tag {
   font-size: 8px;
@@ -318,14 +310,14 @@ h1 > span {
 kbd {
   font-family: inherit;
   font-size: 9px;
-  border: 1px solid #253ba93d;
+  border: 1px solid #222bc33d;
   border-radius: 3px;
   min-width: 19px;
   padding: 3px 5px;
   color: var(--ink);
   display: inline-block;
   text-align: center;
-  background: #f6f2e655;
+  background: #f7f5e955;
 }
 .city-note {
   position: absolute;
@@ -349,7 +341,7 @@ kbd {
   position: absolute;
   bottom: 16%;
   right: 7%;
-  background: #f6f2e6dd;
+  background: #f7f5e9dd;
   backdrop-filter: blur(7px);
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -358,7 +350,7 @@ kbd {
   align-items: center;
   gap: 14px;
   transform: rotate(-2deg);
-  box-shadow: 4px 4px 0 #253ba909;
+  box-shadow: 4px 4px 0 #222bc309;
 }
 .stamp-dot {
   width: 10px;
@@ -487,7 +479,7 @@ kbd {
 }
 #mission-progress span {
   padding: 7px 9px;
-  background: #f6f2e6ab;
+  background: #f7f5e9ab;
   border-bottom: 1px solid var(--line);
 }
 #compass {
@@ -495,8 +487,10 @@ kbd {
   top: 42px;
   left: 50%;
   transform: translateX(-50%);
-  letter-spacing: 3px;
-  font-size: 10px;
+  letter-spacing: 4px;
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 #compass span {
   margin: 0 18px;
@@ -527,7 +521,7 @@ kbd {
 #room-badge {
   font-size: 10px;
   letter-spacing: 1px;
-  background: #f6f2e6aa;
+  background: #f7f5e9aa;
 }
 .hud-bottom-left {
   position: absolute;
@@ -595,7 +589,7 @@ kbd {
 .speed-bar {
   height: 4px;
   width: 70px;
-  background: #253ba91a;
+  background: #222bc31a;
   align-self: center;
 }
 .speed-bar i {
@@ -669,7 +663,7 @@ kbd {
 #weapon-slots .active {
   opacity: 1;
   border-bottom: 2px solid var(--ink);
-  background: #f6f2e6b5;
+  background: #f7f5e9b5;
 }
 #crosshair {
   position: absolute;
@@ -766,7 +760,7 @@ kbd {
 #world-markers > div {
   position: absolute;
   font-size: 9px;
-  background: #f6f2e6c7;
+  background: #f7f5e9c7;
   color: #987016;
   padding: 5px 7px;
   transform: translate(-50%, -50%);
@@ -805,7 +799,7 @@ kbd {
   padding: 25px;
   background: var(--paper);
   border: 2px solid var(--ink);
-  box-shadow: 7px 7px 0 #253ba920;
+  box-shadow: 7px 7px 0 #222bc320;
 }
 #board h2 {
   font-family: "Patrick Hand";
@@ -829,11 +823,11 @@ dialog {
   border: 2px solid var(--ink);
   border-radius: 5px 8px 4px 7px;
   padding: 37px 34px;
-  box-shadow: 9px 9px 0 #253ba92b;
+  box-shadow: 9px 9px 0 #222bc32b;
   z-index: 50;
 }
 dialog::backdrop {
-  background: #f6f2e682;
+  background: #f7f5e982;
   backdrop-filter: blur(6px);
 }
 .close-button {
@@ -877,7 +871,7 @@ dialog label {
 }
 dialog input:not([type="range"]):not([type="checkbox"]) {
   padding: 13px;
-  border: 1px solid #253ba954;
+  border: 1px solid #222bc354;
   border-radius: 3px;
   background: #ffffff44;
   width: 100%;
@@ -914,7 +908,7 @@ dialog input[type="checkbox"] {
   font-size: 58px;
   letter-spacing: 9px;
   text-align: center;
-  background: #253ba909;
+  background: #222bc309;
   padding: 15px;
   border: 1px dashed var(--ink);
 }
@@ -1029,7 +1023,7 @@ dialog input[type="checkbox"] {
   }
   #menu {
     overflow: auto;
-    background: linear-gradient(90deg, #f6f2e6f8, #f6f2e6c9);
+    background: linear-gradient(90deg, #f7f5e9f8, #f7f5e9c9);
   }
   h1 {
     font-size: 83px;
@@ -1118,25 +1112,441 @@ dialog input[type="checkbox"] {
     transition: none !important;
   }
 }
-#paper-grain:before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    transparent 0 63px,
-    #3157b980 63px 64px
-  );
-}
-#paper-grain:after {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 6.8%;
-  width: 2px;
-  background: #d84c6860;
-}
 .hud-top-left {
   padding: 0 12px 14px 0;
-  background: radial-gradient(ellipse at top left, #f6f2e6e8, transparent 75%);
+  background: radial-gradient(ellipse at top left, #f7f5e9e8, transparent 75%);
+}
+
+/* Notebook composition: handwritten hierarchy and a single sheet over the city. */
+:root {
+  font-family: "Patrick Hand", cursive;
+  --ink: #222bc3;
+  --paper: #f7f5e9;
+}
+#menu {
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  padding: 22px 16px;
+  overflow: auto;
+  background: #f7f5e94d;
+}
+#menu::before {
+  display: none;
+}
+#menu .menu-copy {
+  position: relative;
+  inset: auto;
+  width: min(880px, 100%);
+  padding: 22px 38px 18px;
+  border: 3px solid var(--ink);
+  border-radius: 13px 7px 9px 6px;
+  background: #faf8eef2;
+  box-shadow: 6px 7px 0 #21265d24;
+  text-align: center;
+  transform: rotate(-0.3deg);
+}
+#menu h1 {
+  font-family: "Patrick Hand", cursive;
+  width: auto;
+  font-size: clamp(45px, 6.5vw, 84px);
+  letter-spacing: -2px;
+  line-height: 1.05;
+  margin: 0 0 7px;
+  transform: none;
+}
+#menu .tagline {
+  font-size: 27px;
+  margin-bottom: 18px;
+}
+#menu #play {
+  width: min(390px, 100%);
+  margin: 0 auto 14px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 20px;
+  border-radius: 12px 7px 10px 8px;
+  transform: rotate(-1deg);
+  font-size: 43px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+#menu button small {
+  display: block;
+  font-size: 17px;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  margin-top: 5px;
+}
+#menu #online {
+  width: min(270px, 100%);
+  margin: 0 auto 18px;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 15px;
+  border: 2px solid var(--red);
+  color: var(--paper);
+  background: var(--red);
+  border-radius: 9px 7px 9px 5px;
+  font-size: 26px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+#menu .mode-switch {
+  border-top: 2px solid var(--ink);
+  padding-top: 12px;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+#menu .mode-switch button {
+  font: inherit;
+  font-size: 18px;
+  letter-spacing: 0;
+  border: 1px solid var(--ink);
+  border-radius: 5px;
+  padding: 5px 15px;
+  color: var(--ink);
+}
+#menu .mode-switch button.selected {
+  background: var(--ink);
+  color: var(--paper);
+}
+.notebook-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 30px;
+  text-align: left;
+}
+.notebook-controls h2 {
+  font-size: 21px;
+  font-weight: 400;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 3px;
+  margin: 0 0 8px;
+}
+.notebook-controls p {
+  font-size: 18px;
+  line-height: 1.4;
+  margin: 3px 0;
+}
+.notebook-controls b {
+  color: var(--red);
+  font-weight: 700;
+}
+#menu .seed-row {
+  justify-content: center;
+  border-top: 2px solid var(--ink);
+  padding-top: 12px;
+  margin: 17px 0 10px;
+  font-size: 18px;
+}
+#menu .seed-row label {
+  font: inherit;
+  letter-spacing: 0;
+}
+#menu .seed-row input {
+  font: inherit;
+  width: 180px;
+}
+.notebook-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 15px;
+}
+.notebook-footer button {
+  font: inherit;
+  font-size: 17px;
+  letter-spacing: 0;
+  text-decoration: underline;
+}
+#hud {
+  font-family: "Patrick Hand", cursive;
+}
+#hud .district-label,
+#hud #mission,
+#hud #mission-progress {
+  font-size: 17px;
+  letter-spacing: 0;
+}
+#hud #score {
+  font-family: "Patrick Hand", cursive;
+  font-size: 48px;
+}
+#hud #mission-title {
+  font-size: 26px;
+}
+#hud #notice {
+  font-size: 38px;
+}
+dialog {
+  font-family: "Patrick Hand", cursive;
+  border: 2px solid var(--ink);
+  border-radius: 11px 5px 8px 5px;
+}
+dialog p,
+dialog input {
+  font-size: 20px;
+}
+dialog .primary-button,
+dialog .secondary-button {
+  font-size: 20px;
+  letter-spacing: 0;
+}
+#invite-link {
+  width: 100%;
+  font-size: 15px;
+  margin: 12px 0;
+}
+@media (max-width: 650px) {
+  #menu {
+    padding: 10px;
+  }
+  #menu .menu-copy {
+    padding: 18px;
+  }
+  .notebook-controls {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .notebook-footer {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  #menu h1 {
+    font-size: 52px;
+  }
+}
+
+#hud #weapon-name {
+  font-size: 23px;
+  letter-spacing: 0;
+}
+#hud #reload-label,
+#hud #weapon-slots,
+#hud .escape-tip {
+  font-size: 15px;
+  letter-spacing: 0;
+}
+#hud .hud-bottom-center {
+  font-size: 16px;
+  letter-spacing: 0;
+}
+#hud .health-row > span:last-child,
+#hud .flow-line > span,
+#hud .district-label span {
+  font-size: 14px;
+  letter-spacing: 0;
+}
+#hud #room-badge {
+  font-size: 20px;
+  letter-spacing: 1px;
+}
+#menu .seed-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+#menu .seed-row input {
+  flex: 0 1 180px;
+}
+#menu .seed-row button {
+  margin: 0;
+  flex: 0 0 30px;
+}
+
+#city-map-panel {
+  position: absolute;
+  right: 38px;
+  top: 175px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f7f5e9d9;
+  border: 1px solid var(--ink);
+  padding: 5px;
+  border-radius: 4px 8px 4px 6px;
+}
+#city-map {
+  width: 155px;
+  height: 155px;
+}
+#neighborhood-label {
+  font-size: 17px;
+}
+#city-map-panel small {
+  font-size: 11px;
+}
+@media (max-width: 700px) {
+  #city-map-panel {
+    display: none;
+  }
+}
+
+#menu .mode-switch {
+  flex-wrap: wrap;
+}
+#board {
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+#air-charge {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: var(--ink);
+}
+
+#wave-status {
+  position: absolute;
+  top: 165px;
+  right: 3%;
+  font:
+    24px "Patrick Hand",
+    cursive;
+  color: var(--red);
+}
+
+#sniper-scope {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  display: grid;
+  place-items: center;
+  z-index: 2;
+}
+.scope-glass {
+  position: relative;
+  width: 76vmin;
+  height: 76vmin;
+  border: 3px solid #2929a3;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 150vmax rgba(15, 17, 40, 0.96),
+    inset 0 0 24px rgba(41, 41, 163, 0.24);
+}
+.scope-glass::before,
+.scope-glass::after {
+  content: "";
+  position: absolute;
+  background: #2929a3;
+}
+.scope-glass::before {
+  width: 1px;
+  height: 100%;
+  left: 50%;
+  top: 0;
+}
+.scope-glass::after {
+  height: 1px;
+  width: 100%;
+  top: 50%;
+  left: 0;
+}
+.scope-glass i {
+  position: absolute;
+  left: calc(50% - 2px);
+  top: calc(50% - 2px);
+  width: 4px;
+  height: 4px;
+  background: #c83c43;
+  border-radius: 50%;
+  z-index: 1;
+}
+.scope-glass b {
+  position: absolute;
+  left: calc(50% - 5px);
+  top: 55%;
+  width: 10px;
+  height: 20%;
+  background: repeating-linear-gradient(
+    to bottom,
+    #2929a3 0 1px,
+    transparent 1px 18px
+  );
+}
+.scope-glass span {
+  position: absolute;
+  top: 82%;
+  width: 100%;
+  text-align: center;
+  color: #2929a3;
+  font:
+    16px "Patrick Hand",
+    cursive;
+}
+
+#hit-region {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 25px);
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  color: #d23c45;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.no-grapple .grapple-only,
+.no-grapple #hook-reticle,
+.no-grapple #grapple-status {
+  display: none !important;
+}
+
+#menu .menu-actions {
+  display: flex;
+  gap: 18px;
+  justify-content: center;
+  margin: 0 auto 14px;
+  max-width: 798px;
+}
+#menu .menu-actions > button {
+  flex: 1;
+  min-width: 0;
+  min-height: 96px;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  font-family: "Patrick Hand", cursive;
+  font-weight: 700;
+}
+#menu #duel {
+  max-width: 390px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 20px;
+  border: 2px solid var(--ink);
+  border-radius: 7px 12px 8px 10px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Patrick Hand", cursive;
+  font-size: 43px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0;
+  box-shadow: -4px 5px 0 #222bc323;
+  transform: rotate(1deg);
+}
+#menu #duel:hover {
+  background: #e8e7f5;
+}
+@media (max-width: 550px) {
+  #menu .menu-actions {
+    flex-direction: column;
+  }
+  #menu #duel,
+  #menu .menu-actions #play {
+    width: 100%;
+    max-width: none;
+  }
+}
+#menu .menu-actions #play {
+  margin: 0;
 }

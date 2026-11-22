@@ -1,3 +1,5 @@
+> **Production releases:** use `scripts/deploy-release.mjs` to build, validate and promote immutable versions. Do not restart the disabled legacy `doodlescreed.service` to publish changes. See [release operations](docs/deployments.md).
+
 # doodlesCreed
 
 An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and swing through procedurally generated cities with navigable interiors and rooftops.
@@ -90,7 +92,9 @@ The production game is running as the enabled user service `doodlescreed.service
 
 - Local: http://localhost:4173
 - LAN: http://192.168.1.251:4173
-- Tailscale: http://100.110.125.117:4173
+- Public HTTPS (Cloudflare; no VPN required): https://doodlerust.stvl.dev
+- Additional Tailscale URL (Funnel enabled; public DNS propagation pending at initial verification): https://ubuntu-system-product-name.tail267120.ts.net:10000/
+- Tailscale direct IP: http://100.110.125.117:4173
 
 ```sh
 systemctl --user status doodlescreed.service
@@ -101,3 +105,42 @@ journalctl --user -u doodlescreed.service -n 50
 The unit source is `deploy/doodlescreed.service`; the installed unit is `~/.config/systemd/user/doodlescreed.service`. To develop while production occupies port 4173, use `PORT=5173 npm run dev`, then `GAME_URL=http://127.0.0.1:5173 npm run test:browser`.
 
 A separate production smoke check works without development hooks: `GAME_URL=http://localhost:4173 node scripts/production-check.mjs`.
+
+Tailscale Funnel is enabled for the HTTPS URL, including multiplayer WebSockets, but external DNS resolution was not confirmed in the latest check. Use the verified Cloudflare hostname for public access. Inspect with `tailscale funnel status`. The existing private routes on 443 and 8443 are preserved.
+
+A Cloudflare Quick Tunnel fallback is running at https://promise-newman-worthy-professor.trycloudflare.com via the enabled user service `doodlescreed-public.service`. Its random hostname can change if that tunnel restarts; use https://doodlerust.stvl.dev as the stable public link. Find the current fallback with `journalctl --user -u doodlescreed-public.service --no-pager`.
+
+**Play defaults to a public city:** up to 16 humans and eight shared server-controlled NPCs. New players join the existing public lobby; a second lobby opens when it fills. Public cities run continuously. Solo modes remain explicit options. For a private match, choose **PRIVATE ROOM → CREATE A ROOM → COPY INVITE LINK** (eight humans).
+
+Public multiplayer uses a single WebSocket connection per player, 30 Hz compact snapshots, immediate local movement/fire feedback, and bounded remote extrapolation. Slow clients drop stale snapshots rather than queueing latency. NPC navigation and hit tests use a shared static spatial index. A 16-client local load check measured approximately 35 KB/s per client and a 4.04 ms server tick p95; these are host measurements, not worldwide latency guarantees.
+
+The server owns NPC simulation, damage, health, ammunition, reload deadlines and scores. It validates movement distance against a time-based budget and checks swept collision. Connections enforce same-host browser origins, 2 KB frames, message/admission limits, heartbeat cleanup and output backpressure. This is a casual public game with client-predicted movement; validation does not provide comprehensive anti-cheat or prevent aimbots. There are no accounts or persistent rankings.
+
+Verification: `npx tsx scripts/lobby-load.ts`, `GAME_URL=https://doodlerust.stvl.dev node scripts/public-lobby-browser.mjs`, and `GAME_URL=https://doodlerust.stvl.dev node scripts/connection-check.mjs`. Results and screenshots are under `output/playwright/`.
+
+Vaults now use an explicit 0.18-second transition; mantles cap at 0.2 seconds. The weapon braces during traversal, then returns to its regular pose. Momentum and collision checks remain active.
+
+### Dedicated public Cloudflare hostname
+
+**https://doodlerust.stvl.dev** is the persistent public hostname for this game. No VPN is required. The named `doodlescreed` tunnel proxies this hostname and the legacy `doodlescreed.cutslop.com` alias to port 4173, including `/ws`. Its enabled user service is `doodlescreed-tunnel.service`, with configuration in `deploy/cloudflared.yml`. Credentials stay outside the repository in `~/.cloudflared/`.
+
+```sh
+systemctl --user status doodlescreed-tunnel.service
+journalctl --user -u doodlescreed-tunnel.service -n 30
+GAME_URL=https://doodlerust.stvl.dev node scripts/production-check.mjs
+GAME_URL=https://doodlerust.stvl.dev node scripts/public-combat-check.mjs
+```
+
+### City pipeline
+
+The city now follows a bounded street → block → parcel → neighborhood building kit → dressing/navigation pipeline, with a protected training plaza. Four neighborhoods have different building types, height ranges and setbacks. The HUD includes a street/rooftop-route map. Every generated building remains enterable with a physical stair route to its roof. Regional seed changes and authored building overrides are available through `generateCity` options; see [the city pipeline guide](docs/city-pipeline.md).
+
+The metropolis expansion has **256 enterable buildings across 64 blocks**, in a **584 × 584 m** playable area (over 10× the earlier area). Buildings occupy about 51% of the map, approximately double the earlier density. Two frontage rows per block form narrow rear alleys; distant massing and spatially grouped nearby details maintain the extended skyline.
+
+Air actions share one charge per landing: press **Space** again in the air for a speed-scaled double jump, or **F** for a directional boost. WASD chooses the boost direction; without directional input it goes forward. Spending either disables both until landing. The HUD shows charge status. Wall jumps, vaults and grapple launches retain their existing controls.
+
+### Enemy waves
+
+Solo district runs and public multiplayer cities now use shared wave settings: 4 enemies in wave 1, 7 in wave 2, 10 in wave 3, adding 3 per wave up to 40. Clear all remaining enemies to start a six-second break; later waves feed reinforcements in faster, with at most 16 NPCs alive simultaneously. Reaction time, movement speed, attack rate and damage increase within caps. Shooters flank and retreat when wounded; later solo waves lead projectile shots. Free roam stays combat-free and private PvP rooms retain their existing mode. The HUD shows wave number, enemies remaining and the next-wave countdown.
+
+NPC presence is bounded to a 100 m player radius. Solo NPCs outside it are removed and requeued; multiplayer NPCs remain active while near any living player, with distant NPC models hidden per client. Replacement spawns use clear navigation positions 20–60 m from a player, at least 20 m from every player, separated from other NPCs, and behind cover across the full body silhouette for every player within rendering range. If no hidden position is valid, spawning retries after 0.5 seconds. Requeuing does not award kills or change a wave's remaining-enemy total.

@@ -1,0 +1,17 @@
+[Unit]
+Description=DoodlesCreed release control directory
+After=network.target
+Before=doodlescreed-gateway.service
+
+[Service]
+Type=simple
+Environment=NODE_ENV=production
+EnvironmentFile=%h/.local/share/doodlescreed/control.env
+ExecStart=/usr/bin/node ${CONTROL_ENTRY}
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

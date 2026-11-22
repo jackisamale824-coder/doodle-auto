@@ -8,61 +8,76 @@
       name="description"
       content="A first-person ink-and-paper parkour shooter. Grapple, vault and fight across an ever-changing city."
     />
-    <title>doodlesCreed — The city is your sketchbook</title>
+    <title>doodlesCreed — Rust — the oil yard</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
     <canvas id="world" aria-label="First-person 3D game world"></canvas>
-    <div id="paper-grain"></div>
     <div id="hurt"></div>
     <div id="loading">
       <div class="loading-pencil">✎</div>
-      <strong>Drawing the district…</strong
+      <strong>Sketching the oil yard…</strong
       ><span>Good things start with a blank page.</span>
     </div>
     <section id="menu" class="screen hidden" aria-label="Main menu">
-      <header class="masthead">
-        <a class="brand" href="/" aria-label="doodlesCreed home"
-          ><span class="brand-mark">dc</span> doodlesCreed<span class="version"
-            >VOL. 01</span
-          ></a
-        >
-        <div class="nav-actions">
-          <button id="help" class="text-button">
-            HOW TO PLAY <span>↗</span></button
-          ><button id="settings" class="icon-button" aria-label="Settings">
-            ⚙
+      <main class="menu-copy">
+        <h1>doodlesCreed</h1>
+        <p class="tagline">RUST · a scribbled oil-yard showdown</p>
+        <div class="menu-actions">
+          <button id="play" class="primary-button">
+            <span>PLAY</span><small>RUST · players + NPCs</small>
+          </button>
+          <button id="duel" class="primary-button">
+            <span>DUEL</span><small>real players only · no NPCs</small>
           </button>
         </div>
-      </header>
-      <main class="menu-copy">
-        <div class="eyebrow"><i></i> A FIRST-PERSON PARKOUR SHOOTER</div>
-        <h1>
-          doodles<span>Creed<span class="title-dot">.</span></span>
-        </h1>
-        <div class="title-underline"></div>
-        <p class="tagline">The city is your sketchbook.</p>
-        <p class="description">
-          Run the walls. Swing the skyline. Leave your mark.<br />A new city,
-          and a thousand ways through it.
-        </p>
-        <div class="mode-switch" aria-label="Solo game mode">
-          <button id="contract-mode" class="selected" aria-pressed="true">
-            DISTRICT RUN</button
+        <button id="online" class="secondary-button">
+          <span>PRIVATE ROOM</span
+          ><small>share a room code · up to 8 players</small>
+        </button>
+        <div class="mode-switch" aria-label="Game mode">
+          <span>mode</span
+          ><button id="public-mode" class="selected" aria-pressed="true">
+            PUBLIC RUST</button
+          ><button id="contract-mode" aria-pressed="false">DISTRICT RUN</button
           ><button id="roam-mode" aria-pressed="false">FREE ROAM</button>
         </div>
-        <button id="play" class="primary-button">
-          <span>ENTER THE DISTRICT</span><span class="arrow">↗</span>
-        </button>
-        <button id="online" class="secondary-button">
-          <span class="people-icon">♧</span> PLAY WITH FRIENDS
-          <span class="tiny-tag">ONLINE · 2–8</span>
-        </button>
+        <div class="notebook-controls">
+          <div>
+            <h2>MOVE LIKE YOU MEAN IT</h2>
+            <p>
+              <b>WASD</b> move &nbsp; <b>Mouse</b> look &nbsp;
+              <b>Shift</b> sprint
+            </p>
+            <p><b>Space</b> jump / vault · again for double jump</p>
+            <p><b>F in air</b> directional boost · shares double-jump charge</p>
+            <p><b>Space near a wall</b> mantle / wall jump</p>
+            <p><b>C / Ctrl</b> crouch · slide with momentum</p>
+            <p class="grapple-only">
+              <b>Q / E</b> grapple · hold to reel · tap to release
+            </p>
+            <p class="grapple-only">
+              <b>Space while hooked</b> launch across the street
+            </p>
+          </div>
+          <div>
+            <h2>LEAVE YOUR MARK</h2>
+            <p><b>LMB</b> fire &nbsp; <b>RMB</b> aim down sights</p>
+            <p><b>1–3 / wheel</b> rifle · shotgun · pistol</p>
+            <p>
+              <b>R</b> reload &nbsp; <b>Tab</b> scoreboard &nbsp;
+              <b>Esc</b> pause
+            </p>
+            <p><b>District run</b> 6 rivals + 3 rooftop marks</p>
+            <p><b>Free roam</b> the oil yard to practice in</p>
+            <p><b>Public Rust</b> online players + shared NPCs</p>
+          </div>
+        </div>
         <div class="seed-row">
-          <label for="seed">CITY SEED</label
+          <label for="seed">arena seed</label
           ><input
             id="seed"
-            value="notebook"
+            value="rust"
             maxlength="40"
             spellcheck="false"
             aria-label="City seed"
@@ -74,34 +89,16 @@
             ↻
           </button>
         </div>
-        <div class="menu-controls">
-          <span><kbd>WASD</kbd> move</span><span><kbd>SPACE</kbd> parkour</span
-          ><span><kbd>Q</kbd> grapple</span>
-        </div>
-      </main>
-      <div class="city-note">
-        <span>yes, you can climb that.</span
-        ><svg viewBox="0 0 180 120" aria-hidden="true">
-          <path d="M15 12C145 0 165 43 97 98M97 98l7-26M97 98l27-7" />
-        </svg>
-      </div>
-      <div class="district-stamp">
-        <span class="stamp-dot"></span>
-        <div>
-          <b>THE PAPER DISTRICT</b
+        <div class="notebook-footer">
+          <a class="text-button" href="?level=city">CITY ARCHIVE</a>
+          <button id="help" class="text-button">HOW TO PLAY</button
           ><span
-            >PROCEDURAL CITY / <em id="building-count">25</em> BUILDINGS</span
-          >
+            ><em id="building-count">25</em> buildings · every roof is a
+            route</span
+          ><button id="settings" class="text-button">SETTINGS</button>
         </div>
-        <span class="stamp-number">01</span>
-      </div>
-      <footer class="menu-footer">
-        <span>A LITTLE INK. A LOT OF MOMENTUM.</span
-        ><span
-          >HEADPHONES ON. GRAVITY OPTIONAL.
-          <span class="desktop-note">DESKTOP + MOUSE</span></span
-        >
-      </footer>
+        <span id="district-stamp" hidden></span>
+      </main>
     </section>
     <section id="hud" class="hidden" aria-label="Game HUD">
       <div class="hud-top-left">
@@ -122,12 +119,27 @@
         <div><b id="score">0000</b><small>STYLE POINTS</small></div>
         <span id="timer">00:00</span>
       </div>
+      <div id="sniper-scope" aria-hidden="true">
+        <div class="scope-glass"><i></i><b></b><span>LONGSHOT · 4×</span></div>
+      </div>
       <div id="crosshair"><i></i><i></i><i></i><i></i><span></span></div>
       <div id="hook-reticle"></div>
       <div id="hitmarker">×</div>
+      <div id="hit-region"></div>
       <div id="grapple-status"></div>
       <div id="notice"></div>
+      <div id="city-map-panel">
+        <canvas
+          id="city-map"
+          width="190"
+          height="190"
+          aria-label="City streets, rooftop routes and current position"
+        ></canvas
+        ><span id="neighborhood-label">THE DISTRICT</span
+        ><small>solid: streets · gold: roof routes</small>
+      </div>
       <div id="feed"></div>
+      <div id="wave-status"></div>
       <div id="world-markers"></div>
       <div class="hud-bottom-left">
         <div class="health-row">
@@ -141,8 +153,9 @@
         </div>
       </div>
       <div class="hud-bottom-center">
-        <div class="hook-bar"><i id="hook-fill"></i></div>
-        <span
+        <div id="air-charge" aria-live="polite">AIR CHARGE ● SPACE / F</div>
+        <div class="hook-bar grapple-only"><i id="hook-fill"></i></div>
+        <span class="grapple-only"
           ><kbd>Q</kbd> HOOK <span>·</span> HOLD TO REEL <span>·</span>
           <kbd>SPACE</kbd> RELEASE</span
         >
@@ -155,7 +168,7 @@
         <div id="reload-label">FULL AUTO · R TO RELOAD</div>
         <div id="weapon-slots">
           <span class="active">1 RIFLE</span><span>2 SHOTGUN</span
-          ><span>3 PISTOL</span>
+          ><span>3 PISTOL</span><span>4 SNIPER</span>
         </div>
       </div>
       <div id="board" class="hidden"></div>

@@ -6,15 +6,8 @@ test("every building has a physically walkable entrance-to-roof stair route", as
   const city = generateCity("notebook");
   const physics = await Physics.create(city.boxes);
   for (const building of city.buildings) {
-    const p = new Controller(physics, [
-      building.x,
-      0.25,
-      building.z + building.d / 2 + 2,
-    ]);
-    const route = [
-      [building.x, 0.2, building.z + building.d / 2 - 1],
-      ...building.route,
-    ];
+    const p = new Controller(physics, building.entrance);
+    const route = [building.inside, ...building.route];
     for (const point of route) {
       for (let i = 0; i < 1600; i++) {
         const dx = point[0] - p.position.x,
@@ -26,6 +19,11 @@ test("every building has a physically walkable entrance-to-roof stair route", as
           break;
         p.yaw = Math.atan2(-dx, -dz);
         p.update(1 / 120, { ...idleInput(), forward: 1 });
+        assert.equal(
+          p.height,
+          1.76,
+          "walking stairs must not trigger automatic crouching",
+        );
       }
       assert.ok(
         Math.hypot(point[0] - p.position.x, point[2] - p.position.z) < 0.6 &&

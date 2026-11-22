@@ -1,0 +1,12 @@
+[Unit]
+Description=doodlesCreed public Cloudflare Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/ubuntu/dev/doodlesCreed/deploy/cloudflared.yml --no-autoupdate run
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

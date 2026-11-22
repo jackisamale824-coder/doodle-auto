@@ -1,11 +1,59 @@
+import { assetUrl } from "./release-info.ts";
 export class AudioEngine {
   ctx: AudioContext | null = null;
   volume = 0.35;
   enabled = true;
   private lastStep = 0;
+  private eliminationBuffers = new Map<string, Promise<AudioBuffer>>();
   init() {
     this.ctx ??= new AudioContext();
     void this.ctx.resume();
+    void this.loadElimination().catch(() => {});
+    void this.loadElimination("player").catch(() => {});
+  }
+  private loadElimination(kind: "npc" | "player" = "npc") {
+    if (!this.ctx) return Promise.reject(new Error("Audio is not initialized"));
+    const ctx = this.ctx;
+    const cached = this.eliminationBuffers.get(kind);
+    if (cached) return cached;
+    const buffer = fetch(assetUrl(`audio/${kind}-elimination.wav`))
+      .then((response) => {
+        if (!response.ok) throw new Error("Sound unavailable");
+        return response.arrayBuffer();
+      })
+      .then((bytes) => ctx.decodeAudioData(bytes))
+      .catch((error) => {
+        this.eliminationBuffers.delete(kind);
+        throw error;
+      });
+    this.eliminationBuffers.set(kind, buffer);
+    return buffer;
+  }
+  npcEliminated() {
+    this.playElimination("npc");
+  }
+  playerEliminated() {
+    this.playElimination("player");
+  }
+  private playElimination(kind: "npc" | "player") {
+    if (!this.enabled || !this.ctx || this.volume <= 0) return;
+    const ctx = this.ctx;
+    void this.loadElimination(kind)
+      .then((buffer) => {
+        if (!this.enabled || this.volume <= 0 || ctx.state !== "running")
+          return;
+        const source = ctx.createBufferSource(),
+          gain = ctx.createGain();
+        source.buffer = buffer;
+        gain.gain.value = this.volume;
+        source.connect(gain).connect(ctx.destination);
+        source.onended = () => {
+          source.disconnect();
+          gain.disconnect();
+        };
+        source.start();
+      })
+      .catch(() => {});
   }
   tone(
     freq: number,
@@ -46,6 +94,11 @@ export class AudioEngine {
     source.start();
   }
   shoot(weapon: number) {
+    if (weapon === 3) {
+      this.noise(0.24, 0.7);
+      this.tone(80, 0.22, "sawtooth", 0.24, 24);
+      return;
+    }
     this.noise(weapon === 1 ? 0.18 : 0.08, 0.55);
     this.tone(weapon === 1 ? 95 : 170, 0.1, "sawtooth", 0.18, 45);
   }

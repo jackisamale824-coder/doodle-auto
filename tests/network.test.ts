@@ -105,11 +105,13 @@ test("the server owns damage and scores, rejects client-specified damage and blo
     assert.equal(victim.hp, 0);
     assert.equal(shooter.kills, 1);
     assert.equal(victim.deaths, 1);
-    const building = room.city.buildings[12],
-      wallX = building.x - building.w / 2 + 0.18;
+    const wall = room.city.boxes.find(
+      (b) => b.kind === "wall" && b.s[0] === 0.16 && b.s[1] > 3,
+    )!;
     victim.hp = 100;
-    victim.p = [wallX, 0.1, -15];
-    shooter.p = [wallX, 0.1, 15];
+    victim.p = [wall.p[0] + 2, 0.1, wall.p[2]];
+    shooter.p = [wall.p[0] - 2, 0.1, wall.p[2]];
+    shooter.yaw = -Math.PI / 2;
     shooter.lastShot = 0;
     a.send(JSON.stringify({ type: "fire" }));
     await new Promise((r) => setTimeout(r, 40));
@@ -152,6 +154,53 @@ test("crouching replicates body height and moves the server weapon origin down",
     a.send(JSON.stringify({ type: "fire" }));
     const data = await shot;
     assert.ok(Math.abs(data.from[1] - (welcome.spawn[1] + 0.92)) < 0.001);
+  } finally {
+    a.close();
+    rooms.dispose();
+    wss.close();
+  }
+});
+
+test("multiplayer accepts outer-city movement and anchors, then enforces the generated boundary", async () => {
+  const wss = new WebSocketServer({ port: 0 });
+  await new Promise((r) => wss.on("listening", r));
+  const rooms = new Rooms(wss),
+    a = await client((wss.address() as any).port);
+  try {
+    const ready = next(a, "welcome");
+    a.send(
+      JSON.stringify({
+        type: "create",
+        name: "Outer runner",
+        seed: "notebook",
+      }),
+    );
+    const welcome = await ready;
+    const room = rooms.rooms.get(welcome.code)!;
+    const [socket, p] = [...room.players.entries()][0];
+    p.p = [240, 0.16, 15];
+    p.moveCredit = 5;
+    p.lastMove = Date.now();
+    rooms.handle(socket, {
+      type: "state",
+      p: [241, 0.16, 15],
+      yaw: 0,
+      pitch: 0,
+      weapon: 0,
+      height: 1.76,
+      anchor: [260, 20, 15],
+    });
+    assert.equal(p.p[0], 241);
+    assert.deepEqual(p.anchor, [260, 20, 15]);
+    p.p = [room.city.bounds - 0.5, 0.16, 15];
+    p.moveCredit = 5;
+    rooms.handle(socket, {
+      type: "state",
+      p: [room.city.bounds + 1, 0.16, 15],
+      yaw: 0,
+      pitch: 0,
+    });
+    assert.equal(p.p[0], room.city.bounds - 0.5);
   } finally {
     a.close();
     rooms.dispose();

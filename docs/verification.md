@@ -34,3 +34,150 @@ Fresh run results and screenshot names are in `output/playwright/browser-results
 - Headless software-rendered multiplayer ran at roughly 21 fps on this host. No hardware-GPU performance claim is made.
 
 The visual loop also improved stair headroom and stairwell sides, lowered risers to 18 cm, fixed Escape closing the newly opened pause dialog, reset stale input latches, and added collision hulls for rendered rooftop tanks and parked cars.
+
+Tailscale HTTPS routing was verified at `https://ubuntu-system-product-name.tail267120.ts.net:10000/`. All 6 production browser checks passed through this origin, including pointer lock, sprinting, firing, and two clients sharing a multiplayer room over secure WebSockets. No runtime or WebGL errors were recorded. Existing Tailscale Serve routes on ports 443 and 8443 remain configured.
+
+### Camera and weapon motion revision
+
+- Replaced time/frequency-switching bob and opposing weapon translation with integrated stride phase, small additive look sway, and a shared bounded shot impulse. Fire damps stride/sway; ADS suppresses them by 85%. Removed idle camera roll; raw yaw/pitch remain unsmoothed.
+- Grounded height changes use a separate camera offset with a 22/s exponential recovery (95% in about 136 ms). Jumps retain immediate body movement; reset revisions clear the offset on respawn. Collision geometry and movement remain unchanged.
+- ADS weapon position, rotation, FOV and FOV-derived mouse sensitivity share one interruptible blend. There is no scope overlay in the current weapon set.
+- 18 unit/integration tests pass; build and formatting checks pass. New motion tests cover step-up/down recovery, jump response, reset, ADS reversal, sensitivity and bounded recoil/sway settling.
+- `node scripts/motion-check.mjs` against the development server uses actual mouse/keyboard input for moving fire and ADS, verifies raw look stops, and follows a deterministic entrance-to-roof route using the real game/controller. Across 92 measured rises, maximum body delta was 0.0799 m and maximum eye delta was 0.0235 m. Route start/heading and screenshot pitch are explicit fixtures; this is not a human feel comparison to the reference. Screenshots, video and measurements are under `output/playwright/motion-*`.
+- Final rebuilt production version passed all 6 UI-only smoke checks through the HTTPS Tailscale origin, including two-client multiplayer, with no runtime/WebGL errors.
+
+### Public release, reference styling, and vault transition
+
+- Inspected refreshed reference menu/game screenshots and completed three visual passes: centered handwritten notebook menu and stronger blue ink; surface-anchored hatching, irregular outlines and larger HUD labels; locally anchored weapon hatching. Captures: `style-1-*`, `style-2-*`, `style-3-*`. Desktop, narrow menu, game and invite lobby were inspected; third-pass browser flow joins a second client through the invite URL without runtime errors.
+- Explicit `traversing`/`traversalProgress` state drives a 0.18-second vault and 0.2-second mantle, collision-checked eased forward travel and weapon bracing. Firing and grapple attachment do not interrupt the traversal; normal control resumes at completion. Added a regression asserting duration, bounded per-step displacement, clearance and preserved momentum.
+- All 19 unit/integration tests and all 20 gameplay browser checks pass, including NPC kills, physical vault/stair traversal, grapple launch, multiplayer avatar movement and disconnect. Production build and formatting checks pass. Software-rendered browser run measured about 20 fps; no desktop GPU benchmark is claimed.
+- Tailscale Funnel on port 10000 is public. After DNS propagation, Google's public resolver returned relay IPs `209.177.145.97` and `209.177.145.192`. `curl --resolve` to the first relay verified health with TLS validation; all six production checks passed with Chromium explicitly mapped to this public relay, including two clients joining via invite link over secure WebSockets.
+- Cloudflare fallback `https://promise-newman-worthy-professor.trycloudflare.com` independently passed all six production checks. `doodlescreed-public.service` keeps the tunnel running, but the Quick Tunnel hostname can change on tunnel restart. The stable Tailscale hostname is the main share link. Existing tailnet-only routes on 443/8443 were preserved.
+
+### Public release, notebook styling and vault transition
+
+Three screenshot passes (`style-1-*`, `style-2-*`, `style-3-*`) were compared with refreshed reference screenshots. Changes include the centered handwritten notebook menu, red online button, ruled paper, stronger blue outlines, surface-anchored hatching, local weapon hatching, larger HUD labels, and responsive menu scrolling. Passes 2 and 3 also tested joining through an invite URL in a second browser.
+
+Vaults now expose a traversal state/progress and use a collision-checked 0.18-second transition. Mantles last 0.2 seconds. Weapon bracing follows the traversal progress; firing and ADS are suppressed until the traversal releases. Incoming momentum is retained. The dedicated regression verifies duration, bounded per-step travel, obstacle clearance and retained speed.
+
+Before concurrent city-generator edits arrived, all 19 tests, build, formatting, and 20 browser gameplay checks passed. The public `https://doodlescreed.cutslop.com` subsequently passed 6 production browser checks including invite joining and a shared scoreboard. `public-combat-results.json` records two real public WSS clients verifying server health reduction, a kill, score/death replication and respawn. Combat positions are explicit protocol fixtures.
+
+The public named Cloudflare tunnel runs under `doodlescreed-tunnel.service` and has four connected edge sessions. The HTTPS health route was verified with normal TLS validation. Tailscale Funnel is also enabled only on port 10000; its public DNS had not propagated at initial verification. Private Serve routes on 443 and 8443 were preserved.
+
+The concurrent city work subsequently updated its geometry-dependent wall fixture, rebuilt, and restarted the server. The reconciled checkout passed **21 tests**, TypeScript and formatting checks. The final Cloudflare build then passed all **6 production browser checks**, and the public combat/respawn check passed again against the restarted server. The public combat fixture now uses the validated `paper` seed, traverses enough protocol steps to reach its target from the farther procedural spawns, and asserts server-replicated positions before firing. The final production menu screenshot was visually inspected after the city changes.
+
+### Bounded city pipeline and public release
+
+- Replaced the uniform 25-building loop with a sixteen-block street/parcel/neighborhood pipeline. The notebook seed now generates twenty buildings, oriented frontage, height zoning, shared prop hulls, graph-derived encounters, regional seed overrides, a rooftop graph and a shared-data HUD minimap. See `docs/city-pipeline.md` for implemented contracts and boundaries.
+- All 21 unit/integration tests passed, including physical traversal of every generated interior and multi-seed frontage/connectivity checks. Strict TypeScript, Vite production build and formatting checks passed.
+- Visual passes `style-1-*` through `style-4-*` compare notebook composition, world-anchored ink shading, HUD legibility, weapon shading, invite dialogs, responsive menus and the new city. Reference screenshots were refreshed from the live app. Pass four's browser checks passed with no runtime errors.
+- Public Cloudflare WSS combat check passed on the regenerated city: two clients joined; validated firing produced damage, a kill and score; the victim respawned. Positions are explicit network fixtures, not a claim of human play-testing.
+
+The final Cloudflare production browser check passed all six checks, including invite-link joining from a second browser. The served entry point references `index-CKMoqxtT.js`, the final rebuilt city/renderer bundle. Public Tailscale DNS returned NXDOMAIN in external resolver checks despite Funnel being enabled; the Cloudflare hostname is the verified public route.
+The complete 20-check gameplay browser suite passed on the final generator: movement, slide, jump, vault, grapple, entrances, stairs, NPC combat, reload, pause, death/retry, district progression, shared multiplayer geometry/movement, disconnect cleanup and no runtime/WebGL errors. Recorded software-rendered performance was approximately 20 FPS; this is not a hardware performance benchmark.
+
+### Larger, denser metropolis
+
+- 256 buildings, 64 blocks, 584 m square bounds; 50.95% building footprint coverage for the notebook seed.
+- All 26 automated tests passed, including physical traversal of every building and multiplayer movement/anchors beyond the old bounds.
+- Spatial indexes reduce generation from approximately 1.6 seconds to 0.18 seconds in the local measurement and avoid city-wide stance-clearance scans. Nearby detail switches to far massing by spatial cell; collider geometry stays resident.
+- Browser checks passed for real sprinting at the outer streets, 256-building/64-block data, simultaneous near and far rendering, and no browser errors. The overview had 58 visible detail groups and 200 distant building groups; the software-rendered sample reported 23 FPS, not a hardware benchmark. Overview/edge screenshots were inspected in `output/playwright/large-city-*.png`.
+
+### Weapon silhouettes and stair stance correction
+
+- Rebuilt all three first-person weapons with slimmer receivers, recognizable barrels/magazines/sights and no hand or arm geometry. Inspected six hip/ADS screenshots in `weapon-*-*.png`; the visual fixture explicitly selects the combat weapon so per-weapon poses are tested.
+- Added a depth-based silhouette ink pass and paper-space hatching after inspecting the reference renderer. This changes the in-game rendering, not only menu CSS. Visual inspection confirms clearer outlines and reduced broad-face gun geometry; exact aesthetic parity is not claimed.
+- Root cause: automatic `physics.clear` stance selection treated stair/side obstruction as a reason to crouch. One up/down route produced 190 stance changes and up to 0.7546 m raw eye discontinuities. Standing players now stay standing; explicit crouch/slide still lowers the body, and standing back up remains blocked under low headroom.
+- Camera height recovery now handles stance changes and temporary loss of ground contact without the old 0.45 m correction cap. Intentional airborne body motion remains immediate. The expanded browser test measures every frame rather than excluding changes above 0.4 m.
+- Final up/down browser route: 134 rises, zero stance changes, maximum raw eye change 0.0947 m, maximum displayed eye change 0.0275 m per 120 Hz step. All generated buildings passed the physical entrance-to-roof test with standing height asserted. Twelve focused motion/movement/vault/lobby tests passed, as did the three traversal tests. Build and formatting checks passed.
+- Public production browser checks passed all six checks, including two-client multiplayer. Final public JavaScript was fetched separately and matched the local build byte-for-byte (SHA-256 prefix `6d0af6245efbd491`).
+
+### Attached-reference ink refinement
+
+- Weapon edge geometry now uses 2.35-pixel antialiased strokes, with fixed small deviations along subdivided edges. The deviations are spatial and deterministic, not time-driven shake. All three weapons retain the no-hands models.
+- Building hatch strength reduced to 30% of its previous value, with wider spacing, crosshatching reserved for deeper shade, and distance fading. Distant outlines blend into paper earlier to reduce dense skyline noise.
+- Enabled 4-sample antialiasing on the offscreen target and replaced the stale hardcoded 230-unit outline depth conversion with the current camera clipping range (700-unit far plane).
+- Six hip/ADS weapon views rendered and were visually inspected during the first pass. Build and formatting checks passed. A subsequent live smoke run encountered a city-generation loading error while the shared city implementation was being revised; this is separate from the ink-rendering changes. Later public verification results are recorded below when available.
+
+## Default public lobby (2026-09-07)
+
+- Default Play joins a populated public city; capacity is 16 humans plus eight server NPCs. The seventeenth human creates an overflow lobby. Private rooms and solo remain available.
+- Full regression run: 31 tests passed. Added a separate real-controller vault trajectory test against server collision validation; the focused network/public/traversal run passed all nine tests.
+- Server NPCs damage humans, receive human hits, broadcast kills, and respawn. Client-forged damage, ammunition/rate bypasses and per-packet movement-budget exploits are covered.
+- A 16-socket load run measured 30.20 snapshots/s/client, 34.97 KB/s/client, 2.95 ms tick p95 and 4.64 ms maximum tick. These measurements are local to this host, with software-browser verification running concurrently.
+- Public WSS connection probes rejected foreign browser origins (403), oversized frames (1009) and message floods (1008). Twenty host-to-Cloudflare-to-origin ping samples measured 40.8 ms median and 51.6 ms p95. Geographic player latency will differ; this excludes browser render delay.
+- Browser artifacts: `output/playwright/public-lobby-results.json` and `public-lobby-shared.png`. Run `GAME_URL=https://doodlescreed.cutslop.com node scripts/public-lobby-browser.mjs` to refresh public join/roster/fire/reload/disconnect checks.
+- Movement is locally predicted with server distance/collision validation, not a fully authoritative input simulation or comprehensive anti-cheat system.
+- The later live check passed health, asset/WebGL loading, first-person pointer lock and sprinting before the browser context closed during the firing check. Full multiplayer re-verification was therefore not completed in this pass. The public bundle was independently fetched and confirmed to contain all final thick-stroke, reduced-hatch and distance-fade changes.
+
+Final public browser run passed all three checks at `https://doodlescreed.cutslop.com`: two independent browsers joined without codes, saw both humans and eight NPCs, fired/reloaded, and observed disconnect cleanup. No page errors; displayed application RTT was 63 ms. Loading clients now remain protected and unable to fire until their first accepted state, with a 60-second loading timeout. A fifth public-lobby test covers that handshake and authoritative reload-complete replication; all five public tests pass.
+
+### Extended hook and directional release boost
+
+- Hook acquisition and reticle targeting share a 120 m range for geometry and moving aerial targets (previously 65 m).
+- Manual Q/E release adds 35% of carried velocity plus an impulse along the look vector equal to 20% of carried speed. The trajectory term dominates an opposing look direction. Space release retains its upward launch assistance. Velocity is capped at 52 m/s to stay within the multiplayer movement allowance.
+- Automatic stamina/target-loss detachments do not grant the impulse; the separate F air action avoids stacking the release boost. Repeated release calls without an anchor are no-ops.
+- Focused range, moving-target, proportional boost, backwards-look, single-application, movement and air-action checks pass. Production build succeeds; final public bundle was fetched and matched the built asset.
+
+Final load rerun after the loading-handshake fix: 16 active humans and eight NPCs, 30.20 snapshots/s/client, 35.25 KB/s/client, 4.04 ms tick p95 and 8.42 ms maximum. Final public transport probe: 38.1 ms median / 41.2 ms p95; all three connection rejection checks still passed.
+
+
+## Vertical city and aerial traversal
+
+The notebook seed now has 16-floor / 57.6-metre towers, 51 walkable sky-bridges, 12 distinct floating-platform locations and 12 moving blimp hooks. Tests walk all bridge crossings and land on every platform with the actual controller; all 256 interior stair routes remain covered. Moving-hook tests check tracking, release momentum, wall occlusion and analytic trajectory continuity.
+
+The fixed-build Chromium visual pass captured `aerial-overview.png`, `aerial-bridge.png` and `aerial-blimp-detail.png` under `output/playwright/`. Real W input crossed a bridge, and Q attached to a moving ring, tracked its changing anchor and released successfully (`aerial-results.json`). The close-up is a positioned visual fixture. A duplicate aerial-route placement found during review was corrected and covered by a uniqueness assertion.
+
+Public HTTPS browser checks passed asset loading, pointer lock, sprinting and ammunition consumption. The second multiplayer browser closed during the heavier combined run; a separate two-client WebSocket check verified a shared public room, replicated players and current server timestamps through Cloudflare. Software-rendered headless checks are functional evidence, not a hardware FPS benchmark.
+
+### Movement weight and rope tension retune
+
+- Gravity 25 → 36 m/s²; standing/double-jump impulse 9.5 → 11.4 m/s preserves existing speed-based reachable heights with shorter arcs. Measured standing apex 1.76 m; standing airtime below 0.68 s (previous 0.742 s).
+- Hook attachment no longer resets falling velocity to +3 m/s. Slack rope no longer applies passive 8 m/s² thrust. Reeling remains powered; predictive radial tension retains tangential swing velocity and corrects stretch without the previous spring term. Range remains 120 m.
+- Release impulse reduced from 35% trajectory + 20% look to 12% trajectory + 8% look, capped at 6 m/s extra velocity. Existing overall speed cap and Space launch assistance remain.
+- Ground stopping friction 9 → 13; airborne steering acceleration 18 → 12. Existing momentum is preserved in flight.
+- 17 movement/grapple/jump/air-action/vault/building-traversal tests passed. Added rope-length/reeling check passes at both 60 and 120 Hz (5/5 weight tests, including four in the 17-test run). Production build passes; public main bundle byte-matched the build.
+
+### Grapple obstruction and presentation
+
+- The controller checks eye-to-anchor visibility before action handling and again after movement. Obstructions detach without the manual release impulse; a blocked-hook input cannot immediately attach again in the same tick. An 8 cm endpoint tolerance retains legitimate surface attachments. Moving-hook acquisition also checks visibility to the actual target center.
+- Replaced the thick cylindrical rope with a depth-tested 2.2 px ink cable, 90 ms visual firing travel, and a gold attachment ring. Camera-relative socket follows look/eye smoothing and falls back to the verified eye path if the offset would clip a wall. HUD shows rope length, reeling, or obstruction feedback. Blocked ropes detach rather than wrap around corners.
+- 14 focused grapple/movement tests passed, including obstruction while reeling/releasing and moving behind an attachment wall. Build passed. Browser visual fixture renders an actual 36 m wall attachment and a turned-camera view without page errors; second pass moves the cable origin below frame and improves distant marker readability.
+
+### Correction: walls wrap ropes, never break them
+
+Supersedes the obstruction-detachment behavior above. Rope routes now retain the original hook and add collision-checked edge contacts around solid boxes. Contacts unwrap when a direct shortcut clears. Reel/tension uses the full routed length and pulls toward the first contact. Rendered local and remote cables follow routed points. Explicit release clears contacts; walls never call release. Bounded route-search failure stops player movement instead of severing the rope.
+
+15 focused tests passed for wall wrapping, unwrapping, surface attachment behind a wall, multiple obstructions, release, range, momentum and movement. Browser fixture verified a three-segment cable wrapped around both edges of a wall while attached; screenshot output/playwright/grapple-wrapped.png. Production build passed and the public main asset was byte-matched to dist.
+
+### LONGSHOT sniper
+
+Slot 4 / wheel selection; five rounds, 1.25 s firing cycle, 2.4 s reload, 90 body damage and 1.6x headshot multiplier, 220 m range. Added long barrel, scope, stock and bolt silhouette with existing hand-drawn outlines; 22-degree ADS FOV with interruptible blend, scope overlay and FOV-scaled input sensitivity, dedicated recoil and shot audio. Server accepts weapon 3, owns its ammo/rate/reload and long-range damage.
+
+Seven sniper/motion tests passed, including a 150 m NPC hit and real WebSocket server combat/reload. Production build passed. Public browser checked slot 4, scoped aiming, firing and switching away without page errors. Public WebSocket verified sniper selection, firing, rapid-shot rejection (four rounds remain) and reload duration after game-service restart. Public asset byte-matched dist. Screenshots: output/playwright/sniper-hip.png and sniper-scope.png.
+
+### Weapon reload animation and minor recoil
+
+All four viewmodels now use eased reload timelines with distinct weapon poses: rifle/pistol/sniper magazine extraction and insertion followed by action movement, shotgun shell-loading pulses and pump. Animated mesh parts preserve their ink outlines and reset on weapon switch/cancellation. ADS eases out during reload so the sniper animation is visible. Recoil is restrained and bounded with short recovery; weapon kick remains additive to stride/sway and does not modify raw player aim.
+
+Nine focused motion/reload/sniper tests passed, including neutral endpoints, cancellation reset, sustained-fire recoil bounds and settling. Browser script scripts/reload-check.mjs pressed R on each weapon, verified moving parts and captured output/playwright/reload-0.png through reload-3.png without page errors. Build passed; public main asset byte-matched dist. No server restart required for this presentation change.
+
+### Tracer muzzle origin
+
+Replaced the fixed world-axis eye offset with model-local muzzle sockets for all four first-person weapons and remote character guns. Local Combat obtains the current muzzle world position for tracer presentation, retaining the eye/aim ray for hit resolution. Eye-to-muzzle collision clips the visual origin at nearby solid geometry. Seven focused muzzle/sniper/reload-motion tests passed: four weapons remain ahead of the camera across four headings and hip/ADS poses, tracer starts at supplied muzzle, aim endpoint remains unchanged. Build passed and public asset byte-matched dist.
+
+### Moving-shot timing correction
+
+Muzzle sockets alone were insufficient: fixed-step firing preceded camera/viewmodel posing and left a full-length beam in the world for 70 ms. Local hits still resolve in physics, but tracer endpoints queue until after updateVisuals. ShotTrails samples the final rendered muzzle once, creates a 14 m traveling streak, and leaves its flight independent of later weapon motion. This removes stale-pose origin sampling and the lingering barrel-to-hit beam. Existing remote tracer behavior is unchanged in this correction.
+
+Seven focused muzzle/sniper/weapon-motion tests passed. scripts/moving-shot-check.mjs moved/turned the player and applied look sway between fire and presentation for every weapon: measured muzzle-origin error was zero for all four, and subsequent movement did not drag the shot origin. Browser reported no page errors. Build passed and public bundle byte-matched dist.
+
+### Empty-lobby Play / Duel menu
+
+Added adjacent Play and Duel choices in menu-copy. Play retains the public NPC+human mode. Duel matchmakes up to eight real players into its own lobby pool with no AI instance or NPC actors, and waits for other players rather than filling with bots. An uncached /lobbies endpoint counts open human sockets in public/duel rooms; menu polls every three seconds and offers Join Lobby with mode/count when a joinable active lobby exists. Last disconnect removes the room and restores both choices; private room controls and solo modes remain available.
+
+Seven Duel/public-lobby tests passed. Two browser passes verified empty choices, occupied Join Duel with 1/8, disconnect restoration and entering Duel without NPCs; second pass improved button layout and responsive stacking. Build passed. Restarted game service and verified a real public WebSocket Duel welcome/snapshot plus public /lobbies mode/count. Final public bundle byte-matched dist.
+
+### Duel survivor health on respawn
+
+An accepted respawn in a Duel room restores all other living human players to 100 HP before respawning the dead player. Other dead players, survivor ammo and scores are unchanged. Living-player/early respawn requests do not heal; non-Duel modes preserve existing health behavior. Two Duel tests passed, including replicated survivor health observed by a WebSocket client, and TypeScript check passed. Restarted doodlescreed.service to load the server change.

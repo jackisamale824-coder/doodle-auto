@@ -1,0 +1,17 @@
+[Unit]
+Description=DoodlesCreed stable release gateway
+After=doodlescreed-control.service
+Wants=doodlescreed-control.service
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/test -f %h/.local/share/doodlescreed/gateway/nginx.conf
+ExecStart=%h/.local/lib/doodlescreed-nginx/usr/sbin/nginx -p %h/.local/share/doodlescreed/gateway/ -c nginx.conf -g 'daemon off;'
+ExecReload=%h/.local/lib/doodlescreed-nginx/usr/sbin/nginx -p %h/.local/share/doodlescreed/gateway/ -c nginx.conf -t
+ExecReload=%h/.local/lib/doodlescreed-nginx/usr/sbin/nginx -p %h/.local/share/doodlescreed/gateway/ -c nginx.conf -s reload
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

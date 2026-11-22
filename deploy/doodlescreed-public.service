@@ -1,0 +1,14 @@
+[Unit]
+Description=doodlesCreed public Cloudflare tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/dev/doodlesCreed
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/ubuntu/dev/doodlesCreed/deploy/cloudflared-quick.yml --no-autoupdate --url http://127.0.0.1:4173
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -8,6 +8,11 @@ const browser = await chromium.launch({
   headless: true,
   args: [
     "--no-sandbox",
+    ...(process.env.PUBLIC_HOST_IP
+      ? [
+          `--host-resolver-rules=MAP ${new URL(url).hostname} ${process.env.PUBLIC_HOST_IP}`,
+        ]
+      : []),
     "--use-gl=angle",
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
@@ -60,14 +65,17 @@ try {
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
   const code = (await page.locator(".room-code").innerText()).trim();
+  const invite = await page.locator("#invite-link").inputValue();
+  assert.equal(new URL(invite).searchParams.get("room"), code);
   await page.locator("#enter-room").click();
   const other = await browser.newPage({
     viewport: { width: 1000, height: 700 },
   });
   other.on("pageerror", (e) => errors.push(e.message));
-  await other.goto(url, { waitUntil: "networkidle" });
+  await other.goto(invite, { waitUntil: "networkidle" });
   await other.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
-  await other.locator("#online").click();
+  await other.waitForSelector("#join-room");
+  assert.equal(await other.locator("#room-input").inputValue(), code);
   await other.locator("#player-name").fill("Marginalia");
   await other.locator("#room-input").fill(code);
   await other.locator("#join-room").click();
@@ -85,7 +93,7 @@ try {
     path: "output/playwright/production-multiplayer.png",
   });
   checks.push(
-    "Two production browser clients create/join a real room and share the scoreboard",
+    "Two production browser clients create/join via invite link and share the scoreboard",
   );
   await other.close();
   assert.deepEqual(errors, []);

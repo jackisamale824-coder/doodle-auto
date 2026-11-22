@@ -1,0 +1,17 @@
+[Unit]
+Description=DoodlesCreed immutable worker %i
+After=network.target
+
+[Service]
+Type=simple
+Environment=NODE_ENV=production
+EnvironmentFile=%h/.local/share/doodlescreed/workers/%i.env
+ExecStart=/usr/bin/node ${SERVER_ENTRY}
+Restart=no
+KillSignal=SIGTERM
+TimeoutStopSec=30
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target
