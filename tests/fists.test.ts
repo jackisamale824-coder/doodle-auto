@@ -8,6 +8,7 @@ import {
   FISTS,
   PUNCHES,
   nextPunch,
+  guardRaise,
   punchPose,
   punchHit,
 } from "../src/fists.ts";
@@ -25,6 +26,12 @@ test("each fist move extends a different path and both hands recover to guard", 
   assert.equal(new Set(paths.map((p) => p.join(","))).size, 3);
   assert.equal(nextPunch({ move: 1, start: 0 }, 500).move, 2);
   assert.equal(nextPunch({ move: 1, start: 0 }, 2000).move, 0);
+});
+test("lead hand rises first and early input reaches guard by contact", () => {
+  assert.equal(guardRaise(0, -1, 0, 1), 0);
+  assert.ok(guardRaise(0.12, -1, 0, 1) > guardRaise(0.12, 1, 0, 1));
+  assert.equal(guardRaise(0.45, 1, 0, 1), 1);
+  assert.equal(guardRaise(0.12, 1, 0, PUNCHES[0].contact), 1);
 });
 test("fist sweep selects a single visible opponent within reach", () => {
   const target = (z: number) => ({ p: [0, 0, z] as V3, height: 1.76, yaw: 0 });
@@ -121,6 +128,7 @@ test("two players share a single authoritative punch per swing, with wind-up, ca
       "snapshot",
       (m) => m.actors[0][16]?.move === 0,
     );
+    const impact = waitFor(b.ws, "impact");
     const hit = waitFor(a.ws, "hit");
     startPunch();
     startPunch();
@@ -128,6 +136,24 @@ test("two players share a single authoritative punch per swing, with wind-up, ca
     assert.equal((await hit).damage, 20);
     const after = await waitFor(b.ws, "snapshot", (m) => m.actors[1][5] === 80);
     assert.equal(after.actors[0][5], 100);
+    const reaction = (await impact).reaction;
+    assert.equal(reaction.move, 0);
+    assert.equal(reaction.region, "head");
+    assert.ok(reaction.at > 0);
+    assert.deepEqual(
+      after.actors[1][17],
+      reaction,
+      "compact snapshot recovers a missed impact",
+    );
+    const full = await waitFor(
+      a.ws,
+      "snapshot",
+      (m) => !!m.players.find((p: any) => p.id === victim.id)?.reaction,
+    );
+    assert.deepEqual(
+      full.players.find((p: any) => p.id === victim.id).reaction,
+      reaction,
+    );
     assert.deepEqual(attacker.mags, ammo);
     await delay(250);
     const cross = waitFor(a.ws, "hit");

@@ -1,4 +1,11 @@
-import { punchPose } from "./fists.ts";
+import { handMesh } from "./hand-model.ts";
+import {
+  guardRaise,
+  punchPose,
+  reactionWeights,
+  REACTION_SECONDS,
+  type PunchImpact,
+} from "./fists.ts";
 import type { HitRegion } from "./actor-hit.ts";
 import { solveArm } from "./rig-ik.ts";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
@@ -190,8 +197,12 @@ export class Doodle {
         -lower / 2,
         0,
       );
-      if (arm) outlinedBox([0.105, 0.11, 0.1], [0, -0.02, 0], dark, end, color);
-      else outlinedBox([0.15, 0.13, 0.24], [0, 0, 0.065], dark, end, color);
+      if (arm) {
+        const hand = handMesh(x < 0 ? 1 : -1, paper);
+        hand.rotation.x = -Math.PI / 2;
+        hand.position.y = -0.045;
+        end.add(hand);
+      } else outlinedBox([0.15, 0.13, 0.24], [0, 0, 0.065], dark, end, color);
       this.group.add(part);
     }
     // A dedicated aiming pivot keeps the barrel aligned with the head rather
@@ -255,10 +266,20 @@ export class Doodle {
       this.impact + Math.max(0.35, Math.min(0.8, damage / 50)),
     );
   }
+  private reaction?: PunchImpact;
+  private reactionAge = 0;
+  reactToPunch(reaction: PunchImpact, now: number) {
+    if (this.reaction && this.reaction.at >= reaction.at) return;
+    this.reaction = reaction;
+    this.reactionAge = Math.max(0, (now - reaction.at) / 1000);
+    this.impactSide = reaction.side;
+  }
+  private equipAge = 1;
   private fists = false;
   private fistMove = 0;
   private fistAge = 1;
   setFistPose(equipped: boolean, move: number, age: number) {
+    if (equipped && !this.fists) this.equipAge = 0;
     this.fists = equipped;
     this.fistMove = move;
     this.fistAge = age;
@@ -349,14 +370,21 @@ export class Doodle {
       0.42 + Math.sin(t * 2.2) * 0.004 + 0.038 * this.ready;
     this.aimRig.updateMatrix();
     if (this.fists) {
+      this.equipAge += step;
       for (const [arm, elbow, side] of [
         [this.leftArm, this.leftElbow, -1],
         [this.rightArm, this.rightElbow, 1],
       ] as const) {
         // The avatar faces local +Z, the first-person camera faces -Z.
         const pose = punchPose(this.fistMove, this.fistAge, -side);
-        const height = 0.15 + pose.y,
-          reach = 0.21 + pose.z;
+        const raise = guardRaise(
+          this.equipAge,
+          -side,
+          this.fistMove,
+          this.fistAge,
+        );
+        const height = -0.39 + 0.54 * raise + pose.y,
+          reach = 0.085 + 0.125 * raise + pose.z;
         const c = Math.cos(this.aimPitch),
           s = Math.sin(this.aimPitch);
         solveArm(
@@ -431,6 +459,26 @@ export class Doodle {
     }
     if (this.impactRegion !== "arm") this.aimRig.rotation.z = 0;
     this.impact *= Math.exp(-step * 17);
+    if (this.reaction && this.reactionAge < REACTION_SECONDS) {
+      this.reactionAge += step;
+      const { move, region, lateral, forward, side } = this.reaction;
+      const { snap, brace } = reactionWeights(this.reactionAge, move);
+      const twist = (move === 2 ? -0.62 : 0.2 * side) + lateral * 0.28;
+      const head = region === "head",
+        body = region === "body";
+      this.spine.rotation.x += snap * (forward * 0.31 + (body ? 0.38 : 0));
+      this.spine.rotation.y += snap * twist;
+      this.spine.rotation.z -= snap * (lateral * 0.34 + side * 0.12);
+      this.head.rotation.x += snap * forward * (head ? 0.44 : 0.16);
+      this.head.rotation.z -= snap * (head ? 0.38 : 0.14) * (lateral || side);
+      this.pelvis.position.x += brace * lateral * 0.1;
+      this.pelvis.position.z += brace * forward * 0.12;
+      this.pelvis.position.y -= brace * (region === "leg" ? 0.12 : 0.065);
+      const knee = side < 0 ? this.leftKnee : this.rightKnee;
+      knee.rotation.x += brace * 0.45;
+      const arm = side < 0 ? this.leftArm : this.rightArm;
+      arm.rotateX(-brace * (region === "arm" ? 0.65 : 0.34));
+    }
     if (this.nameLabel) this.nameLabel.quaternion.copy(camera.quaternion);
     this.group.scale.setScalar(1);
   }

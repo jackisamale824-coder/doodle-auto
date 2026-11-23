@@ -4,6 +4,7 @@ import { RUST_SCALE } from "./rust-boundary.ts";
 import type { PieceState, V3 } from "./world.ts";
 export interface RemoteState {
   engaged?: boolean;
+  reaction?: import("./fists.ts").PunchImpact;
   swing?: import("./fists.ts").Punch;
   notoriety?: number;
   fall?: import("./county-incidents.ts").CountyFall;
@@ -342,6 +343,7 @@ export class Network {
               action: a[14],
               fall: a[15],
               swing: a[16],
+              reaction: a[17],
             }));
           const now = performance.now();
           for (const p of m.players as RemoteState[]) {

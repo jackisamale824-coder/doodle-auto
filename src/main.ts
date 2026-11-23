@@ -1,4 +1,12 @@
-import { FISTS, PUNCHES, punchHit } from "./fists.ts";
+import {
+  FISTS,
+  PUNCHES,
+  punchHit,
+  punchImpact,
+  reactionWeights,
+  REACTION_SECONDS,
+  type PunchImpact,
+} from "./fists.ts";
 import { buildFists, animateFists } from "./fist-view.ts";
 import { Spatial } from "../server/spatial.ts";
 import { CountyCitizens, type CountyCitizen } from "./county-citizens.ts";
@@ -90,6 +98,8 @@ class Game {
   countySpatial?: Spatial;
   notoriety = 0;
   private citizenTick = 0;
+  private selfReaction?: PunchImpact;
+  private equippedAt = 0;
   private incidents = new CountyImpacts();
   private ragdolls?: CountyRagdolls;
   private lastFall = new WeakMap<Doodle, number>();
@@ -166,7 +176,19 @@ class Game {
             me.p = dest;
           }
         }
-        if (damage > 0) this.combat.damage(damage);
+        if (damage > 0) {
+          if (kind === "punch")
+            this.selfReaction = punchImpact(
+              now,
+              1,
+              "body",
+              1,
+              me.p,
+              p.yaw,
+              bot.p,
+            );
+          this.combat.damage(damage);
+        }
         me.hp = this.combat.hp;
       },
       (bot, to) => {
@@ -738,7 +760,19 @@ class Game {
       if (!result) return;
       const { actor, hit } = result;
       const model = actor.bot?.model ?? this.remotes.get(actor.citizen!.id);
-      model?.react(hit.region, hit.side, amount);
+      const now = Date.now();
+      model?.reactToPunch(
+        punchImpact(
+          now,
+          move,
+          hit.region,
+          hit.side,
+          actor.p,
+          actor.yaw,
+          p.position.toArray(),
+        ),
+        now,
+      );
       if (actor.citizen) this.injureCitizen(actor.citizen, amount);
       else if (actor.bot) {
         actor.bot.hp = Math.max(0, actor.bot.hp - amount);
@@ -764,6 +798,7 @@ class Game {
 
     this.collected.clear();
     this.elapsed = 0;
+    this.selfReaction = undefined;
     this.setWeapon(0, true);
     $("district-number").textContent = String(district).padStart(2, "0");
     $("district-stamp")?.setAttribute("data-district", String(district));
@@ -777,7 +812,10 @@ class Game {
     disposeGroup(this.weaponMesh);
     this.weaponMesh = i === FISTS ? buildFists() : buildWeapon(i);
     $("ammo-row").classList.toggle("hidden", i === FISTS);
-    if (i === FISTS) this.aiming = false;
+    if (i === FISTS) {
+      this.aiming = false;
+      this.equippedAt = this.time;
+    }
     this.render.camera.add(this.weaponMesh);
     $("weapon-name").textContent = WEAPONS[i].name;
     [...$("weapon-slots").children].forEach((el, n) =>
@@ -850,6 +888,14 @@ class Game {
     this.showDialog(
       `<h2>${title}</h2>${body ? `<p>${body}</p>` : ""}${this.mode === "online" ? `<p>Room <b>${escape(this.network.code)}</b> · The match continues while you pause.</p>` : ""}<button id="resume" class="primary-button">Resume game</button><div class="pause-tools"><button id="pause-controls" class="secondary-button">Controls</button><button id="pause-settings" class="secondary-button">Settings</button></div><button id="main-menu" class="text-button">Leave for main menu</button>`,
     );
+    const update = document.createElement("button");
+    update.id = "pause-update";
+    update.className = "secondary-button hidden";
+    update.textContent = "Leave and open latest version";
+    $("main-menu").before(update);
+    update.onclick = () => this.openLatest();
+    this.showReleaseUpdate();
+    void this.checkRelease();
     $("pause-controls").onclick = () => this.showHelp(true);
     $("resume").onclick = () => this.resume();
     $("pause-settings").onclick = () => this.showSettings(true);
@@ -993,8 +1039,16 @@ class Game {
         this.paintLobbyOptions();
       };
     }
+    $("menu-update").onclick = () => this.openLatest();
+    void this.checkRelease();
+    document.addEventListener("visibilitychange", () => {
+      if (this.state === "menu" || this.state === "paused")
+        void this.checkRelease();
+    });
     void this.refreshLobbies();
     setInterval(() => {
+      if (this.state === "menu" || this.state === "paused")
+        void this.checkRelease();
       if (this.state === "menu") void this.refreshLobbies();
     }, 3000);
     $("reroll").onclick = () => {
@@ -1147,6 +1201,39 @@ class Game {
     });
     window.addEventListener("resize", () => this.render.resize());
     this.network.onMessage = (m) => this.onNetwork(m);
+  }
+  private differentRelease = false;
+  private checkedReleaseAt = -Infinity;
+  private showReleaseUpdate() {
+    for (const id of ["menu-update", "pause-update"])
+      $(id)?.classList.toggle("hidden", !this.differentRelease);
+  }
+  private async checkRelease() {
+    if (
+      RELEASE_ID === "dev" ||
+      document.hidden ||
+      performance.now() - this.checkedReleaseAt < 15000
+    )
+      return;
+    this.checkedReleaseAt = performance.now();
+    try {
+      const response = await fetch("/api/release", { cache: "no-store" });
+      if (!response.ok) return;
+      const { releaseId } = await response.json();
+      if (typeof releaseId !== "string" || !/^[a-f0-9]{64}$/.test(releaseId))
+        return;
+      this.differentRelease = releaseId !== RELEASE_ID;
+      this.showReleaseUpdate();
+    } catch {
+      /* An unavailable check should not interrupt a match. */
+    }
+  }
+  private openLatest() {
+    this.network.disconnect();
+    const url = new URL("/", location.origin);
+    if (this.countySelected) url.searchParams.set("mode", "county");
+    else if (this.archive) url.searchParams.set("level", "city");
+    location.assign(url.href);
   }
   async refreshLobbies() {
     if (this.checkingLobbies) return;
@@ -1490,7 +1577,13 @@ class Game {
       $("reconnect-menu").onclick = () => this.mainMenu();
     }
     if (m.type === "impact") {
-      this.remotes.get(m.id)?.react(m.region, m.side, m.damage);
+      if (m.reaction) {
+        if (m.id === this.network.id) this.selfReaction = m.reaction;
+        else
+          this.remotes
+            .get(m.id)
+            ?.reactToPunch(m.reaction, this.network.worldTime * 1000);
+      } else this.remotes.get(m.id)?.react(m.region, m.side, m.damage);
       if (m.id === this.network.id)
         this.combat.hurt = Math.max(this.combat.hurt, 0.65);
     }
@@ -1498,6 +1591,7 @@ class Game {
       const me = m.players.find((p: any) => p.id === this.network.id);
       if (me) {
         if (me.hp < this.combat.hp) this.combat.hurt = 0.8;
+        if (me.reaction) this.selfReaction = me.reaction;
         this.combat.hp = me.hp;
         this.notoriety = me.notoriety ?? 0;
         this.combat.kills = me.kills;
@@ -1847,6 +1941,25 @@ class Game {
         peek * 0.12,
       "YXZ",
     );
+    if (
+      this.selfReaction &&
+      this.combat.hp > 0 &&
+      this.vehicle < 0 &&
+      !settings.reduced
+    ) {
+      const r = this.selfReaction;
+      const age =
+        ((this.mode === "online" ? this.network.worldTime * 1000 : Date.now()) -
+          r.at) /
+        1000;
+      if (age < REACTION_SECONDS) {
+        const { snap, brace } = reactionWeights(age, r.move);
+        cam.rotation.x -=
+          snap * r.forward * (r.region === "head" ? 0.062 : 0.038);
+        cam.rotation.z += snap * (r.lateral * 0.048 + r.side * 0.023);
+        cam.position.y -= brace * 0.026;
+      }
+    }
     const car = this.render.countyCars[this.vehicle];
     if (car) {
       const yaw = car.rotation.y;
@@ -1892,6 +2005,7 @@ class Game {
         this.combat.punch?.move ?? 0,
         this.combat.punchAge,
         this.time,
+        this.time - this.equippedAt,
       );
     } else {
       const reloadProgress =
@@ -1980,6 +2094,7 @@ class Game {
         this.render.scene.add(model.group);
         this.remotes.set(state.id, model);
       }
+      if (state.reaction) model.reactToPunch(state.reaction, now);
       model.group.visible = state.hp > 0;
       const target = new T.Vector3(
           ...(this.citizens ? state.p : this.network.position(state)),

@@ -1,4 +1,4 @@
-import { actorHit } from "./actor-hit.ts";
+import { actorHit, type HitRegion } from "./actor-hit.ts";
 import type { V3 } from "./world.ts";
 
 export const FISTS = 4;
@@ -45,6 +45,61 @@ const smooth = (x: number) => {
   x = Math.max(0, Math.min(1, x));
   return x * x * (3 - 2 * x);
 };
+// The lead hand reaches guard first. An immediate attack blends into the raise
+// and is at full extension on its original authoritative contact frame.
+export function guardRaise(
+  equipAge: number,
+  side: number,
+  move: number,
+  age: number,
+) {
+  const rise = smooth((equipAge - (side > 0 ? 0.065 : 0)) / 0.34);
+  return age >= 0 && age < PUNCHES[move].duration
+    ? Math.max(rise, smooth(age / PUNCHES[move].contact))
+    : rise;
+}
+
+export interface PunchImpact {
+  at: number;
+  move: number;
+  region: HitRegion;
+  side: number;
+  lateral: number;
+  forward: number;
+}
+export function punchImpact(
+  at: number,
+  move: number,
+  region: HitRegion,
+  side: number,
+  victim: V3,
+  victimYaw: number,
+  source: V3,
+): PunchImpact {
+  const dx = victim[0] - source[0],
+    dz = victim[2] - source[2];
+  const length = Math.hypot(dx, dz) || 1,
+    yaw = victimYaw + Math.PI;
+  return {
+    at,
+    move,
+    region,
+    side,
+    lateral: (Math.cos(yaw) * dx - Math.sin(yaw) * dz) / length,
+    forward: (Math.sin(yaw) * dx + Math.cos(yaw) * dz) / length,
+  };
+}
+export const REACTION_SECONDS = 0.55;
+export function reactionWeights(age: number, move: number) {
+  const force = [0.75, 0.92, 1][move];
+  const snap = smooth(age / 0.048) * (1 - smooth((age - 0.048) / 0.25)) * force;
+  const brace =
+    smooth(age / 0.14) *
+    (1 - smooth((age - 0.14) / (REACTION_SECONDS - 0.14))) *
+    force;
+  return { snap, brace };
+}
+
 // All three moves pass from guard through anticipation, contact and recovery.
 // Sideways travel peaks before contact for the hook. The other hand stays up.
 export function punchPose(move: number, age: number, side: number) {

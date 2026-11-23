@@ -3,6 +3,9 @@ import {
   PUNCHES,
   nextPunch,
   punchHit,
+  punchImpact,
+  REACTION_SECONDS,
+  type PunchImpact,
   type Punch,
 } from "../src/fists.ts";
 import {
@@ -49,6 +52,7 @@ export interface PlayerState {
   lastMove: number;
   lastShot: number;
   swing?: Punch;
+  reaction?: PunchImpact;
   punchPending?: boolean;
   punchReadyAt?: number;
   deadAt: number;
@@ -624,7 +628,16 @@ export class Rooms {
                   if (target === p) send(ws, { type: "correction", p: dest });
               }
             }
-            if (damage > 0) this.hurt(r, p, bot, damage);
+            if (damage > 0)
+              this.hurt(
+                r,
+                p,
+                bot,
+                damage,
+                "body",
+                undefined,
+                kind === "punch" ? 1 : undefined,
+              );
           },
           (bot, to) =>
             this.broadcast(r, {
@@ -684,7 +697,15 @@ export class Rooms {
             if (result) {
               const { actor, hit } = result,
                 damage = PUNCHES[p.swing.move].damage;
-              this.hurt(r, actor, p, damage, hit.region, hit.side);
+              this.hurt(
+                r,
+                actor,
+                p,
+                damage,
+                hit.region,
+                hit.side,
+                p.swing.move,
+              );
               send(ws, {
                 type: "hit",
                 melee: true,
@@ -737,6 +758,10 @@ export class Rooms {
           notoriety: p.notoriety,
           action: (p as CountyCitizen).action,
           fall: p.fall,
+          reaction:
+            p.reaction && now - p.reaction.at < REACTION_SECONDS * 1000
+              ? p.reaction
+              : undefined,
           engaged: p.npc ? (p as Npc).engaged : undefined,
         })),
       });
@@ -777,6 +802,7 @@ export class Rooms {
     damage: number,
     region: HitRegion = "body",
     side?: number,
+    punchMove?: number,
   ) {
     if (victim.hp <= 0 || Date.now() < victim.shieldUntil) return;
     const before = victim.hp;
@@ -790,11 +816,26 @@ export class Rooms {
     const localX =
       Math.cos(yaw) * (attacker.p[0] - victim.p[0]) -
       Math.sin(yaw) * (attacker.p[2] - victim.p[2]);
+    const hitSide = side ?? (localX < 0 ? -1 : 1);
+    const reaction =
+      punchMove === undefined
+        ? undefined
+        : punchImpact(
+            Date.now(),
+            punchMove,
+            region,
+            hitSide,
+            victim.p,
+            victim.yaw,
+            attacker.p,
+          );
+    if (reaction) victim.reaction = reaction;
     this.broadcast(r, {
       type: "impact",
+      reaction,
       id: victim.id,
       region,
-      side: side ?? (localX < 0 ? -1 : 1),
+      side: hitSide,
       damage,
     });
     if (!victim.hp) {
@@ -856,10 +897,11 @@ export class Rooms {
             p.anchor,
             p.lean ?? 0,
             p.engaged ? 1 : 0,
-            ...(r.citizens || p.swing
+            ...(r.citizens || p.swing || p.reaction
               ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
               : []),
-            ...(p.swing ? [p.swing] : []),
+            ...(p.swing || p.reaction ? [p.swing ?? null] : []),
+            ...(p.reaction ? [p.reaction] : []),
           ]),
         });
         ws.send(compact);

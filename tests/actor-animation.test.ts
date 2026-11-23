@@ -95,3 +95,35 @@ test("hit reactions affect the selected joint, remain bounded and settle", () =>
     }
   }
 });
+
+test("punches recoil through the head, hips and planted leg, then recover even with repeated snapshots", () => {
+  for (const role of ["civilian", "combatant"] as const) {
+    const model = new Doodle(undefined, undefined, role),
+      cam = new PerspectiveCamera();
+    try {
+      const reaction = {
+        at: 1000,
+        move: 2,
+        region: "head" as const,
+        side: 1,
+        lateral: 0.6,
+        forward: -0.8,
+      };
+      for (let i = 1; i <= 48; i++) {
+        model.reactToPunch(reaction, 1000 + (i * 1000) / 60);
+        model.animate(i / 60, 0, cam, 0, 1 / 60);
+        if (i === 5) {
+          assert.ok(Math.abs(model.head.rotation.x) > 0.2);
+          assert.ok(Math.abs(model.spine.rotation.y) > 0.2);
+          assert.ok(model.rightKnee.rotation.x > 0.1);
+          assert.ok(model.pelvis.position.z < 0);
+        }
+      }
+      assert.equal(model.pelvis.position.length(), 0);
+      assert.equal(model.rightKnee.rotation.x, 0);
+      assert.equal(model.group.position.length(), 0);
+    } finally {
+      model.dispose();
+    }
+  }
+});
