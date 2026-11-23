@@ -204,7 +204,11 @@ export class Renderer {
     this.decor = [];
     const groups = new Map<string, Box[]>();
     for (const b of city.boxes) {
-      if (county && (b.kind === "building" || b.kind === "road")) continue;
+      if (
+        county &&
+        (b.kind === "building" || b.kind === "road" || b.kind === "county-tree")
+      )
+        continue;
       if (b.kind === "collision" || b.kind === "boundary" || b.mesh) continue;
       const kind = [
         "ground",

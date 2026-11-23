@@ -2,6 +2,7 @@ import { RELEASE_ID } from "./release-info.ts";
 import { RUST_SCALE } from "./rust-boundary.ts";
 import type { V3 } from "./world.ts";
 export interface RemoteState {
+  engaged?: boolean;
   id: string;
   name: string;
   p: V3;
@@ -313,6 +314,7 @@ export class Network {
               height: a[9],
               anchor: a[10],
               lean: a[11] ?? 0,
+              engaged: !!a[12],
             }));
           const now = performance.now();
           for (const p of m.players as RemoteState[]) {

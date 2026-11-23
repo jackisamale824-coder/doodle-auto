@@ -1,3 +1,4 @@
+import { combatStep, shotDelay } from "./enemy-movement.ts";
 import { RELOAD_SECONDS } from "./weapon-balance.ts";
 import { actorHit, HIT_MULTIPLIER, type HitRegion } from "./actor-hit.ts";
 import * as T from "three";
@@ -60,6 +61,11 @@ interface Bot {
   cooldown: number;
   path: number[];
   repath: number;
+  velocity: T.Vector3;
+  sideSign: number;
+  blockedFor: number;
+  shots: number;
+  sightTime: number;
   speed: number;
 }
 interface Projectile {
@@ -191,6 +197,11 @@ export class Combat {
       cooldown: 1.8,
       path: [],
       repath: 0,
+      velocity: new T.Vector3(),
+      sideSign: 1,
+      blockedFor: 0,
+      shots: 0,
+      sightTime: 0,
       speed: 0,
     });
     return true;
@@ -318,7 +329,7 @@ export class Combat {
           this.score += headshot ? 180 : 100;
           this.killTime = 0.25;
           this.onNotice(headshot ? "HEADSHOT +180" : "ERASED +100");
-          target.model.group.visible = false;
+          target.model.fall?.(0);
           if (Math.random() < 0.5) this.hp = Math.min(100, this.hp + 8);
         }
       } else this.burst(point, INK, 3);
@@ -438,7 +449,10 @@ export class Combat {
       }
     }
     for (const bot of this.bots) {
-      if (bot.hp <= 0) continue;
+      if (bot.hp <= 0) {
+        bot.model.fall(dt);
+        continue;
+      }
       const previousPosition = bot.p.clone();
       const eye = bot.p.clone().add(new T.Vector3(0, 1.4, 0)),
         target = this.player.eye,
@@ -452,18 +466,29 @@ export class Combat {
       let movement = new T.Vector3();
       if (this.hp > 0) {
         if (sees && Math.abs(this.player.position.y - bot.p.y) < 1.3) {
-          if (
-            d > (bot.kind === "rusher" ? 1.5 : bot.kind === "sniper" ? 40 : 12)
-          ) {
-            movement.copy(dir);
-            movement.y = 0;
-            movement.normalize();
-          } else if (bot.kind !== "rusher" && d < (bot.hp < 35 ? 18 : 7)) {
-            movement.copy(dir).negate();
-            movement.y = 0;
-          }
+          const walk = combatStep(
+            bot.id,
+            time,
+            d,
+            bot.hp,
+            bot.kind === "sniper" ? 32 : 12,
+          );
+          const forward =
+            bot.kind === "rusher" ? (d > 1.5 ? 1 : 0) : walk.forward;
+          const side = bot.kind === "rusher" ? 0 : walk.side * bot.sideSign;
+          movement.set(
+            dir.x * forward - dir.z * side,
+            0,
+            dir.z * forward + dir.x * side,
+          );
+          if (movement.lengthSq() > 1) movement.normalize();
         } else {
-          if (bot.repath <= 0) {
+          if (
+            bot.repath <= 0 &&
+            (!bot.path.length ||
+              bot.p.distanceTo(new T.Vector3(...this.city.nodes[bot.path[0]])) <
+                0.5)
+          ) {
             bot.path = this.route(
               this.nearest(bot.p),
               this.nearest(this.player.position),
@@ -477,51 +502,78 @@ export class Combat {
             else movement.copy(p).sub(bot.p).normalize();
           }
         }
-        if (
-          sees &&
-          bot.kind !== "rusher" &&
-          d > 6 &&
-          d < 30 &&
-          this.waves.number > 1 &&
-          Math.abs(this.player.position.y - bot.p.y) < 1.3
-        ) {
-          const side = (bot.id % 2 ? 1 : -1) * Math.sin(time * 0.7 + bot.id);
-          movement.add(
-            new T.Vector3(-dir.z, 0, dir.x).multiplyScalar(side * 0.65),
-          );
-          if (movement.lengthSq() > 1) movement.normalize();
-        }
+        bot.sightTime = sees ? bot.sightTime + dt : 0;
+        bot.blockedFor -= dt;
         const difficulty = 1 + Math.min(0.5, (this.city.district - 1) * 0.05);
         const speed =
           this.waves.settings.speed *
           (bot.kind === "rusher" ? 1.3 : 1) *
           difficulty;
         bot.speed = movement.length() * speed;
-        if (movement.lengthSq() > 0) {
-          const move = movement.multiplyScalar(speed * dt);
+        bot.velocity.lerp(
+          movement.multiplyScalar(speed),
+          1 - Math.exp(-dt * 8),
+        );
+        if (bot.velocity.lengthSq() > 0.002) {
+          const move = bot.velocity.clone().multiplyScalar(dt);
           const obstacle = this.player.physics.ray(
             eye,
             move.clone().normalize(),
             move.length() + 0.3,
           );
-          if (!obstacle || Math.abs(move.y) > 0.01) bot.p.add(move);
+          let safe = !obstacle || Math.abs(move.y) > 0.01;
+          if (
+            safe &&
+            sees &&
+            Math.abs(this.player.position.y - bot.p.y) < 1.3
+          ) {
+            const floor = this.player.physics.ray(
+              bot.p
+                .clone()
+                .add(move)
+                .add(new T.Vector3(0, 0.5, 0)),
+              new T.Vector3(0, -1, 0),
+              1,
+            );
+            safe = !!floor;
+            if (floor) move.y += 0.5 - floor.distance;
+          }
+          if (safe) bot.p.add(move);
+          else if (bot.blockedFor <= 0) {
+            bot.sideSign *= -1;
+            bot.blockedFor = 0.65;
+            bot.velocity.set(0, 0, 0);
+          }
         }
-        if (sees && bot.cooldown <= 0) {
+        const yaw = bot.model.group.rotation.y;
+        const aligned = Math.sin(yaw) * dir.x + Math.cos(yaw) * dir.z > 0.88;
+        if (
+          aligned &&
+          sees &&
+          bot.cooldown <= 0 &&
+          bot.sightTime >= this.waves.settings.reaction / 1000 &&
+          (bot.kind !== "rusher" || d < 2.1)
+        ) {
           bot.model.fire();
           bot.cooldown =
-            (this.waves.settings.shotInterval / 1000) *
-            (bot.kind === "sniper" ? 1.5 : 1);
+            bot.kind === "grunt"
+              ? shotDelay(
+                  ++bot.shots,
+                  this.waves.number,
+                  this.waves.settings.shotInterval / 1000,
+                )
+              : (this.waves.settings.shotInterval / 1000) *
+                (bot.kind === "sniper" ? 1.4 : 0.8);
           if (bot.kind === "rusher") {
             if (d < 2.1) {
               this.damage(this.waves.settings.damage * 1.5);
               this.burst(target, RED);
             }
           } else {
-            const projectileSpeed = bot.kind === "sniper" ? 38 : 24;
+            const projectileSpeed = bot.kind === "sniper" ? 43 : 30;
             const lead =
-              this.waves.number > 1
-                ? Math.min(0.35, d / projectileSpeed) * 0.45
-                : 0;
+              Math.min(0.32, d / projectileSpeed) *
+              Math.min(0.8, 0.4 + this.waves.number * 0.09);
             const v = target
               .clone()
               .addScaledVector(this.player.velocity, lead)
@@ -550,9 +602,24 @@ export class Combat {
       bot.model.group.position.copy(bot.p);
       const travel = bot.p.clone().sub(previousPosition);
       const speed = travel.length() / Math.max(dt, 0.001);
-      if (speed > 0.05)
-        bot.model.group.rotation.y = Math.atan2(travel.x, travel.z);
-      bot.model.animate(time, speed, camera, Math.asin(dir.y), dt);
+      const facing = sees
+        ? Math.atan2(dir.x, dir.z)
+        : speed > 0.05
+          ? Math.atan2(travel.x, travel.z)
+          : bot.model.group.rotation.y;
+      const yaw = bot.model.group.rotation.y,
+        turn = Math.atan2(Math.sin(facing - yaw), Math.cos(facing - yaw));
+      bot.model.group.rotation.y += T.MathUtils.clamp(turn, -dt * 7, dt * 7);
+      bot.model.animate(
+        time,
+        speed,
+        camera,
+        sees ? Math.asin(dir.y) : 0,
+        dt,
+        travel.x,
+        travel.z,
+        sees,
+      );
     }
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i],

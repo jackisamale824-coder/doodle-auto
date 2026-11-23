@@ -3,9 +3,9 @@ export function waveSettings(wave: number) {
   return {
     total: Math.min(40, 4 + level * 3),
     spawnInterval: Math.max(0.35, 1.5 - level * 0.12),
-    speed: Math.min(6.5, 3 + level * 0.3),
-    reaction: Math.max(220, 850 - level * 65),
-    shotInterval: Math.max(550, 1800 - level * 110),
+    speed: Math.min(6.5, 3.65 + level * 0.3),
+    reaction: Math.max(220, 720 - level * 60),
+    shotInterval: Math.max(550, 1680 - level * 110),
     damage: Math.min(12, 4 + level),
   };
 }

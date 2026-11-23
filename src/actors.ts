@@ -32,6 +32,7 @@ export class Doodle {
   rightFoot = new T.Bone();
   private recoil = 0;
   private impact = 0;
+  private fallTime = 0;
   private impactRegion: HitRegion = "body";
   private impactSide = 1;
   nameLabel: T.Mesh | null = null;
@@ -40,6 +41,9 @@ export class Doodle {
   private stride = 0;
   private walkSpeed = 0;
   private aimPitch = 0;
+  private forwardWeight = 1;
+  private sideWeight = 0;
+  private ready = 0;
   constructor(
     public color = RED,
     name?: string,
@@ -200,26 +204,72 @@ export class Doodle {
   fire() {
     this.recoil = Math.min(0.07, this.recoil + 0.05);
   }
-  animate(t: number, speed: number, camera: T.Camera, pitch = 0, dt = 1 / 60) {
+  animate(
+    t: number,
+    speed: number,
+    camera: T.Camera,
+    pitch = 0,
+    dt = 1 / 60,
+    dx?: number,
+    dz?: number,
+    engaged = false,
+  ) {
     const step = Math.min(0.1, Math.max(0, dt));
     this.walkSpeed +=
       (Math.min(speed, 12) - this.walkSpeed) * (1 - Math.exp(-step * 16));
-    this.stride += this.walkSpeed * step * 2.6;
-    const swing = Math.sin(this.stride) * Math.min(this.walkSpeed / 4, 1) * 0.5;
-    this.leftLeg.rotation.x = swing;
-    this.rightLeg.rotation.x = -swing;
-    const weight = Math.min(this.walkSpeed / 4, 1);
-    this.leftKnee.rotation.x =
-      Math.max(0, -Math.sin(this.stride)) * 0.9 * weight;
-    this.rightKnee.rotation.x =
-      Math.max(0, Math.sin(this.stride)) * 0.9 * weight;
-    this.leftFoot.rotation.x =
-      -this.leftLeg.rotation.x - this.leftKnee.rotation.x;
-    this.rightFoot.rotation.x =
-      -this.rightLeg.rotation.x - this.rightKnee.rotation.x;
-    this.spine.rotation.x = 0;
-    this.spine.rotation.z = Math.sin(this.stride) * weight * 0.035;
-    this.pelvis.position.y = 0;
+    const blend = 1 - Math.exp(-step * 12),
+      yaw = this.group.rotation.y;
+    const length = Math.hypot(dx ?? 0, dz ?? 0);
+    if (length > 0.00001 && dx !== undefined && dz !== undefined) {
+      this.forwardWeight +=
+        ((dx * Math.sin(yaw) + dz * Math.cos(yaw)) / length -
+          this.forwardWeight) *
+        blend;
+      this.sideWeight +=
+        ((dx * Math.cos(yaw) - dz * Math.sin(yaw)) / length - this.sideWeight) *
+        blend;
+    }
+    this.ready += (Number(engaged) - this.ready) * blend;
+    const weight = Math.min(this.walkSpeed / 3.5, 1);
+    this.stride +=
+      this.walkSpeed * step * (2.8 - 0.6 * Math.min(this.walkSpeed / 7, 1));
+    const swing = Math.sin(this.stride) * weight,
+      lift = Math.cos(this.stride);
+    const crouch = 0.18 * this.ready;
+    this.leftLeg.rotation.set(
+      swing * 0.59 * this.forwardWeight - crouch,
+      0,
+      swing * 0.43 * this.sideWeight - 0.05 * this.ready,
+    );
+    this.rightLeg.rotation.set(
+      -swing * 0.59 * this.forwardWeight - crouch,
+      0,
+      -swing * 0.43 * this.sideWeight + 0.05 * this.ready,
+    );
+    this.leftKnee.rotation.x = Math.max(0, lift) * 0.85 * weight + 2 * crouch;
+    this.rightKnee.rotation.x = Math.max(0, -lift) * 0.85 * weight + 2 * crouch;
+    this.leftFoot.rotation.set(
+      -this.leftLeg.rotation.x - this.leftKnee.rotation.x + 0.18 * swing,
+      0,
+      -this.leftLeg.rotation.z,
+    );
+    this.rightFoot.rotation.set(
+      -this.rightLeg.rotation.x - this.rightKnee.rotation.x - 0.18 * swing,
+      0,
+      -this.rightLeg.rotation.z,
+    );
+    this.pelvis.position.set(
+      lift * weight * 0.032,
+      -0.026 * weight * lift * lift - 0.032 * this.ready,
+      0,
+    );
+    this.pelvis.rotation.y = swing * 0.12 * this.forwardWeight;
+    this.spine.rotation.y = -this.pelvis.rotation.y * 0.85;
+    this.spine.rotation.x =
+      weight * 0.075 * this.forwardWeight +
+      0.055 * this.ready -
+      this.recoil * 0.8;
+    this.spine.rotation.z = swing * 0.04 - this.sideWeight * weight * 0.075;
     this.recoil *= Math.exp(-step * 18);
     this.aimPitch +=
       (Math.max(-1.2, Math.min(1.2, pitch)) - this.aimPitch) *
@@ -228,7 +278,8 @@ export class Doodle {
     this.head.rotation.z = 0;
     this.aimRig.rotation.x = -this.aimPitch;
     this.aimRig.position.z = 0.12 - this.recoil;
-    this.aimRig.position.y = 0.42 + Math.sin(t * 2.2) * 0.004;
+    this.aimRig.position.y =
+      0.42 + Math.sin(t * 2.2) * 0.004 + 0.038 * this.ready;
     this.aimRig.updateMatrix();
     solveArm(
       this.rightArm,
@@ -260,12 +311,24 @@ export class Doodle {
     } else {
       const knee = side < 0 ? this.leftKnee : this.rightKnee;
       knee.rotation.x += hit * 0.25;
-      this.pelvis.position.y = -hit * 0.025;
+      this.pelvis.position.y -= hit * 0.025;
     }
     if (this.impactRegion !== "arm") this.aimRig.rotation.z = 0;
     this.impact *= Math.exp(-step * 17);
     if (this.nameLabel) this.nameLabel.quaternion.copy(camera.quaternion);
     this.group.scale.setScalar(1);
+  }
+  fall(dt: number) {
+    this.fallTime += dt;
+    const fold = T.MathUtils.smoothstep(this.fallTime, 0, 0.25);
+    const land = T.MathUtils.smoothstep(this.fallTime, 0.12, 0.57);
+    this.pelvis.rotation.z = this.impactSide * land * 1.42;
+    this.pelvis.position.y = -0.19 * fold + 0.22 * land;
+    this.spine.rotation.x = 0.27 * fold;
+    this.leftKnee.rotation.x = 1.1 * fold;
+    this.rightKnee.rotation.x = 0.68 * fold;
+    this.aimRig.rotation.x = 0.55 * fold;
+    this.group.visible = this.fallTime < 0.82;
   }
   dispose() {
     disposeGroup(this.group);

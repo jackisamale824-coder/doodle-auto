@@ -1,3 +1,4 @@
+import { combatStep, shotDelay } from "../src/enemy-movement.ts";
 import { actorHit, movementYaw, type HitRegion } from "../src/actor-hit.ts";
 import { distance, type City, type V3 } from "../src/world.ts";
 import type { PlayerState } from "./rooms.ts";
@@ -17,6 +18,12 @@ export interface Npc extends PlayerState {
   targetId?: string;
   lastKnown?: V3;
   shotsFired?: number;
+  engaged?: boolean;
+  nextShot?: number;
+  lateralSign?: number;
+  blockedUntil?: number;
+  vx?: number;
+  vz?: number;
 }
 export class Npcs {
   actors: Npc[] = [];
@@ -187,7 +194,10 @@ export class Npcs {
         bot.targetId = target.id;
       }
       if (sees || !bot.lastKnown || range < 10) bot.lastKnown = [...target.p];
-      const engage = sees && range <= 20 && range >= 6;
+      const serial = Number(bot.id.slice(4));
+      const engage =
+        sees && range <= 32 && Math.abs(target.p[1] - bot.p[1]) < 1.5;
+      bot.engaged = sees;
       if (sees) bot.aimSince ??= now;
       else bot.aimSince = undefined;
       // Replan at a reached waypoint, never from a different nearest node mid-edge.
@@ -210,6 +220,57 @@ export class Npcs {
         bot.path = this.path(bot.node, goal);
       }
       const previousPosition = [...bot.p];
+      if (engage) {
+        const dx = target.p[0] - bot.p[0],
+          dz = target.p[2] - bot.p[2],
+          len = Math.max(0.01, Math.hypot(dx, dz));
+        const step = combatStep(
+          serial,
+          now / 1000,
+          range,
+          bot.hp,
+          10 + (serial % 4) * 2.5,
+        );
+        const side = step.side * (bot.lateralSign ?? 1),
+          scale = settings.speed / Math.max(1, Math.hypot(step.forward, side));
+        const blend = 1 - Math.exp(-7 * dt);
+        bot.vx =
+          (bot.vx ?? 0) * (1 - blend) +
+          ((scale * (dx * step.forward - dz * side)) / len) * blend;
+        bot.vz =
+          (bot.vz ?? 0) * (1 - blend) +
+          ((scale * (dz * step.forward + dx * side)) / len) * blend;
+        const next: V3 = [
+          bot.p[0] + bot.vx * dt,
+          bot.p[1],
+          bot.p[2] + bot.vz * dt,
+        ];
+        const floor = this.spatial.ray(
+          [next[0], next[1] + 0.5, next[2]],
+          [0, -1, 0],
+          1,
+        );
+        const clear =
+          floor &&
+          this.spatial.movement(bot.p, next, bot.height) &&
+          !this.actors.some(
+            (o) =>
+              o !== bot &&
+              o.hp > 0 &&
+              distance(next, o.p) < 0.8 &&
+              distance(next, o.p) < distance(bot.p, o.p),
+          );
+        if (clear) {
+          next[1] += 0.5 - floor.distance;
+          bot.p = next;
+        } else if (now >= (bot.blockedUntil ?? 0)) {
+          bot.lateralSign = -(bot.lateralSign ?? 1);
+          bot.blockedUntil = now + 650;
+          bot.vx = bot.vz = 0;
+        }
+      } else {
+        bot.vx = bot.vz = 0;
+      }
       const next = bot.path[0];
       if (next !== undefined && !engage) {
         const dest = this.city.nodes[next],
@@ -263,15 +324,16 @@ export class Npcs {
         len = distance(eye, to),
         dir = to.map((v, i) => (v - eye[i]) / Math.max(0.001, len)) as V3;
       const moving = distance(bot.p, previousPosition as V3) > 0.001;
-      const desiredYaw = moving
-        ? movementYaw(
-            bot.p[0] - previousPosition[0],
-            bot.p[2] - previousPosition[2],
-            bot.yaw,
-          )
-        : sees
-          ? Math.atan2(-dir[0], -dir[2])
-          : bot.yaw;
+      const desiredYaw =
+        moving && !engage
+          ? movementYaw(
+              bot.p[0] - previousPosition[0],
+              bot.p[2] - previousPosition[2],
+              bot.yaw,
+            )
+          : sees
+            ? Math.atan2(-dir[0], -dir[2])
+            : bot.yaw;
       const turn = Math.atan2(
         Math.sin(desiredYaw - bot.yaw),
         Math.cos(desiredYaw - bot.yaw),
@@ -286,22 +348,28 @@ export class Npcs {
       if (
         sees &&
         aligned &&
-        !moving &&
+        (!moving || engage) &&
         bot.aimSince !== undefined &&
         now - bot.aimSince >= settings.reaction &&
         len < 36 &&
-        now - bot.lastShot > settings.shotInterval &&
+        now >= (bot.nextShot ?? bot.lastShot + settings.shotInterval) &&
         now > target.shieldUntil
       ) {
         bot.lastShot = now;
         // Deterministic spread gives early waves misses, while tracers and damage agree.
         const n = (bot.shotsFired = (bot.shotsFired ?? 0) + 1);
+        bot.nextShot =
+          now +
+          1000 * shotDelay(n, this.waves.number, settings.shotInterval / 1000);
         const phase = n * 2.399963 + Number(bot.id.slice(4)) * 1.7;
-        const spread = Math.max(0.012, 0.055 - this.waves.number * 0.004) * len;
+        const spread =
+          Math.max(0.008, 0.033 - this.waves.number * 0.002) *
+          len *
+          (0.24 + 0.76 * Math.abs(Math.sin(phase * 0.73)));
         const aim: V3 = [
-          to[0] + Math.cos(phase) * spread,
+          to[0] + dir[2] * Math.cos(phase) * spread,
           to[1] + Math.sin(phase) * spread * 0.5,
-          to[2],
+          to[2] - dir[0] * Math.cos(phase) * spread,
         ];
         const shotLen = distance(eye, aim),
           shotDir = aim.map((v, i) => (v - eye[i]) / shotLen) as V3;

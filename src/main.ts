@@ -83,7 +83,9 @@ class Game {
       this.network.send({ type: "vehicle", index: i });
     } else this.cars[i].driver = this.vehicle >= 0 ? null : "local";
   }
-  syncCars(dt: number) {
+  private previousCarPosition = new T.Vector3();
+  private previousCarYaw = 0;
+  syncSeat() {
     const mine = this.mode === "online" ? this.network.id : "local";
     const i = this.cars.findIndex((c) => c.driver === mine);
     if (this.vehicle !== i) {
@@ -93,6 +95,8 @@ class Game {
         this.player.reset(this.cars[i].p);
         this.cockpitYaw = 0;
         this.player.yaw = this.cars[i].yaw;
+        this.previousCarPosition.copy(this.player.position);
+        this.previousCarYaw = this.player.yaw;
       } else if (this.vehicle >= 0 && this.combat.hp > 0) {
         const p = this.player;
         this.physics.move(
@@ -103,19 +107,34 @@ class Game {
       }
       this.vehicle = i;
     }
+  }
+  syncCars(dt: number) {
+    const i = this.vehicle;
     this.render.countyCars.forEach((model, k) => {
       const c = this.cars[k];
       if (!c) return;
       if (k === i) {
-        model.position.copy(this.player.position);
-        model.rotation.y = this.player.yaw;
+        const alpha = T.MathUtils.clamp(this.accumulator * 120, 0, 1);
+        model.position.lerpVectors(
+          this.previousCarPosition,
+          this.player.position,
+          alpha,
+        );
+        model.rotation.y = T.MathUtils.lerp(
+          this.previousCarYaw,
+          this.player.yaw,
+          alpha,
+        );
       } else if (c.driver) {
-        const target = new T.Vector3(...c.p),
+        const driver = this.network.players.find((p) => p.id === c.driver);
+        const target = new T.Vector3(
+            ...(driver ? this.network.position(driver) : c.p),
+          ),
           alpha = 1 - Math.exp(-14 * dt);
         if (model.position.distanceToSquared(target) > 400)
           model.position.copy(target);
         else model.position.lerp(target, alpha);
-        const angle = c.yaw - model.rotation.y;
+        const angle = (driver?.yaw ?? c.yaw) - model.rotation.y;
         model.rotation.y +=
           Math.atan2(Math.sin(angle), Math.cos(angle)) * alpha;
       } else {
@@ -1096,6 +1115,8 @@ class Game {
     const previousBodyY = this.player.position.y;
     if (this.vehicle >= 0) {
       const p = this.player;
+      this.previousCarPosition.copy(p.position);
+      this.previousCarYaw = p.yaw;
       this.carSpeed =
         T.MathUtils.clamp(
           this.carSpeed +
@@ -1257,19 +1278,22 @@ class Game {
         peek * 0.12,
       "YXZ",
     );
-    if (this.vehicle >= 0) {
-      cam.position
-        .copy(p.position)
-        .add(new T.Vector3(Math.sin(p.yaw) * 6, 3.1, Math.cos(p.yaw) * 6));
-      cam.lookAt(p.position.clone().add(new T.Vector3(0, 1, 0)));
-    }
-    if (this.vehicle >= 0 && this.cockpit) {
-      const seat = new T.Vector3(-0.345, 0.99, 0.075).applyAxisAngle(
-        new T.Vector3(0, 1, 0),
-        p.yaw,
-      );
-      cam.position.copy(p.position).add(seat);
-      cam.rotation.set(p.pitch, p.yaw + this.cockpitYaw, 0, "YXZ");
+    const car = this.render.countyCars[this.vehicle];
+    if (car) {
+      const yaw = car.rotation.y;
+      if (this.cockpit) {
+        cam.position
+          .set(-0.345, 0.99, 0.075)
+          .applyQuaternion(car.quaternion)
+          .add(car.position);
+        cam.rotation.set(p.pitch, yaw + this.cockpitYaw, 0, "YXZ");
+      } else {
+        cam.position
+          .set(0, 3.1, 6)
+          .applyQuaternion(car.quaternion)
+          .add(car.position);
+        cam.lookAt(car.position.x, car.position.y + 1, car.position.z);
+      }
     }
     cam.fov = v.fov;
     cam.updateProjectionMatrix();
@@ -1343,6 +1367,8 @@ class Game {
             NPC_RADIUS);
       const target = new T.Vector3(...this.network.position(state)),
         dist = model.group.position.distanceTo(target);
+      const dx = target.x - model.group.position.x,
+        dz = target.z - model.group.position.z;
       if (dist > 6) model.group.position.copy(target);
       else model.group.position.lerp(target, 1 - Math.exp(-dt * 35));
       const desiredYaw = state.yaw + Math.PI;
@@ -1351,7 +1377,26 @@ class Game {
         Math.cos(desiredYaw - model.group.rotation.y),
       );
       model.group.rotation.y += turn * (1 - Math.exp(-dt * 24));
-      model.animate(this.time, this.network.speed(state), cam, state.pitch, dt);
+      if (model.group.visible)
+        model.animate(
+          this.time,
+          this.network.speed(state),
+          cam,
+          state.pitch,
+          dt,
+          dx,
+          dz,
+          !!state.npc && !!state.engaged,
+        );
+      if (state.npc && state.hp <= 0) {
+        model.fall(dt);
+        if (
+          dist > NPC_RADIUS ||
+          this.player.position.distanceToSquared(target) >
+            NPC_RADIUS * NPC_RADIUS
+        )
+          model.group.visible = false;
+      }
       model.group.scale.y = (state.height ?? 1.76) / 1.76;
       model.spine.position.x = -(state.lean ?? 0);
       let rope = this.remoteRopes.get(state.id);
@@ -1608,7 +1653,7 @@ class Game {
       this.fpsTime = 0;
     }
     if (this.state !== "loading") {
-      if (this.seed === COUNTY) this.syncCars(frameSeconds);
+      if (this.seed === COUNTY) this.syncSeat();
       this.accumulator += dt;
       let count = 0;
       while (this.accumulator >= 1 / 120 && count++ < 6) {
@@ -1622,6 +1667,7 @@ class Game {
           this.sendState();
         }
       }
+      if (this.seed === COUNTY) this.syncCars(frameSeconds);
       this.updateVisuals(dt);
       this.combat.renderShots(dt);
       if (this.state !== "menu" && this.frame % 3 === 0) this.updateHUD();

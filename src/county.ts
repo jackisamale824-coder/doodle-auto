@@ -1,3 +1,4 @@
+import { cityLot, isCityMass } from "./county-architecture.ts";
 import { randomSeed, type V3, type City, type Box } from "./world.ts";
 import type { CityPlan } from "./city-plan.ts";
 export const COUNTY = "switchback-county";
@@ -19,11 +20,50 @@ export function countyBlocks() {
   for (const town of TOWNS)
     for (let i = -3; i < 3; i++)
       for (let j = -3; j < 3; j++) {
-        const h = town < 0 ? 7 + rand() * 14 : 12 + rand() * 61;
+        const x = town + i * 44 + 22,
+          z = j * 44 + 22;
+        const palette = town < 0 ? [0, 0, 1, 1, 2, 3] : [1, 2, 2, 3, 4, 4];
+        const choice =
+          i === -1 && j === 0
+            ? 5
+            : i === 0 && j === 0
+              ? 6
+              : i === 0 && j === 1
+                ? 3
+                : palette[Math.floor(rand() * palette.length)];
+        const lot = cityLot(x, z, choice, rand());
+        blocks.push(...lot);
+        for (const [dx, dz] of [
+          [-13.8, 10],
+          [12, -13.8],
+          [13.8, 8],
+          ...(choice === 6
+            ? [
+                [2, 4],
+                [-6, 7],
+                [6, -7],
+              ]
+            : []),
+        ]) {
+          if (
+            lot.some(
+              (b) =>
+                Math.abs(x + dx - b.p[0]) < b.s[0] / 2 + 1.6 &&
+                Math.abs(z + dz - b.p[2]) < b.s[2] / 2 + 1.6,
+            )
+          )
+            continue;
+          blocks.push({
+            p: [x + dx, 1.5, z + dz],
+            s: [0.35, 3, 0.35],
+            kind: "county-tree",
+            solid: true,
+          });
+        }
         blocks.push({
-          p: [town + i * 44 + 22, h / 2, j * 44 + 22],
-          s: [18 + rand() * 10, h, 18 + rand() * 10],
-          kind: "building",
+          p: [x, 0.075, z],
+          s: [30, 0.15, 30],
+          kind: "pavement",
           solid: true,
         });
       }
@@ -31,12 +71,17 @@ export function countyBlocks() {
 }
 export function countyLadders(boxes: Box[]) {
   return boxes
-    .filter((b) => b.kind === "building")
+    .filter(
+      (b) =>
+        isCityMass(b) &&
+        b.p[1] - b.s[1] / 2 < 0.01 &&
+        (b.frontage === "shops" || b.frontage === "civic"),
+    )
     .filter((_, i) => i % 5 === 0)
     .map((b) => {
       const x = b.p[0],
         z = b.p[2] + b.s[2] / 2 + 0.8,
-        top = b.s[1] + 0.36;
+        top = b.s[1];
       return { x, z, bottom: 0, top, exit: [x, top + 0.08, z - 1.5] as V3 };
     });
 }
@@ -88,24 +133,26 @@ export function countyWorld(): City {
     }
     if (base) links.push([45, base + 3]);
   }
-  for (const b of boxes.filter((b) => b.kind === "building")) {
-    // Roof plant and setbacks give both districts a readable silhouette.
-    const [x, , z] = b.p,
-      [w, h, d] = b.s;
-    boxes.push({
-      p: [x, h + 0.18, z],
-      s: [w + 0.38, 0.36, d + 0.38],
-      kind: "roof",
-      solid: true,
-    });
-    if (h > 20 || x < 0) {
-      const top = h > 20 ? Math.min(6, h * 0.14) : 1.35;
-      boxes.push({
-        p: [x + w * 0.12, h + 0.36 + top / 2, z - d * 0.13],
-        s: [w * 0.53, top, d * 0.46],
-        kind: "roof",
-        solid: true,
-      });
+  // Street corners alone are too far apart for covered wave spawns. Add
+  // curbside route choices on each city block, all connected to its endpoints.
+  const streetEdges = links.splice(0);
+  for (const [a, b] of streetEdges) {
+    const from = nodes[a],
+      to = nodes[b],
+      dx = to[0] - from[0],
+      dz = to[2] - from[2];
+    if (Math.hypot(dx, dz) > 50) {
+      links.push([a, b]);
+      continue;
+    }
+    for (const side of [-1, 1]) {
+      const id = nodes.length;
+      nodes.push([
+        (from[0] + to[0]) / 2 + Math.sign(dz) * side * 5.2,
+        0.07,
+        (from[2] + to[2]) / 2 - Math.sign(dx) * side * 5.2,
+      ]);
+      links.push([a, id], [id, b]);
     }
   }
   for (const l of countyLadders(boxes)) {
@@ -199,14 +246,19 @@ export interface CountyCar {
 }
 export function parkedCars(): CountyCar[] {
   return TOWNS.flatMap((t) =>
-    Array.from({ length: 15 }, (_, i) => ({
-      p: [
-        t + (i % 5 === 0 ? 0 : ((i % 5) - 2) * 44),
-        0,
-        92 - Math.floor(i / 5) * 88 - (i % 5) * 5,
-      ] as V3,
-      yaw: 0,
-      driver: null,
-    })),
+    Array.from({ length: 15 }, (_, i) => {
+      const cross = i === 14,
+        reverse = i >= 7;
+      const street = (((i + 3) % 7) - 3) * 44,
+        curb = reverse ? -4 : 4;
+      // Park in the curb lane between crossings, facing the flow of traffic.
+      const along =
+        [66, -22, 110, -66, 22, -110, 66][i % 7] * (reverse ? -1 : 1);
+      return {
+        p: (cross ? [t + 66, 0, 48] : [t + street + curb, 0, along]) as V3,
+        yaw: cross ? Math.PI / 2 : reverse ? Math.PI : 0,
+        driver: null,
+      };
+    }),
   );
 }

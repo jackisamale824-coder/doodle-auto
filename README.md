@@ -155,3 +155,8 @@ highlands on either side. Each public county holds up to 30 human players. Rust 
 
 To exercise capacity on an empty local development server, run
 `COUNTY_TEST_WS=ws://127.0.0.1:4173/ws node scripts/county-load.mjs`.
+
+The towns mix sawtooth workshops, row houses, cinemas, clock halls and stepped office towers. Wave enemies can circle, back away and fire in short bursts. Free roam has no enemies.
+
+To check the chase camera over a driving route, run
+`COUNTY_TEST_ORIGIN=http://127.0.0.1:4173 node scripts/county-driving-check.mjs` against the dev server. On Linux with desktop OpenGL available, set `COUNTY_HARDWARE_GL=1` for hardware frame timings.

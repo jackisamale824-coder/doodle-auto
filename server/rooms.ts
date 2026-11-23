@@ -459,6 +459,7 @@ export class Rooms {
           lean: p.lean ?? 0,
           anchor: p.anchor,
           npc: !!p.npc,
+          engaged: p.npc ? (p as Npc).engaged : undefined,
         })),
       });
     }
@@ -538,6 +539,7 @@ export class Rooms {
             p.height,
             p.anchor,
             p.lean ?? 0,
+            p.engaged ? 1 : 0,
           ]),
         });
         ws.send(compact);

@@ -1,6 +1,8 @@
 import { loadCoupe } from "./county-car.ts";
+import { isCityMass } from "./county-architecture.ts";
 import { countyBuildings } from "./county-buildings.ts";
 import * as T from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl } from "./release-info.ts";
 import { inkMaterial, INK } from "./render.ts";
@@ -31,6 +33,7 @@ export async function drawCounty(city: City, group: T.Group) {
     geometry("lamp"),
     geometry("outcrop"),
   ]);
+  const roofs: T.BufferGeometry[][] = [[], []];
   for (const box of city.boxes) {
     if (!box.mesh) continue;
     const geo = new T.BufferGeometry();
@@ -51,7 +54,13 @@ export async function drawCounty(city: City, group: T.Group) {
       colors.push(color.r, color.g, color.b);
     }
     geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
-    group.add(new T.Mesh(geo, terrainTint));
+    if (box.kind === "county-roof") roofs[Number(box.p[0] > 0)].push(geo);
+    else group.add(new T.Mesh(geo, terrainTint));
+  }
+  for (const district of roofs) {
+    if (!district.length) continue;
+    group.add(new T.Mesh(mergeGeometries(district), terrainTint));
+    district.forEach((g) => g.dispose());
   }
   const cars = parkedCars().map((c) => {
     const m = coupe();
@@ -107,6 +116,15 @@ export async function drawCounty(city: City, group: T.Group) {
       rect(markings, x, z, alongX ? 3 : 0.14, alongX ? 0.14 : 3, 0.05);
     }
   }
+  for (const town of TOWNS)
+    for (const dx of [-88, -44, 0, 44, 88]) {
+      const x = town + dx;
+      for (const offset of [-10, 10])
+        for (let i = -4; i <= 4; i++) {
+          rect(markings, x + offset, i * 1.15, 2.3, 0.48, 0.054);
+          rect(markings, x + i * 1.15, offset, 0.48, 2.3, 0.054);
+        }
+    }
   for (const [vertices, tint] of [
     [asphalt, 0xcdd3dd],
     [markings, 0xfbf9f1],
@@ -115,17 +133,63 @@ export async function drawCounty(city: City, group: T.Group) {
     geo.setAttribute("position", new T.Float32BufferAttribute(vertices, 3));
     group.add(new T.Mesh(geo, new T.MeshBasicMaterial({ color: tint })));
   }
-  countyBuildings(
-    group,
-    city.boxes.filter((b) => b.kind === "building"),
-  );
+  countyBuildings(group, city.boxes.filter(isCityMass));
   const rng = randomSeed("county-landscape");
-  for (const town of TOWNS)
-    for (let z = -130; z <= 130; z += 22) {
-      const mesh = new T.Mesh(lamp, mat);
-      mesh.position.set(town + 6, 0, z);
-      group.add(mesh);
+  const matrix = new T.Object3D();
+  for (const town of TOWNS) {
+    for (const start of [-130, 2]) {
+      const lamps = new T.InstancedMesh(lamp, mat, 6);
+      for (let i = 0; i < 6; i++) {
+        matrix.position.set(town + 6, 0, start + i * 22);
+        matrix.updateMatrix();
+        lamps.setMatrixAt(i, matrix.matrix);
+      }
+      group.add(lamps);
     }
+  }
+  const trunkGeo = new T.CylinderGeometry(0.14, 0.24, 3.3, 8);
+  const trunkMat = new T.MeshBasicMaterial({ color: 0x7887a5 });
+  const crown = new T.SphereGeometry(1, 14, 9),
+    colors = [];
+  const vertex = crown.getAttribute("position"),
+    leaf = new T.Color();
+  for (let i = 0; i < vertex.count; i++) {
+    normal.fromBufferAttribute(crown.attributes.normal, i);
+    const { x, y, z } = normal;
+    const radius =
+      1 +
+      0.13 * Math.sin(5 * x + 2 * z) * Math.cos(5 * y - 3 * z) +
+      0.08 * Math.sin(7 * z - 4 * y);
+    vertex.setXYZ(i, x * radius, y * radius, z * radius);
+    const light = normal.dot(sun) + 0.12 * Math.sin(x * 7 + y * 4);
+    leaf.setHex(light > 0.55 ? 0xe3e7e1 : light > -0.12 ? 0xb9c7d4 : 0x90a2ba);
+    colors.push(leaf.r, leaf.g, leaf.b);
+  }
+  crown.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
+  const leafMat = new T.MeshBasicMaterial({ vertexColors: true });
+  const cells = new Map<string, typeof city.boxes>();
+  for (const tree of city.boxes.filter((b) => b.kind === "county-tree")) {
+    const cell = Math.floor(tree.p[0] / 96) + "," + Math.floor(tree.p[2] / 96);
+    if (!cells.has(cell)) cells.set(cell, []);
+    cells.get(cell)!.push(tree);
+  }
+  for (const trees of cells.values()) {
+    const trunks = new T.InstancedMesh(trunkGeo, trunkMat, trees.length),
+      leaves = new T.InstancedMesh(crown, leafMat, trees.length);
+    trees.forEach(({ p }, i) => {
+      matrix.position.set(p[0], 1.65, p[2]);
+      matrix.scale.set(1, 1, 1);
+      matrix.updateMatrix();
+      trunks.setMatrixAt(i, matrix.matrix);
+      const slim = rng() > 0.65;
+      matrix.position.y = 4.15 + rng() * 0.75;
+      matrix.scale.set(slim ? 1.4 : 2.2, slim ? 2.8 : 2.05, slim ? 1.45 : 2);
+      matrix.rotation.y = rng() * 6.28;
+      matrix.updateMatrix();
+      leaves.setMatrixAt(i, matrix.matrix);
+    });
+    group.add(trunks, leaves);
+  }
   for (let i = 0; i < 150;) {
     const x = (rng() - 0.5) * 1560,
       z = (rng() - 0.5) * 1560;
