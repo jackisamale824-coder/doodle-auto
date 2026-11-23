@@ -201,7 +201,7 @@ try {
     const rendered = [];
     const matrix = g.render.camera.matrix.clone();
     g.render.cityGroup.updateMatrixWorld(true);
-    g.render.cityGroup.traverse((mesh) => {
+    g.render.cityGroup.traverseVisible((mesh) => {
       if (
         !mesh.isInstancedMesh ||
         !mesh.visible ||

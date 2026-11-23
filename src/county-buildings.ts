@@ -592,6 +592,9 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
       meshes: [],
     };
     cluster.root.name = "county-rubble-" + id;
+    // This parent transforms world-authored instance coordinates. Its position
+    // is the pivot offset, not the world-space location of the fallen building.
+    cluster.root.userData.rubble = true;
     const batches = new Map<
       T.InstancedMesh,
       { i: number; binding: Binding; box: CountyPiece }[]

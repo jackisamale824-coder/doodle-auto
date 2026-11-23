@@ -780,6 +780,7 @@ export class Renderer {
       if (
         this.beaconMeshes.includes(child as T.Group) ||
         child.userData.blimp ||
+        child.userData.rubble ||
         child.userData.aerial
       )
         continue;
