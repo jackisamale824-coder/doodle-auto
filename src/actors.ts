@@ -13,6 +13,7 @@ import {
   label,
   disposeGroup,
 } from "./render.ts";
+export type CivilianAction = "idle" | "shove" | "melee" | "shoot";
 export class Doodle {
   group = new T.Group();
   pelvis = new T.Bone();
@@ -44,9 +45,12 @@ export class Doodle {
   private forwardWeight = 1;
   private sideWeight = 0;
   private ready = 0;
+  private civilianAction: CivilianAction = "idle";
+  private gestureTime = 0;
   constructor(
     public color = RED,
     name?: string,
+    readonly role: "combatant" | "civilian" = "combatant",
   ) {
     // Simple paper figures with a clear front silhouette and readable limbs.
     const paper = new T.MeshBasicMaterial({
@@ -82,9 +86,25 @@ export class Doodle {
       0,
     );
     torso.scale.z = 0.65;
-    outlinedBox([0.31, 0.25, 0.055], [0, 1.1, 0.155], cloth, this.group, color);
+    if (role === "civilian") {
+      torso.material = cloth;
+      outlinedBox(
+        [0.095, 0.08, 0.035],
+        [-0.12, 1.12, 0.16],
+        paper,
+        this.group,
+        color,
+      );
+    } else
+      outlinedBox(
+        [0.31, 0.25, 0.055],
+        [0, 1.1, 0.155],
+        cloth,
+        this.group,
+        color,
+      );
     outlinedBox([0.39, 0.065, 0.28], [0, 0.74, 0], dark, this.group, color);
-    for (const x of [-0.13, 0.13])
+    for (const x of role === "civilian" ? [] : [-0.13, 0.13])
       outlinedBox(
         [0.075, 0.12, 0.07],
         [x, 0.84, 0.15],
@@ -104,15 +124,35 @@ export class Doodle {
     );
     outline.scale.setScalar(1.035);
     helmet.add(outline);
+    if (role === "civilian") {
+      for (const x of [-0.095, 0.095])
+        shape(
+          new T.SphereGeometry(0.026, 6, 5),
+          dark,
+          this.head,
+          x,
+          0.026,
+          0.214,
+        );
+      const hair = shape(
+        new T.SphereGeometry(0.263, 14, 8, 0, Math.PI * 2, 0, 0.93),
+        cloth,
+        this.head,
+        0,
+        0.012,
+        0,
+      );
+      hair.scale.copy(helmet.scale);
+    } else
+      outlinedBox(
+        [0.32, 0.085, 0.045],
+        [0, 0.025, 0.217],
+        dark,
+        this.head,
+        color,
+      );
     outlinedBox(
-      [0.32, 0.085, 0.045],
-      [0, 0.025, 0.217],
-      dark,
-      this.head,
-      color,
-    );
-    outlinedBox(
-      [0.19, 0.055, 0.025],
+      [0.19, role === "civilian" ? 0.018 : 0.055, 0.025],
       [0, -0.11, 0.216],
       cloth,
       this.head,
@@ -168,6 +208,7 @@ export class Doodle {
     muzzle.name = "muzzle";
     muzzle.position.set(0, 0.015, 0.525);
     this.aimRig.add(muzzle);
+    this.aimRig.visible = role !== "civilian";
     this.group.add(this.aimRig);
     // Pelvis -> spine -> head/shoulders, with independent leg chains.
     this.pelvis.name = "pelvis";
@@ -193,6 +234,18 @@ export class Doodle {
       this.group.add(this.nameLabel);
     }
   }
+  setCivilianAction(action: CivilianAction) {
+    if (this.role !== "civilian") return;
+    if (action !== this.civilianAction) this.gestureTime = 0;
+    this.civilianAction = action;
+    this.aimRig.visible = action === "shoot";
+  }
+  finishCarFall(dead: boolean) {
+    this.fallTime = dead ? 1 : 0;
+    if (dead) this.group.visible = false;
+    this.aimRig.visible =
+      this.role !== "civilian" || this.civilianAction === "shoot";
+  }
   react(region: HitRegion = "body", side = 1, damage = 25) {
     this.impactRegion = region;
     this.impactSide = side < 0 ? -1 : 1;
@@ -214,6 +267,10 @@ export class Doodle {
     dz?: number,
     engaged = false,
   ) {
+    if (this.fallTime) {
+      this.fallTime = 0;
+      this.pelvis.rotation.z = 0;
+    }
     const step = Math.min(0.1, Math.max(0, dt));
     this.walkSpeed +=
       (Math.min(speed, 12) - this.walkSpeed) * (1 - Math.exp(-step * 16));
@@ -281,18 +338,44 @@ export class Doodle {
     this.aimRig.position.y =
       0.42 + Math.sin(t * 2.2) * 0.004 + 0.038 * this.ready;
     this.aimRig.updateMatrix();
-    solveArm(
-      this.rightArm,
-      this.rightElbow,
-      new T.Vector3(0, -0.035, 0.03).applyMatrix4(this.aimRig.matrix),
-      new T.Vector3(0.45, -1, -0.25),
-    );
-    solveArm(
-      this.leftArm,
-      this.leftElbow,
-      new T.Vector3(-0.025, -0.025, 0.23).applyMatrix4(this.aimRig.matrix),
-      new T.Vector3(-0.5, -1, -0.2),
-    );
+    if (this.role === "civilian" && this.civilianAction !== "shoot") {
+      this.gestureTime += step;
+      // A shove extends both hands together. A punch extends the lead hand while the rear hand guards the chest.
+      const drive = Math.sin(Math.min(1, this.gestureTime / 0.46) * Math.PI);
+      const shoving = this.civilianAction === "shove",
+        punching = this.civilianAction === "melee";
+      for (const [arm, elbow, side] of [
+        [this.leftArm, this.leftElbow, -1],
+        [this.rightArm, this.rightElbow, 1],
+      ] as const) {
+        const reach = shoving || (punching && side === 1) ? drive : 0;
+        const guard = shoving || punching ? 1 : 0;
+        arm.rotation.set(
+          -0.13 -
+            guard * 0.65 -
+            reach * 0.77 -
+            side * swing * (1 - guard) * 0.58,
+          side * reach * 0.12,
+          side * (0.1 + guard * 0.07),
+        );
+        elbow.rotation.set(-0.12 - guard * 0.88 + reach * 0.94, 0, 0);
+      }
+      this.spine.rotation.y += punching ? drive * 0.26 : 0;
+      this.spine.rotation.x += drive * 0.12;
+    } else {
+      solveArm(
+        this.rightArm,
+        this.rightElbow,
+        new T.Vector3(0, -0.035, 0.03).applyMatrix4(this.aimRig.matrix),
+        new T.Vector3(0.45, -1, -0.25),
+      );
+      solveArm(
+        this.leftArm,
+        this.leftElbow,
+        new T.Vector3(-0.025, -0.025, 0.23).applyMatrix4(this.aimRig.matrix),
+        new T.Vector3(-0.5, -1, -0.2),
+      );
+    }
     // Add a short flinch after the normal pose solve; never alter actor position,
     // aim input, weapon cooldowns, or movement simulation.
     const hit = this.impact,

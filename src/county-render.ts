@@ -5,7 +5,7 @@ import * as T from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl } from "./release-info.ts";
 import { inkMaterial, INK } from "./render.ts";
-import { elevation, parkedCars } from "./county.ts";
+import { elevation, countyCars } from "./county.ts";
 import { drawCountyRoads } from "./county-roads.ts";
 import { randomSeed, type City } from "./world.ts";
 
@@ -56,7 +56,7 @@ export async function drawCounty(city: City, group: T.Group) {
     geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
     group.add(new T.Mesh(geo, terrainTint));
   }
-  const cars = parkedCars().map((c, i) => {
+  const cars = countyCars().map((c, i) => {
     const m = vehicle(
       c.kind,
       c.kind === "taxi" ? 1 : c.kind === "delivery" ? 3 : i,

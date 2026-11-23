@@ -42,7 +42,7 @@ function descriptor(b: Box, dynamic: boolean) {
   }
   return RAPIER.ColliderDesc.cuboid(b.s[0] / 2, b.s[1] / 2, b.s[2] / 2);
 }
-function contactParts(parts: Set<number>, boxes: Box[]) {
+export function contactParts(parts: Set<number>, boxes: Box[]) {
   if (parts.size <= CONTACT_LIMIT) return parts;
   // Select actual material at the shell's extreme points. A single enclosing
   // cuboid would create contacts in courtyards, hatchways and broken openings.
@@ -94,6 +94,7 @@ export class CountyRubble {
   private previousMotion?: { id: number; at: Vector3; v: Vector3; w: Vector3 };
   constructor(private boxes: Box[]) {
     this.world.timestep = DT;
+    this.indexScenery();
   }
 
   // Build only an index of source bounds. Populate the WASM broadphase on
@@ -245,7 +246,6 @@ export class CountyRubble {
   ): RubblePose {
     const existing = this.clusters.get(id);
     if (existing) return existing.pose;
-    if (!this.scenery.size) this.indexScenery();
     const parts = new Set(indices);
     if (!parts.size)
       throw new Error("A rubble cluster requires at least one component");

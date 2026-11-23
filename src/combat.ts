@@ -253,6 +253,12 @@ export class Combat {
     }
   }
   onSurfaceHit = (_index: number, _damage: number) => {};
+  civilianShot?: (
+    origin: V3,
+    dir: V3,
+    range: number,
+    baseDamage: number,
+  ) => { distance: number; region: HitRegion; kill: boolean } | null;
   shotOrigin = () => this.player.eye;
   fire() {
     if (this.hp <= 0 || this.cooldown > 0 || this.reloadTime > 0) return false;
@@ -304,9 +310,24 @@ export class Combat {
             region = hit.region;
           }
         }
+      const civil = !this.online
+        ? this.civilianShot?.(
+            origin.toArray(),
+            dir.toArray(),
+            range,
+            gun.damage,
+          )
+        : null;
+      if (civil) range = civil.distance;
       const point = origin.clone().addScaledVector(dir, range);
       this.shotTrails.queue(point);
-      if (target) {
+      if (civil) {
+        this.hitRegion = civil.region;
+        this.hitTime = 0.15;
+        if (civil.kill) this.audio.npcEliminated();
+        else this.audio.hit();
+        this.burst(point, RED, 5);
+      } else if (target) {
         target.hp -= Math.round(gun.damage * HIT_MULTIPLIER[region]);
         const localX = point
           .clone()

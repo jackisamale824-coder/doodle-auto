@@ -344,3 +344,109 @@ test("county sessions share usable doors and wall breaches across joins and resu
     await new Promise<void>((resolve) => wss.close(() => resolve()));
   }
 });
+
+test("a driver's sweep knocks down one citizen and both wire formats agree on injury and notoriety", async () => {
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await once(wss, "listening");
+  const address = wss.address();
+  assert.ok(address && typeof address === "object");
+  const url = "ws://127.0.0.1:" + address.port;
+  const rooms = new Rooms(wss, countyWorld);
+  const peers: WebSocket[] = [];
+  async function join(message: object) {
+    const ws = new WebSocket(url);
+    peers.push(ws);
+    await once(ws, "open");
+    const admitted = next(ws, "welcome");
+    send(ws, message);
+    return { ws, info: await admitted };
+  }
+  try {
+    const host = await join({ type: "create", seed: COUNTY, name: "Driver" });
+    const peer = await join({
+      type: "join",
+      code: host.info.code,
+      name: "Witness",
+      compact: true,
+    });
+    const room = rooms.rooms.get(host.info.code)!;
+    const humans = [...room.players.values()];
+    const driver = humans[0],
+      other = humans[1],
+      car = room.cars![0];
+    assert.equal(driver.notoriety, 0);
+    assert.equal(room.ai, null);
+    assert.equal(room.npcs.length, 32);
+    driver.p = [...car.p];
+    const seated = next(host.ws, "vehicle-seat");
+    send(host.ws, {
+      type: "vehicle",
+      action: "enter",
+      index: 0,
+      driveVersion: 1,
+    });
+    assert.equal((await seated).car.driver, driver.id);
+    let seq = 1;
+    async function advance() {
+      const ack = next(host.ws, "vehicle-drive");
+      send(host.ws, {
+        type: "state",
+        vehicle: 0,
+        drive: { seq, inputs: [5, 5, 5, 5] },
+      });
+      seq += 4;
+      return (await ack).pose;
+    }
+    let pose = await advance();
+    for (let i = 0; i < 55 && pose.speed < 7; i++) {
+      await delay(34);
+      pose = await advance();
+    }
+    assert.ok(pose.speed >= 7, "the car gained speed under real drive inputs");
+    const walker = room.citizens!.actors.find((a) => a.car === undefined)!;
+    // Put a pedestrian in the path of the next accepted movement sample.
+    walker.p = [
+      car.p[0] - Math.sin(car.yaw) * 2,
+      car.p[1],
+      car.p[2] - Math.cos(car.yaw) * 2,
+    ];
+    const actorIndex = humans.length + room.npcs.indexOf(walker);
+    const full = next(host.ws, "snapshot", (m) => m.players[actorIndex]?.fall);
+    const compact = next(
+      peer.ws,
+      "snapshot",
+      (m) => m.actors[actorIndex]?.[15],
+    );
+    await delay(36);
+    await advance();
+    const [a, b] = await Promise.all([full, compact]);
+    const victim = a.players[actorIndex];
+    assert.deepEqual(victim.fall, b.actors[actorIndex][15]);
+    assert.equal(victim.hp, b.actors[actorIndex][5]);
+    assert.ok(victim.hp < 100 && victim.hp > 0);
+    assert.ok(a.players[0].notoriety > 0);
+    assert.equal(a.players[0].notoriety, b.actors[0][13]);
+    assert.equal(other.notoriety, 0);
+    for (let i = 0; i < 3; i++) {
+      await delay(35);
+      await advance();
+    }
+    assert.equal(
+      walker.hp,
+      victim.hp,
+      "one impact cannot deal damage on every substep",
+    );
+    assert.notDeepEqual(walker.p, victim.p);
+    // Exercise the same dead/retry state reached after a lethal attack.
+    driver.hp = 0;
+    driver.deadAt = Date.now() - 3000;
+    const revived = next(host.ws, "respawn");
+    send(host.ws, { type: "respawn" });
+    await revived;
+    assert.equal(driver.notoriety, 0);
+  } finally {
+    for (const ws of peers) ws.terminate();
+    rooms.dispose();
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+  }
+});

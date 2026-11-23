@@ -215,3 +215,41 @@ export function parkedCars(lots = planCounty().lots): CountyCar[] {
   }
   return result;
 }
+
+// Traffic has its own seats. Player spawn positions and parked-car indices are stable.
+export function countyCars(): CountyCar[] {
+  const { plan, lots } = planCounty();
+  const cars = parkedCars(lots);
+  for (const [townIndex, town] of TOWNS.entries()) {
+    const main = plan.streets.filter(
+      (s) =>
+        !s.id.startsWith("county-road-") &&
+        s.class === "arterial" &&
+        Math.sign(s.a[0]) === Math.sign(town),
+    );
+    const cinema = lots.find(
+      (lot) => lot.town === town && lot.landmark === "cinema",
+    )!;
+    const routes = [main[0], main[2], main.at(-1)!, cinema.front];
+    for (const [i, road] of routes.entries()) {
+      const dir = i % 2 ? -1 : 1;
+      const offset = dir * Math.min(road.width * 0.21, 2.8);
+      const p = [0.16 + 0.13 * i, 0.18, 0.8, 0.32, 0.64]
+        .map((t) => alongStreet(road, t, offset))
+        .find((p) =>
+          cars.every((c) => Math.hypot(c.p[0] - p[0], c.p[2] - p[2]) > 7),
+        )!;
+      p[1] = 0.08;
+      const dx = road.b[0] - road.a[0],
+        dz = road.b[2] - road.a[2];
+      const serial = townIndex * routes.length + i;
+      cars.push({
+        kind: VEHICLES[serial % VEHICLES.length],
+        driver: "civilian-driver-" + serial,
+        p,
+        yaw: Math.atan2(-dir * dx, -dir * dz),
+      });
+    }
+  }
+  return cars;
+}

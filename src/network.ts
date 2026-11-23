@@ -4,6 +4,9 @@ import { RUST_SCALE } from "./rust-boundary.ts";
 import type { PieceState, V3 } from "./world.ts";
 export interface RemoteState {
   engaged?: boolean;
+  notoriety?: number;
+  fall?: import("./county-incidents.ts").CountyFall;
+  action?: "idle" | "shove" | "melee" | "shoot";
   id: string;
   name: string;
   p: V3;
@@ -334,6 +337,9 @@ export class Network {
               anchor: a[10],
               lean: a[11] ?? 0,
               engaged: !!a[12],
+              notoriety: a[13],
+              action: a[14],
+              fall: a[15],
             }));
           const now = performance.now();
           for (const p of m.players as RemoteState[]) {
@@ -393,8 +399,11 @@ export class Network {
       this.active &&
       this.socket?.readyState === WebSocket.OPEN &&
       this.socket.bufferedAmount < 16384
-    )
+    ) {
       this.socket.send(JSON.stringify(message));
+      return true;
+    }
+    return false;
   }
   disconnect() {
     if (this.socket?.readyState === WebSocket.OPEN)

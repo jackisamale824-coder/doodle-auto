@@ -31,7 +31,9 @@
             <span>DUEL</span><small>real players only · no NPCs</small>
           </button>
         </div>
-        <a class="secondary-button" href="/?mode=county">SWITCHBACK COUNTY · OPEN WORLD</a>
+        <a class="secondary-button" href="/?mode=county"
+          >SWITCHBACK COUNTY · OPEN WORLD</a
+        >
         <button id="online" class="secondary-button">
           <span>PRIVATE ROOM</span
           ><small>share a room code · up to 8 players</small>
@@ -69,9 +71,13 @@
               <b>R</b> reload &nbsp; <b>Tab</b> scoreboard &nbsp;
               <b>Esc</b> pause
             </p>
-            <p><b>District run</b> 6 rivals + 3 rooftop marks</p>
-            <p><b>Free roam</b> the oil yard to practice in</p>
-            <p><b>Public Rust</b> online players + shared NPCs</p>
+            <p id="guide-contract">
+              <b>District run</b> 6 rivals + 3 rooftop marks
+            </p>
+            <p id="guide-roam"><b>Free roam</b> the oil yard to practice in</p>
+            <p id="guide-public">
+              <b>Public Rust</b> online players + shared NPCs
+            </p>
           </div>
         </div>
         <div class="seed-row">
@@ -112,6 +118,11 @@
         <div id="mission-progress">
           <span id="kill-objective">○ 0 / 6 RIVALS</span
           ><span id="beacon-objective">◇ 0 / 3 MARKS</span>
+        </div>
+        <div id="notoriety" hidden>
+          <label for="notoriety-bar"
+            >Notoriety <b id="notoriety-number">0%</b></label
+          ><progress id="notoriety-bar" max="100" value="0"></progress>
         </div>
       </div>
       <div id="compass">N <span>· · ·</span> NE <span>· · ·</span> E</div>

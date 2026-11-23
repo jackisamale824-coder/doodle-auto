@@ -1,8 +1,21 @@
+import {
+  CountyDriveWorld,
+  DRIVE_DT,
+  type DrivePose,
+} from "../src/county-driving.ts";
+import { CountyCitizens, type CountyCitizen } from "../src/county-citizens.ts";
+import {
+  CountyImpacts,
+  injuryPoints,
+  notorietyAfter,
+  shovePosition,
+  type CountyFall,
+} from "../src/county-incidents.ts";
 import { initializeRapier } from "../src/rapier-init.ts";
 import type { RubblePose } from "../src/county-rubble.ts";
 import { CountyWreckage } from "../src/county-wreckage.ts";
 import { CountyStructures } from "../src/county-structures.ts";
-import { COUNTY, parkedCars, type CountyCar } from "../src/county.ts";
+import { COUNTY, countyCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
 import { RELOAD_SECONDS } from "../src/weapon-balance.ts";
@@ -36,6 +49,8 @@ export interface PlayerState {
   moveCredit: number;
   npc?: boolean;
   ready?: boolean;
+  notoriety?: number;
+  fall?: CountyFall;
   lean?: number;
 }
 export interface WorkerOptions {
@@ -54,10 +69,13 @@ export interface ReserveRequest {
   roomCode?: string;
 }
 interface Room {
+  citizens?: CountyCitizens;
+  incidents?: CountyImpacts;
   structures?: CountyStructures;
   wreckage?: CountyWreckage;
   rubbleUpdates?: Map<number, RubblePose>;
   cars?: CountyCar[];
+  driving?: CountyDriveWorld;
   roomId: string;
   code: string;
   seed: string;
@@ -85,6 +103,87 @@ export class Rooms {
   rooms = new Map<string, Room>();
   memberships = new Map<WebSocket, Room>();
   private admissions = new Admissions();
+  private drivers = new WeakMap<
+    PlayerState,
+    {
+      pose: DrivePose;
+      seq: number;
+      credit: number;
+      last: number;
+      crashUntil: number;
+    }
+  >();
+  private drive(
+    ws: WebSocket,
+    r: Room,
+    p: PlayerState,
+    car: CountyCar,
+    index: number,
+    packet: any,
+  ) {
+    const driver = this.drivers.get(p)!;
+    if (
+      packet?.seq === driver.seq &&
+      Array.isArray(packet.inputs) &&
+      packet.inputs.length === 0
+    ) {
+      send(ws, {
+        type: "vehicle-drive",
+        index,
+        seq: driver.seq,
+        pose: driver.pose,
+      });
+      return;
+    }
+    if (
+      !packet ||
+      !Number.isSafeInteger(packet.seq) ||
+      packet.seq <= driver.seq ||
+      !Array.isArray(packet.inputs) ||
+      !packet.inputs.length ||
+      packet.inputs.length > 12 ||
+      !packet.inputs.every(
+        (v: unknown) =>
+          typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 18,
+      ) ||
+      !Number.isSafeInteger(packet.seq + packet.inputs.length)
+    )
+      return;
+    const now = performance.now(),
+      pose = driver.pose;
+    driver.credit = Math.min(
+      0.18,
+      driver.credit + Math.max(0, now - driver.last) / 1000,
+    );
+    driver.last = now;
+    for (const input of packet.inputs) {
+      if (driver.credit + 1e-8 < DRIVE_DT) break;
+      driver.credit -= DRIVE_DT;
+      const from = pose.p;
+      const impact = r.driving!.advance(
+        pose,
+        car.kind,
+        input,
+        (box, amount) => r.structures!.damage(box.pieceId!, amount),
+        car,
+      );
+      if (impact) {
+        if (now >= driver.crashUntil) this.countyVandalism(p);
+        driver.crashUntil = now + 400;
+      }
+      if (from !== pose.p)
+        this.countyCarContact(r, p, index, from, pose.p, pose.yaw, pose.speed);
+    }
+    driver.seq = packet.seq + packet.inputs.length - 1;
+    p.p = car.p = pose.p;
+    p.yaw = car.yaw = pose.yaw;
+    p.lastMove = Date.now();
+    if (p.ready === false) {
+      p.ready = true;
+      p.shieldUntil = p.lastMove + 3000;
+    }
+    send(ws, { type: "vehicle-drive", index, seq: driver.seq, pose });
+  }
   private sessions: Sessions;
   private closing = false;
   private tickTimes: number[] = [];
@@ -236,9 +335,12 @@ export class Rooms {
           : String(request.seed || "paper").slice(0, 40);
       const city = this.levelFactory(seed),
         spatial = new Spatial(city.boxes);
-      const ai = request.type === "public" ? new Npcs(city, spatial) : null;
+      const ai =
+        request.type === "public" && seed !== COUNTY
+          ? new Npcs(city, spatial)
+          : null;
       room = {
-        cars: seed === COUNTY ? parkedCars() : undefined,
+        cars: seed === COUNTY ? countyCars() : undefined,
         roomId: randomUUID(),
         code,
         seed,
@@ -325,6 +427,26 @@ export class Rooms {
   }
   private initializeStructures(room: Room) {
     if (room.seed !== COUNTY) return;
+    if (room.duel) {
+      for (const car of room.cars!) car.driver = null;
+    } else {
+      room.citizens = new CountyCitizens(room.city, room.cars!, room.spatial);
+      room.npcs = room.citizens.actors;
+      const incidents = (room.incidents = new CountyImpacts());
+      const citizens = room.citizens;
+      citizens.onTrafficMove = (driver, car, from, speed, now) => {
+        incidents.contact(
+          citizens.actors,
+          car,
+          from,
+          car.p,
+          car.yaw,
+          speed,
+          now,
+          (a, amount) => this.hurt(room, a, driver, amount),
+        );
+      };
+    }
     room.rubbleUpdates = new Map();
     room.wreckage = new CountyWreckage(room.city.boxes, (m) => {
       if (m.type === "rubble-poses")
@@ -332,6 +454,11 @@ export class Rooms {
       else this.broadcast(room, m);
     });
     room.spatial.rubble = room.wreckage;
+    room.driving = new CountyDriveWorld(
+      room.city.boxes,
+      () => room.wreckage!.clusters.values(),
+      () => room.cars!,
+    );
     room.structures = new CountyStructures(
       room.city.boxes,
       (index, state, _box, detached) => {
@@ -359,6 +486,10 @@ export class Rooms {
       duel: r.duel,
       tickRate: 30,
       player: { ...p },
+      drive:
+        this.drivers.has(p) && r.cars?.some((c) => c.driver === p.id)
+          ? { seq: this.drivers.get(p)!.seq, pose: this.drivers.get(p)!.pose }
+          : undefined,
       ...p,
       rubble: r.wreckage && [...r.wreckage.clusters.values()],
       structures: r.structures && [...r.structures.states],
@@ -463,6 +594,36 @@ export class Rooms {
       }
       const humans = [...r.players.values()];
       const npcRosterBefore = r.npcs.map((p) => p.id).join(",");
+      if (r.citizens) {
+        r.incidents!.update(dt, now, r.spatial.ray.bind(r.spatial));
+        r.citizens.update(
+          dt,
+          now,
+          humans.filter((p) => p.ready !== false),
+          (p, bot, damage, kind) => {
+            if (p.hp <= 0 || now < p.shieldUntil) return;
+            if (kind === "shove" && !r.cars?.some((c) => c.driver === p.id)) {
+              const dest = shovePosition(p.p, bot.p);
+              if (
+                r.spatial.movement(p.p, dest, p.height) &&
+                r.spatial.clear(dest, p.height)
+              ) {
+                p.p = dest;
+                for (const [ws, target] of r.players)
+                  if (target === p) send(ws, { type: "correction", p: dest });
+              }
+            }
+            if (damage > 0) this.hurt(r, p, bot, damage);
+          },
+          (bot, to) =>
+            this.broadcast(r, {
+              type: "shot",
+              id: bot.id,
+              from: [bot.p[0], bot.p[1] + 1.45, bot.p[2]],
+              to,
+            }),
+        );
+      }
       r.ai?.update(
         dt,
         now,
@@ -488,7 +649,11 @@ export class Rooms {
         }
       }
       for (const car of r.cars ?? [])
-        if (car.driver && !humans.some((p) => p.id === car.driver && p.hp > 0))
+        if (
+          car.driver &&
+          !car.driver.startsWith("civilian-") &&
+          !humans.some((p) => p.id === car.driver && p.hp > 0)
+        )
           car.driver = null;
       this.broadcast(r, {
         type: "snapshot",
@@ -510,6 +675,9 @@ export class Rooms {
           lean: p.lean ?? 0,
           anchor: p.anchor,
           npc: !!p.npc,
+          notoriety: p.notoriety,
+          action: (p as CountyCitizen).action,
+          fall: p.fall,
           engaged: p.npc ? (p as Npc).engaged : undefined,
         })),
       });
@@ -519,6 +687,30 @@ export class Rooms {
     if (this.tickTimes.length > 900) this.tickTimes.shift();
   }
 
+  private countyVandalism(p: PlayerState) {
+    p.notoriety = notorietyAfter(p.notoriety ?? 0, 5);
+  }
+  private countyCarContact(
+    r: Room,
+    p: PlayerState,
+    index: number,
+    from: V3,
+    to: V3,
+    yaw: number,
+    speed: number,
+  ) {
+    if (!r.citizens || !r.cars?.[index]) return;
+    r.incidents!.contact(
+      r.citizens.actors,
+      r.cars[index],
+      from,
+      to,
+      yaw,
+      speed,
+      Date.now(),
+      (actor, amount) => this.hurt(r, actor, p, amount),
+    );
+  }
   hurt(
     r: Room,
     victim: PlayerState,
@@ -528,7 +720,13 @@ export class Rooms {
     side?: number,
   ) {
     if (victim.hp <= 0 || Date.now() < victim.shieldUntil) return;
+    const before = victim.hp;
     victim.hp = Math.max(0, victim.hp - damage);
+    if (r.citizens && attacker !== victim && !attacker.npc)
+      attacker.notoriety = notorietyAfter(
+        attacker.notoriety ?? 0,
+        injuryPoints(before, victim.hp),
+      );
     const yaw = victim.yaw + Math.PI;
     const localX =
       Math.cos(yaw) * (attacker.p[0] - victim.p[0]) -
@@ -599,6 +797,9 @@ export class Rooms {
             p.anchor,
             p.lean ?? 0,
             p.engaged ? 1 : 0,
+            ...(r.citizens
+              ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
+              : []),
           ]),
         });
         ws.send(compact);
@@ -726,9 +927,12 @@ export class Rooms {
             m.type === "public" && seed !== COUNTY
               ? this.publicWorld!.spatial
               : new Spatial(city.boxes);
-        const ai = m.type === "public" ? new Npcs(city, spatial) : null;
+        const ai =
+          m.type === "public" && seed !== COUNTY
+            ? new Npcs(city, spatial)
+            : null;
         r = {
-          cars: seed === COUNTY ? parkedCars() : undefined,
+          cars: seed === COUNTY ? countyCars() : undefined,
           roomId: randomUUID(),
           code,
           seed,
@@ -783,6 +987,7 @@ export class Rooms {
         lastShot: 0,
         deadAt: 0,
         ready: m.compact !== true,
+        notoriety: r.citizens ? 0 : undefined,
         shieldUntil: m.compact === true ? Infinity : Date.now() + 3000,
         mags: [30, 8, 14, 5],
         reloadUntil: 0,
@@ -850,7 +1055,10 @@ export class Rooms {
       const car = Number.isInteger(m.index) ? r.cars[m.index] : undefined;
       const action = m.action ?? (vehicle ? "exit" : "enter");
       if (car && p.hp > 0) {
-        if (action === "exit" && vehicle === car) car.driver = null;
+        if (action === "exit" && vehicle === car) {
+          car.driver = null;
+          this.drivers.delete(p);
+        }
         if (
           action === "enter" &&
           !vehicle &&
@@ -858,12 +1066,27 @@ export class Rooms {
           distance(car.p, p.p) < 5
         ) {
           car.driver = p.id;
+          r.wreckage?.prepare();
+          this.drivers.delete(p);
+          if (m.driveVersion === 1)
+            this.drivers.set(p, {
+              pose: { p: [...car.p], yaw: car.yaw, speed: 0, steer: 0 },
+              seq: 0,
+              credit: 0.05,
+              last: performance.now(),
+              crashUntil: 0,
+            });
           p.p = [...car.p];
           p.yaw = car.yaw;
           p.pitch = 0;
         }
       }
-      send(ws, { type: "vehicle-seat", index: m.index, car: car ?? null });
+      send(ws, {
+        type: "vehicle-seat",
+        driveVersion: this.drivers.has(p) ? 1 : undefined,
+        index: m.index,
+        car: car ?? null,
+      });
       return;
     }
     if (vehicle && m.type === "fire") return;
@@ -875,6 +1098,10 @@ export class Rooms {
         (vehicle ? r.cars[m.vehicle] !== vehicle : (m.vehicle ?? -1) !== -1)
       )
         return;
+      if (vehicle && this.drivers.has(p)) {
+        this.drive(ws, r, p, vehicle, m.vehicle, m.drive);
+        return;
+      }
       if (
         !validVector(m.p) ||
         !Number.isFinite(m.yaw) ||
@@ -891,7 +1118,9 @@ export class Rooms {
       if (
         (r.city.arena && !insideRust(m.p, 0.25)) ||
         displacement > p.moveCredit ||
-        !r.spatial.movement(p.p, m.p, p.height) ||
+        !(vehicle && r.driving
+          ? r.driving.legacyClear(p.p, p.yaw, m.p, m.yaw, vehicle.kind, vehicle)
+          : r.spatial.movement(p.p, m.p, p.height)) ||
         m.p[1] < -5 ||
         m.p[1] > r.city.flightCeiling ||
         Math.abs(m.p[0]) > r.city.bounds ||
@@ -955,6 +1184,7 @@ export class Rooms {
       }
       p.p = this.spawn(r, Math.floor(Math.random() * 16));
       p.hp = 100;
+      if (r.citizens) p.notoriety = 0;
       p.mags = [30, 8, 14, 5];
       p.reloadUntil = 0;
       p.moveCredit = 3;
@@ -980,6 +1210,7 @@ export class Rooms {
       }
       p.mags[p.weapon]--;
       p.lastShot = now;
+      if (r.citizens) p.notoriety = notorietyAfter(p.notoriety ?? 0, 2);
       const dir: V3 = [
           -Math.sin(p.yaw) * Math.cos(p.pitch),
           Math.sin(p.pitch),

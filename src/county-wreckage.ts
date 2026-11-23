@@ -56,14 +56,18 @@ export class CountyWreckage {
     private boxes: Box[],
     private notify: (m: RubbleMessage) => void,
   ) {}
+  // Prepare the independent Rapier world and static cell index during loading
+  // (or boarding on a room worker). Only nearby scenery gets actual colliders.
+  prepare() {
+    return (this.sim ??= new CountyRubble(this.boxes));
+  }
   invalidate(index: number) {
     this.sim?.syncStatic(index);
   }
   detach(indices: number[], direction: V3, initialPose?: RubblePose) {
     if (!indices.length) return;
-    this.sim ??= new CountyRubble(this.boxes);
     const id = ++this.serial,
-      pose = this.sim.spawn(id, indices, direction, initialPose);
+      pose = this.prepare().spawn(id, indices, direction, initialPose);
     const openDoors = indices.filter(
       (i) =>
         this.boxes[i].piece === "door" &&

@@ -1,4 +1,5 @@
 import * as T from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { assetUrl } from "./release-info.ts";
@@ -17,6 +18,58 @@ function panel(
   texture.colorSpace = T.SRGBColorSpace;
   return new T.MeshBasicMaterial({ map: texture });
 }
+// The GLB seat marker is the driver's eye position. Bake the jacket, head and
+// visor into one colored mesh so an occupied near-detail car adds one draw.
+function seatedMotorist() {
+  const parts = [
+    [
+      new T.CylinderGeometry(0.19, 0.15, 0.32, 7)
+        .scale(1, 1, 0.72)
+        .translate(0, -0.31, 0.025),
+      0x39867e,
+    ],
+    [
+      new T.SphereGeometry(1, 9, 6)
+        .scale(0.145, 0.172, 0.14)
+        .translate(0, -0.012, 0.01),
+      0xf5efdf,
+    ],
+    [
+      new T.BoxGeometry(0.22, 0.045, 0.045).translate(0, 0.012, -0.109),
+      0x28364c,
+    ],
+  ] as const;
+  const light = new T.Vector3(-0.55, 1, -0.4).normalize(),
+    n = new T.Vector3();
+  const baked = parts.map(([shape, tint]) => {
+    const geo = shape.toNonIndexed();
+    // Face normals keep the two paper-shading bands crisp.
+    geo.computeVertexNormals();
+    const normals = geo.getAttribute("normal"),
+      colors: number[] = [];
+    const base = new T.Color(tint),
+      shade = new T.Color();
+    for (let i = 0; i < normals.count; i++) {
+      const brightness = n.fromBufferAttribute(normals, i).dot(light);
+      shade
+        .copy(base)
+        .multiplyScalar(
+          brightness > 0.35 ? 1 : brightness > -0.35 ? 0.79 : 0.58,
+        );
+      colors.push(shade.r, shade.g, shade.b);
+    }
+    geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
+    return geo;
+  });
+  const body = new T.Mesh(
+    mergeGeometries(baked)!,
+    new T.MeshBasicMaterial({ vertexColors: true }),
+  );
+  body.name = "civilian-driver";
+  body.visible = false;
+  return body;
+}
+const driverFigure = seatedMotorist();
 export async function loadFleet() {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const paint = new T.ShaderMaterial({
@@ -124,6 +177,7 @@ export async function loadFleet() {
 export class CountyCarModel extends T.Group {
   readonly seat: T.Vector3;
   readonly doorSide: number;
+  private motorist: T.Mesh;
   private radius: number;
   private hinges: T.Object3D[];
   private levels: T.Object3D[];
@@ -151,6 +205,9 @@ export class CountyCarModel extends T.Group {
     this.radius = model.userData.wheelRadius;
     const tiers = ["near", "street", "far"];
     this.levels = tiers.map((name) => model.getObjectByName(name)!);
+    this.motorist = driverFigure.clone();
+    this.motorist.position.copy(this.seat);
+    this.levels[0].add(this.motorist);
     this.hinges = tiers.map((name) => model.getObjectByName(name + "_door")!);
     this.steering = model.getObjectByName("near_steering")!;
     this.wheels = ["fl", "fr", "rl", "rr"].map((name) =>
@@ -197,6 +254,8 @@ export class CountyCarModel extends T.Group {
         ? T.MathUtils.smoothstep(t, 0, 0.36)
         : 1 - T.MathUtils.smoothstep(t, 0.55, 1);
     const level = distance < 10 ? 0 : distance < 35 ? 1 : 2;
+    this.motorist.visible =
+      level === 0 && !!driver?.startsWith("civilian-driver-");
     this.levels.forEach((o, i) => {
       o.visible = i === level;
       this.hinges[i].rotation.y = this.doorSide * 1.12 * openness;
