@@ -1,3 +1,4 @@
+import { RELEASE_ID } from "./release-info.ts";
 import { COUNTY, countyLadders, parkedCars, type CountyCar } from "./county.ts";
 import { CoverPeek, peekEye, validatedLean } from "./cover-peek.ts";
 import { WeaponClearance } from "./weapon-clearance.ts";
@@ -65,6 +66,9 @@ class Game {
   cars: CountyCar[] = [];
   vehicle = -1;
   carSpeed = 0;
+  cockpit = false;
+  private cockpitYaw = 0;
+  private doorUntil = 0;
   nearestCar() {
     return this.cars.findIndex(
       (c) =>
@@ -78,28 +82,52 @@ class Game {
       this.sendState();
       this.network.send({ type: "vehicle", index: i });
     } else this.cars[i].driver = this.vehicle >= 0 ? null : "local";
-    if (this.vehicle >= 0) {
-      const p = this.player,
-        side = new T.Vector3(Math.cos(p.yaw) * 2.2, 0, -Math.sin(p.yaw) * 2.2);
-      this.physics.move(p.position, side, 1.76);
-    }
   }
-  syncCars() {
+  syncCars(dt: number) {
     const mine = this.mode === "online" ? this.network.id : "local";
     const i = this.cars.findIndex((c) => c.driver === mine);
     if (this.vehicle !== i) {
+      this.doorUntil = performance.now() + 650;
       this.carSpeed = 0;
       if (i >= 0) {
         this.player.reset(this.cars[i].p);
+        this.cockpitYaw = 0;
         this.player.yaw = this.cars[i].yaw;
+      } else if (this.vehicle >= 0 && this.combat.hp > 0) {
+        const p = this.player;
+        this.physics.move(
+          p.position,
+          new T.Vector3(-Math.cos(p.yaw) * 2.2, 0, Math.sin(p.yaw) * 2.2),
+          1.76,
+        );
       }
       this.vehicle = i;
     }
     this.render.countyCars.forEach((model, k) => {
       const c = this.cars[k];
       if (!c) return;
-      model.position.fromArray(k === i ? this.player.position.toArray() : c.p);
-      model.rotation.y = k === i ? this.player.yaw : c.yaw;
+      if (k === i) {
+        model.position.copy(this.player.position);
+        model.rotation.y = this.player.yaw;
+      } else if (c.driver) {
+        const target = new T.Vector3(...c.p),
+          alpha = 1 - Math.exp(-14 * dt);
+        if (model.position.distanceToSquared(target) > 400)
+          model.position.copy(target);
+        else model.position.lerp(target, alpha);
+        const angle = c.yaw - model.rotation.y;
+        model.rotation.y +=
+          Math.atan2(Math.sin(angle), Math.cos(angle)) * alpha;
+      } else {
+        model.position.fromArray(c.p);
+        model.rotation.y = c.yaw;
+      }
+      model.update(
+        c.driver,
+        performance.now() / 1000,
+        model.position.distanceTo(this.render.camera.position),
+        k === i ? this.input.side : 0,
+      );
     });
   }
   city!: City;
@@ -178,7 +206,7 @@ class Game {
           "<p><b>E beside a car</b> enter or exit · WASD drive · Space brake</p>",
         );
       document.querySelector<HTMLAnchorElement>(
-        'a[href="?mode=county"]',
+        'a[href="/?mode=county"]',
       )!.outerHTML =
         '<a class="secondary-button" href="./">RUST · THE OIL YARD</a>';
       this.paintLobbyOptions();
@@ -541,7 +569,14 @@ class Game {
         settings.sensitivity *
         sensitivityScale(this.render.camera.fov, settings.fov);
       this.viewMotion.look(e.movementX, e.movementY);
-      this.player.yaw -= e.movementX * sens;
+      if (this.vehicle >= 0) {
+        if (!this.cockpit) return;
+        this.cockpitYaw = T.MathUtils.clamp(
+          this.cockpitYaw - e.movementX * sens,
+          -1.55,
+          1.55,
+        );
+      } else this.player.yaw -= e.movementX * sens;
       this.player.pitch = T.MathUtils.clamp(
         this.player.pitch - e.movementY * sens * (settings.invert ? -1 : 1),
         -1.48,
@@ -570,6 +605,10 @@ class Game {
       if (this.state !== "play") return;
       this.keys.add(e.code);
       if (e.repeat) return;
+      if (e.code === "KeyV" && this.vehicle >= 0) {
+        this.cockpit = !this.cockpit;
+        return;
+      }
       if (e.code === "KeyE" && this.seed === COUNTY) {
         this.useCar();
         return;
@@ -631,7 +670,15 @@ class Game {
       const data = await response.json();
       this.activeLobby =
         data.lobbies.find(
-          (r: { players: number; capacity: number; seed?: string }) =>
+          (r: {
+            players: number;
+            capacity: number;
+            seed?: string;
+            releaseId?: string;
+          }) =>
+            (!this.countySelected ||
+              !r.releaseId ||
+              r.releaseId === RELEASE_ID) &&
             (r.seed === COUNTY) === this.countySelected &&
             r.players > 0 &&
             r.players < r.capacity,
@@ -1050,8 +1097,12 @@ class Game {
     if (this.vehicle >= 0) {
       const p = this.player;
       this.carSpeed =
-        T.MathUtils.clamp(this.carSpeed + input.forward * 17 * dt, -12, 40) *
-        Math.exp(-dt * (input.jump ? 5 : input.forward ? 0.12 : 0.7));
+        T.MathUtils.clamp(
+          this.carSpeed +
+            (performance.now() >= this.doorUntil ? input.forward : 0) * 17 * dt,
+          -12,
+          40,
+        ) * Math.exp(-dt * (input.jump ? 5 : input.forward ? 0.12 : 0.7));
       p.yaw -=
         input.side *
         1.6 *
@@ -1211,6 +1262,14 @@ class Game {
         .copy(p.position)
         .add(new T.Vector3(Math.sin(p.yaw) * 6, 3.1, Math.cos(p.yaw) * 6));
       cam.lookAt(p.position.clone().add(new T.Vector3(0, 1, 0)));
+    }
+    if (this.vehicle >= 0 && this.cockpit) {
+      const seat = new T.Vector3(-0.345, 0.99, 0.075).applyAxisAngle(
+        new T.Vector3(0, 1, 0),
+        p.yaw,
+      );
+      cam.position.copy(p.position).add(seat);
+      cam.rotation.set(p.pitch, p.yaw + this.cockpitYaw, 0, "YXZ");
     }
     cam.fov = v.fov;
     cam.updateProjectionMatrix();
@@ -1460,7 +1519,7 @@ class Game {
     $("speed").textContent = String(Math.round(p.speed));
     $("action").textContent =
       this.vehicle >= 0
-        ? "DRIVING · E TO EXIT"
+        ? "DRIVING · E EXIT · V CAMERA"
         : this.seed === COUNTY && this.nearestCar() >= 0
           ? "E · ENTER CAR"
           : p.action;
@@ -1536,18 +1595,20 @@ class Game {
           : `<h2>Your field notes</h2><div class="row"><span>Rivals erased</span><b>${c.kills}</b></div><div class="row"><span>Rooftop marks</span><b>${this.collected.size} / 3</b></div><div class="row"><span>Distance travelled</span><b>${Math.round(p.travel)} m</b></div><div class="row"><span>${this.city.arena ? "Vaults" : "Vaults / hooks"}</span><b>${this.city.arena ? p.vaults : `${p.vaults} / ${p.hooks}`}</b></div><div class="row"><span>Frame rate</span><b>${this.fps} fps</b></div>`;
   }
   loop(now: number) {
-    const dt = Math.min((now - this.previous) / 1000, 0.05);
+    const frameSeconds = (now - this.previous) / 1000;
+    if (this.state === "play") this.render.adjustCountyResolution(frameSeconds);
+    const dt = Math.min(frameSeconds, 0.05);
     this.previous = now;
     this.time += dt;
     this.frames++;
-    this.fpsTime += dt;
+    this.fpsTime += frameSeconds;
     if (this.fpsTime > 1) {
       this.fps = Math.round(this.frames / this.fpsTime);
       this.frames = 0;
       this.fpsTime = 0;
     }
     if (this.state !== "loading") {
-      if (this.seed === COUNTY) this.syncCars();
+      if (this.seed === COUNTY) this.syncCars(frameSeconds);
       this.accumulator += dt;
       let count = 0;
       while (this.accumulator >= 1 / 120 && count++ < 6) {

@@ -1,11 +1,9 @@
 Ferrari 458 Italia by vicent091036, distributed in the three.js car example.
 https://sketchfab.com/models/57bf6cc56931426e87494f554df1dab6
 https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf
-County adaptation: geometry reduced and original materials replaced with ink shading.
+County adaptation: three levels of detail, a hinged driver door, transparent glass and a white-and-blue cabin and body.
 
-Modular Urban Apartments Facade, Modular Factory Facade, Street Lamp 01 and Namaqualand Stones 01 by Poly Haven (CC0).
-https://polyhaven.com/a/modular_urban_apartments_facade
-https://polyhaven.com/a/modular_factory_facade
+Street Lamp 01 and Namaqualand Stones 01 by Poly Haven (CC0).
 https://polyhaven.com/a/street_lamp_01
 https://polyhaven.com/a/namaqualand_stones_01
 County adaptations: selected mesh modules, reduced geometry and white-and-blue materials.

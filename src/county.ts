@@ -36,15 +36,16 @@ export function countyLadders(boxes: Box[]) {
     .map((b) => {
       const x = b.p[0],
         z = b.p[2] + b.s[2] / 2 + 0.8,
-        top = b.s[1];
+        top = b.s[1] + 0.36;
       return { x, z, bottom: 0, top, exit: [x, top + 0.08, z - 1.5] as V3 };
     });
 }
 export function countyWorld(): City {
-  const spawns: V3[] = Array.from({ length: 30 }, (_, i) => [
-    -323 + (i % 2) * 6,
-    0,
-    92 - Math.floor(i / 2) * 6,
+  const spaces = parkedCars();
+  const spawns: V3[] = spaces.map(({ p }, i) => [
+    p[0] + (i % 2 ? 3 : -3),
+    p[1] + 0.05,
+    p[2],
   ]);
   const plan: CityPlan = {
     streets: [],
@@ -87,6 +88,26 @@ export function countyWorld(): City {
     }
     if (base) links.push([45, base + 3]);
   }
+  for (const b of boxes.filter((b) => b.kind === "building")) {
+    // Roof plant and setbacks give both districts a readable silhouette.
+    const [x, , z] = b.p,
+      [w, h, d] = b.s;
+    boxes.push({
+      p: [x, h + 0.18, z],
+      s: [w + 0.38, 0.36, d + 0.38],
+      kind: "roof",
+      solid: true,
+    });
+    if (h > 20 || x < 0) {
+      const top = h > 20 ? Math.min(6, h * 0.14) : 1.35;
+      boxes.push({
+        p: [x + w * 0.12, h + 0.36 + top / 2, z - d * 0.13],
+        s: [w * 0.53, top, d * 0.46],
+        kind: "roof",
+        solid: true,
+      });
+    }
+  }
   for (const l of countyLadders(boxes)) {
     for (const side of [-0.36, 0.36])
       boxes.push({
@@ -112,25 +133,42 @@ export function countyWorld(): City {
         solid: true,
       });
     }
-  const vertices: number[] = [],
-    indices: number[] = [];
-  for (let z = 0; z <= 160; z++)
-    for (let x = 0; x <= 160; x++) {
-      const px = x * 10 - LIMIT,
-        pz = z * 10 - LIMIT;
-      vertices.push(px, elevation(px, pz), pz);
-      if (x < 160 && z < 160) {
-        const i = z * 161 + x;
-        indices.push(i, i + 161, i + 1, i + 1, i + 161, i + 162);
-      }
+  // Tile the terrain so rendering and physics only visit nearby patches.
+  for (let tz = -LIMIT; tz < LIMIT; tz += 160)
+    for (let tx = -LIMIT; tx < LIMIT; tx += 160) {
+      const vertices: number[] = [],
+        indices: number[] = [];
+      let low = Infinity,
+        high = -Infinity;
+      for (let z = 0; z <= 8; z++)
+        for (let x = 0; x <= 8; x++) {
+          const px = tx + 20 * x,
+            pz = tz + 20 * z,
+            y = elevation(px, pz);
+          low = Math.min(low, y);
+          high = Math.max(high, y);
+          vertices.push(px, y, pz);
+          if (x < 8 && z < 8) {
+            const i = z * 9 + x;
+            indices.push(i, i + 9, i + 1, i + 1, i + 9, i + 10);
+          }
+        }
+      if (high === low) {
+        boxes.push({
+          p: [tx + 80, low - 0.5, tz + 80],
+          s: [160, 1, 160],
+          kind: "ground",
+          solid: true,
+        });
+      } else
+        boxes.push({
+          p: [tx + 80, (low + high) / 2, tz + 80],
+          s: [160, high - low + 0.01, 160],
+          kind: "ground",
+          solid: true,
+          mesh: { vertices, indices },
+        });
     }
-  boxes.push({
-    p: [0, 39, 0],
-    s: [1600, 80, 1600],
-    kind: "ground",
-    solid: true,
-    mesh: { vertices, indices },
-  });
   return {
     seed: COUNTY,
     district: 1,
@@ -162,7 +200,11 @@ export interface CountyCar {
 export function parkedCars(): CountyCar[] {
   return TOWNS.flatMap((t) =>
     Array.from({ length: 15 }, (_, i) => ({
-      p: [t, 0, 92 - i * 9] as V3,
+      p: [
+        t + (i % 5 === 0 ? 0 : ((i % 5) - 2) * 44),
+        0,
+        92 - Math.floor(i / 5) * 88 - (i % 5) * 5,
+      ] as V3,
       yaw: 0,
       driver: null,
     })),

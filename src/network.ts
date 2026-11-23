@@ -87,6 +87,14 @@ export class Network {
   }
   async bootstrap(): Promise<any | null> {
     if (RELEASE_ID === "dev") return null;
+    // The county entry opens the selected build. Reloading a pinned match on
+    // its own release still resumes it, including after a newer deployment.
+    if (this.storagePrefix === "county") {
+      for (const key of ["dc.session", "dc.pendingAdmission"]) {
+        const record = this.read(key);
+        if (record && record.releaseId !== RELEASE_ID) this.save(key, null);
+      }
+    }
     const saved = this.read("dc.session");
     if (saved) {
       await this.matchingClient(saved);

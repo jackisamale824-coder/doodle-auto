@@ -127,7 +127,7 @@ export class Renderer {
     fragmentShader: `varying vec2 vUv;uniform sampler2D color;uniform sampler2D depth;uniform vec2 pixel;uniform vec3 ink;uniform vec2 clip;uniform float groundAware;
     float distanceAt(vec2 uv){float d=texture2D(depth,uv).x;return (clip.x*clip.y)/(clip.y-d*(clip.y-clip.x));}
     void main(){vec3 c=texture2D(color,vUv).rgb;float z=distanceAt(vUv);float edge=0.;
-    for(int i=0;i<4;i++){vec2 dir=i==0?vec2(1.,0.):i==1?vec2(-1.,0.):i==2?vec2(0.,1.):vec2(0.,-1.);float other=distanceAt(vUv+dir*pixel*1.15);edge=max(edge,smoothstep(.012,.035,abs(z-other)/max(z,.1)));}
+    if(groundAware<.5)for(int i=0;i<4;i++){vec2 dir=i==0?vec2(1.,0.):i==1?vec2(-1.,0.):i==2?vec2(0.,1.):vec2(0.,-1.);float other=distanceAt(vUv+dir*pixel*1.15);edge=max(edge,smoothstep(.012,.035,abs(z-other)/max(z,.1)));}
     if(groundAware>.5){edge=0.;for(int i=0;i<2;i++){vec2 dir=i==0?vec2(1.,0.):vec2(0.,1.);float a=distanceAt(vUv+dir*pixel*1.15),b=distanceAt(vUv-dir*pixel*1.15);float bend=abs(2./z-1./a-1./b)*z;edge=max(edge,smoothstep(.012,.035,bend));}}
 
     float grain=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453);
@@ -171,12 +171,29 @@ export class Renderer {
     this.camera.updateProjectionMatrix();
   }
   setQuality(high: boolean) {
+    this.qualityHigh = high;
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
   }
-  countyCars: T.Mesh[] = [];
+  countyCars: import("./county-car.ts").CountyCarModel[] = [];
+  private county = false;
+  private frameCost = 0;
+  private qualityHigh = true;
   async build(city: City) {
     this.countyCars = [];
+    const county = city.seed === "switchback-county";
+    if (county !== this.county) {
+      this.county = county;
+      this.frameCost = 0.025;
+      this.camera.far = county ? 285 : 700;
+      this.camera.updateProjectionMatrix();
+      this.inkTarget.dispose();
+      this.inkTarget.samples = county ? 0 : 4;
+      if (county) {
+        this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1));
+        this.resize();
+      } else this.setQuality(this.qualityHigh);
+    }
     this.inkPost.uniforms.groundAware.value =
       city.arena || city.seed === "switchback-county" ? 1 : 0;
     disposeGroup(this.cityGroup);
@@ -187,6 +204,7 @@ export class Renderer {
     this.decor = [];
     const groups = new Map<string, Box[]>();
     for (const b of city.boxes) {
+      if (county && (b.kind === "building" || b.kind === "road")) continue;
       if (b.kind === "collision" || b.kind === "boundary" || b.mesh) continue;
       const kind = [
         "ground",
@@ -723,6 +741,20 @@ export class Renderer {
       this.cityGroup.add(g);
       this.beaconMeshes.push(g);
     });
+  }
+  adjustCountyResolution(seconds: number) {
+    if (!this.county || !seconds) return;
+    this.frameCost = this.frameCost * 0.92 + Math.min(seconds, 0.2) * 0.08;
+    const ratio = this.renderer.getPixelRatio();
+    if (this.frameCost > 0.042 && ratio > 0.67) {
+      this.renderer.setPixelRatio(Math.max(0.67, ratio - 0.1));
+      this.resize();
+      this.frameCost = 0.025;
+    } else if (this.frameCost < 0.012 && ratio < 1 && this.qualityHigh) {
+      this.renderer.setPixelRatio(Math.min(1, ratio + 0.05));
+      this.resize();
+      this.frameCost = 0.025;
+    }
   }
   draw(time: number, aerialTime = Date.now() / 1000) {
     for (const { model, path } of this.blimpMeshes) {

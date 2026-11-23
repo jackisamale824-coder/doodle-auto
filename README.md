@@ -150,7 +150,7 @@ NPC presence is bounded to a 100 m player radius. Solo NPCs outside it are remov
 Choose **Switchback County** from the main menu, or open `/?mode=county`.
 Start on foot with the usual weapons, movement and shared enemy waves. Approach a parked car
 and press E to drive. Use W/S to accelerate or reverse, A/D to steer and Space to brake.
-Press E again to return to foot combat. Westhaven and Eastbank share a highway with open
+Press V to switch between the chase camera and the driver’s seat. In the cockpit, use the mouse to look around. Press E again to open the driver’s door and return to foot combat. Westhaven and Eastbank share a highway with open
 highlands on either side. Each public county holds up to 30 human players. Rust remains available from the main menu.
 
 To exercise capacity on an empty local development server, run

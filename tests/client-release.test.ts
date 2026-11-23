@@ -164,3 +164,14 @@ test("old-room invitation selects retained client before admission", async () =>
   assert.equal(target, "https://game.example/releases/retained-a/?room=ABCDE");
   Object.assign(location, { search: "" });
 });
+
+test("entering County on a new release skips obsolete driving sessions and tickets", async () => {
+  storage.set("county.session", JSON.stringify({ releaseId: "driving-only" }));
+  storage.set(
+    "county.pendingAdmission",
+    JSON.stringify({ releaseId: "driving-only" }),
+  );
+  assert.equal(await new Network("county").bootstrap(), null);
+  assert.equal(storage.has("county.session"), false);
+  assert.equal(storage.has("county.pendingAdmission"), false);
+});
