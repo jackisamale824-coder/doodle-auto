@@ -1,4 +1,4 @@
-import { loadCoupe } from "./county-car.ts";
+import { loadFleet } from "./county-car.ts";
 import { isCityMass } from "./county-architecture.ts";
 import { countyBuildings } from "./county-buildings.ts";
 import * as T from "three";
@@ -28,8 +28,8 @@ export async function drawCounty(city: City, group: T.Group) {
   const paper = new T.Color(0xf4f2e8),
     blue = new T.Color(0x9daac7),
     color = new T.Color();
-  const [coupe, lamp, rock] = await Promise.all([
-    loadCoupe(),
+  const [vehicle, lamp, rock] = await Promise.all([
+    loadFleet(),
     geometry("lamp"),
     geometry("outcrop"),
   ]);
@@ -62,8 +62,12 @@ export async function drawCounty(city: City, group: T.Group) {
     group.add(new T.Mesh(mergeGeometries(district), terrainTint));
     district.forEach((g) => g.dispose());
   }
-  const cars = parkedCars().map((c) => {
-    const m = coupe();
+  const cars = parkedCars().map((c, i) => {
+    const m = vehicle(
+      c.kind,
+      c.kind === "taxi" ? 1 : c.kind === "delivery" ? 3 : i,
+    );
+    m.rotation.y = c.yaw;
     m.position.fromArray(c.p);
     group.add(m);
     return m;

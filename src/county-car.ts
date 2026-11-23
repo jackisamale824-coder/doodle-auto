@@ -1,13 +1,28 @@
 import * as T from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { assetUrl } from "./release-info.ts";
+import { VEHICLES, type VehicleKind } from "./county.ts";
 
-const hinge = new T.Vector3(-0.88, 0.46, -0.72);
-export async function loadCoupe() {
-  const loader = new GLTFLoader();
+function panel(
+  width: number,
+  height: number,
+  draw: (ctx: CanvasRenderingContext2D) => void,
+) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  draw(canvas.getContext("2d")!);
+  const texture = new T.CanvasTexture(canvas);
+  texture.colorSpace = T.SRGBColorSpace;
+  return new T.MeshBasicMaterial({ map: texture });
+}
+export async function loadFleet() {
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const paint = new T.ShaderMaterial({
     vertexColors: true,
-    vertexShader: `varying vec3 tint; varying vec3 n; void main(){tint=pow(color.rgb,vec3(2.2));n=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+    uniforms: { coat: { value: new T.Color(0xf5f4ec) } },
+    vertexShader: `uniform vec3 coat; varying vec3 tint; varying vec3 n; void main(){tint=mix(pow(color.rgb,vec3(2.2)),coat,color.a);n=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
     fragmentShader: `varying vec3 tint;varying vec3 n;void main(){float sun=dot(normalize(n),normalize(vec3(-.5,1.,.45)));float band=smoothstep(-.2,-.12,sun)*.11+smoothstep(.48,.56,sun)*.13;gl_FragColor=vec4(mix(vec3(.13,.18,.39),tint,.76+band),1.);
  #include <colorspace_fragment>
  }`,
@@ -17,44 +32,99 @@ export async function loadCoupe() {
     transparent: true,
     opacity: 0.16,
     depthWrite: false,
-    side: T.DoubleSide,
+    side: T.FrontSide,
   });
-  const templates = await Promise.all(
-    ["near", "street", "far"].map(async (level) => {
-      const model = (
-        await loader.loadAsync(assetUrl("models/coupe-" + level + ".glb"))
-      ).scene;
-      const pivot = new T.Group();
-      pivot.name = "driver-hinge";
-      pivot.position.copy(hinge);
-      const parts: T.Mesh[] = [];
-      model.traverse((o) => {
-        if (o instanceof T.Mesh) parts.push(o);
+  const paints = [0xf5f4ec, 0xcbd9e9, 0x98afcc, 0xe2e7ee].map((hex) => {
+    const material = paint.clone();
+    material.uniforms.coat.value.setHex(hex);
+    return material;
+  });
+  paint.dispose();
+  const instruments = panel(256, 88, (ctx) => {
+    ctx.fillStyle = "#293955";
+    ctx.fillRect(0, 0, 256, 88);
+    for (const cx of [70, 186]) {
+      for (let j = 0; j <= 12; j++) {
+        const a = (0.78 + j * 0.12) * Math.PI;
+        ctx.strokeStyle = "#e4ebf1";
+        ctx.lineWidth = j % 3 === 0 ? 4 : 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + 32 * Math.cos(a), 54 + 32 * Math.sin(a));
+        ctx.lineTo(cx + 41 * Math.cos(a), 54 + 41 * Math.sin(a));
+        ctx.stroke();
+      }
+    }
+    ctx.fillStyle = "#b4c8de";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("km/h", 70, 76);
+    ctx.fillText("RPM", 186, 76);
+  });
+  const dial = new T.PlaneGeometry(0.33, 0.114),
+    needleGeo = new T.PlaneGeometry(0.004, 0.041).translate(0, 0.019, 0);
+  const needleMat = new T.MeshBasicMaterial({ color: 0xd7e9ff });
+  const taxiLabel = panel(192, 54, (ctx) => {
+    ctx.fillStyle = "#e6edf2";
+    ctx.fillRect(0, 0, 192, 54);
+    ctx.fillStyle = "#273d62";
+    ctx.textAlign = "center";
+    ctx.font = "bold 49px sans-serif";
+    ctx.fillText("TAXI", 96, 45);
+  });
+  const templates = new Map<VehicleKind, T.Group>();
+  await Promise.all(
+    VEHICLES.map(async (kind) => {
+      const { scene } = await loader.loadAsync(
+        assetUrl("models/fleet/" + kind + ".glb"),
+      );
+      scene.traverse((o) => {
+        if (o instanceof T.Mesh)
+          o.material = o.name.includes("_glass_") ? glass : paints[0];
       });
-      model.add(pivot);
-      for (const m of parts) {
-        m.material = m.name.includes("glass") ? glass : paint;
-        if (m.name.startsWith("door")) pivot.attach(m);
+      const dash = new T.Mesh(dial, instruments),
+        wheel = scene.getObjectByName("near_steering")!;
+      dash.position.copy(wheel.position);
+      dash.position.z -= 0.115;
+      dash.position.y += 0.103;
+      scene.getObjectByName("near")!.add(dash);
+      for (const [i, x] of [-0.075, 0.075].entries()) {
+        const needle = new T.Mesh(needleGeo, needleMat);
+        needle.name = "dial" + i;
+        needle.position.set(x, -0.012, 0.001);
+        dash.add(needle);
       }
-      for (const m of parts) {
-        if (m.name !== "steering" && !m.name.startsWith("wheel_")) continue;
-        const joint = new T.Group();
-        joint.name = m.name + "-joint";
-        if (m.name === "steering") joint.position.set(-0.345, 0.795, -0.36);
-        else {
-          m.geometry.computeBoundingBox();
-          m.geometry.boundingBox!.getCenter(joint.position);
-        }
-        joint.rotation.order = "YXZ";
-        model.add(joint);
-        joint.attach(m);
+      if (kind === "taxi") {
+        const [lo, hi] = scene.userData.taxiSign;
+        const geo = new T.PlaneGeometry(
+          (hi[0] - lo[0]) * 0.93,
+          (hi[1] - lo[1]) * 0.8,
+        );
+        for (const tier of ["near", "street"])
+          for (const side of [-1, 1]) {
+            const label = new T.Mesh(geo, taxiLabel);
+            label.position.set(
+              0,
+              (hi[1] + lo[1]) / 2,
+              side < 0 ? lo[2] - 0.003 : hi[2] + 0.003,
+            );
+            label.rotation.y = side < 0 ? Math.PI : 0;
+            scene.getObjectByName(tier)!.add(label);
+          }
       }
-      return model;
+      templates.set(kind, scene);
     }),
   );
-  return () => new CountyCarModel(templates);
+  return (kind: VehicleKind, finish: number) =>
+    new CountyCarModel(
+      templates.get(kind)!,
+      paints[finish % paints.length],
+      paints[0],
+    );
 }
 export class CountyCarModel extends T.Group {
+  readonly seat: T.Vector3;
+  readonly doorSide: number;
+  private radius: number;
   private hinges: T.Object3D[];
   private levels: T.Object3D[];
   private previous: string | null | undefined;
@@ -63,17 +133,31 @@ export class CountyCarModel extends T.Group {
   private lastPosition = new T.Vector3();
   private roll = 0;
   private turn = 0;
-  private steering: T.Object3D | null;
+  private steering: T.Object3D;
   private wheels: T.Object3D[];
-  constructor(templates: T.Object3D[]) {
+  private needles: T.Object3D[];
+  constructor(template: T.Group, coat: T.Material, baseCoat: T.Material) {
     super();
-    this.levels = templates.map((o) => o.clone(true));
-    this.hinges = this.levels.map((o) => o.getObjectByName("driver-hinge")!);
-    this.add(...this.levels);
-    this.steering = this.levels[0].getObjectByName("steering-joint") ?? null;
+    const model = template.clone(true);
+    model.traverse((o) => {
+      if (o instanceof T.Mesh && o.material === baseCoat) o.material = coat;
+    });
+    this.needles = [
+      model.getObjectByName("dial0")!,
+      model.getObjectByName("dial1")!,
+    ];
+    this.seat = new T.Vector3().fromArray(model.userData.seat);
+    this.doorSide = model.userData.doorSide;
+    this.radius = model.userData.wheelRadius;
+    const tiers = ["near", "street", "far"];
+    this.levels = tiers.map((name) => model.getObjectByName(name)!);
+    this.hinges = tiers.map((name) => model.getObjectByName(name + "_door")!);
+    this.steering = model.getObjectByName("near_steering")!;
     this.wheels = ["fl", "fr", "rl", "rr"].map((name) =>
-      this.levels[0].getObjectByName("wheel_" + name + "-joint")!,
+      model.getObjectByName("near_wheel_" + name)!,
     );
+    this.add(model);
+    this.levels.forEach((o, i) => (o.visible = i === 2));
   }
   update(driver: string | null, now: number, distance: number, steer = 0) {
     const dt = this.lastTime
@@ -82,13 +166,19 @@ export class CountyCarModel extends T.Group {
     this.elapsed += dt;
     if (this.previous !== undefined && driver !== this.previous)
       this.elapsed = 0;
+    let speed = 0;
     if (driver && this.previous === driver) {
       const dx = this.position.x - this.lastPosition.x,
         dz = this.position.z - this.lastPosition.z;
+      speed = dt > 0 ? Math.hypot(dx, dz) / dt : 0;
       this.roll +=
         (dx * Math.sin(this.rotation.y) + dz * Math.cos(this.rotation.y)) /
-        0.36;
+        this.radius;
     }
+    this.needles.forEach(
+      (n, i) =>
+        (n.rotation.z = 2.18 - Math.min(1, speed / (i ? 43 : 50)) * 4.36),
+    );
     this.lastPosition.copy(this.position);
     this.lastTime = now;
     this.turn += (steer - this.turn) * (1 - Math.exp(-12 * dt));
@@ -109,7 +199,7 @@ export class CountyCarModel extends T.Group {
     const level = distance < 10 ? 0 : distance < 35 ? 1 : 2;
     this.levels.forEach((o, i) => {
       o.visible = i === level;
-      this.hinges[i].rotation.y = -1.12 * openness;
+      this.hinges[i].rotation.y = this.doorSide * 1.12 * openness;
     });
   }
 }

@@ -1,7 +1,10 @@
-Ferrari 458 Italia by vicent091036, distributed in the three.js car example.
-https://sketchfab.com/models/57bf6cc56931426e87494f554df1dab6
-https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf
-County adaptation: three levels of detail, a hinged driver door, transparent glass and a white-and-blue cabin and body.
+County vehicle fleet by tevy.dev, released under CC0 1.0.
+Family Sedan https://tevy.dev/models/family-sedan
+Family Minivan https://tevy.dev/models/family-minivan
+City Taxi https://tevy.dev/models/city-taxi
+Kei Van https://tevy.dev/models/kei-van
+Classic Coupe https://tevy.dev/models/classic-coupe
+County adaptations use the v1 models. Geometry is aligned to the game's forward axis, simplified in three distance tiers, batched by moving part, compressed, and shaded in white and blue. Doors, wheels and cockpit cameras use the original rigs.
 
 Street Lamp 01 and Namaqualand Stones 01 by Poly Haven (CC0).
 https://polyhaven.com/a/street_lamp_01

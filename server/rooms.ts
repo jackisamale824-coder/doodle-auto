@@ -762,19 +762,35 @@ export class Rooms {
       return;
     }
     const vehicle = r.cars?.find((c) => c.driver === p.id);
-    if (m.type === "vehicle" && r.cars && p.hp > 0) {
-      if (vehicle) vehicle.driver = null;
-      else {
-        const car = r.cars[m.index];
-        if (car && !car.driver && distance(car.p, p.p) < 5) {
+    if (m.type === "vehicle" && r.cars) {
+      const car = Number.isInteger(m.index) ? r.cars[m.index] : undefined;
+      const action = m.action ?? (vehicle ? "exit" : "enter");
+      if (car && p.hp > 0) {
+        if (action === "exit" && vehicle === car) car.driver = null;
+        if (
+          action === "enter" &&
+          !vehicle &&
+          !car.driver &&
+          distance(car.p, p.p) < 5
+        ) {
           car.driver = p.id;
           p.p = [...car.p];
+          p.yaw = car.yaw;
+          p.pitch = 0;
         }
       }
+      send(ws, { type: "vehicle-seat", index: m.index, car: car ?? null });
       return;
     }
     if (vehicle && m.type === "fire") return;
     if (m.type === "state" && p.hp > 0) {
+      // A movement sample belongs to the seat the sender had when it was taken.
+      // Ignore walking samples in transit when boarding and driving samples after exit.
+      if (
+        r.cars &&
+        (vehicle ? r.cars[m.vehicle] !== vehicle : (m.vehicle ?? -1) !== -1)
+      )
+        return;
       if (
         !validVector(m.p) ||
         !Number.isFinite(m.yaw) ||

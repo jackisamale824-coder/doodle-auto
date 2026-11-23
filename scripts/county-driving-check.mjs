@@ -21,11 +21,31 @@ try {
     viewport: { width: 1280, height: 720 },
   });
   await page.goto(new URL("/?mode=county", origin).href);
+  await page.waitForFunction(() => window.__doodles?.state === "menu");
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
   await page.waitForFunction(() => window.__doodles?.state === "play");
+  const parked = await page.evaluate(() => {
+    const g = window.__doodles,
+      car = g.cars[g.nearestCar()];
+    g.player.yaw = car.yaw + 1.5;
+    return { yaw: car.yaw, p: car.p.slice() };
+  });
   await page.keyboard.press("KeyE");
   await page.waitForFunction(() => window.__doodles.vehicle >= 0);
+  const entry = await page.evaluate(() => {
+    const g = window.__doodles,
+      c = g.render.countyCars[g.vehicle];
+    return { yaw: c.rotation.y, p: c.position.toArray() };
+  });
+  assert.ok(
+    Math.abs(entry.yaw - parked.yaw) < 0.001,
+    "Boarding changed the parked heading",
+  );
+  assert.ok(
+    Math.hypot(entry.p[0] - parked.p[0], entry.p[2] - parked.p[2]) < 0.01,
+    "Boarding shifted the parked vehicle",
+  );
   await page.keyboard.down("KeyW");
   await page.waitForFunction(() => window.__doodles.carSpeed > 8);
   const result = await page.evaluate(async () => {

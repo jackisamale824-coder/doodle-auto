@@ -69,18 +69,40 @@ class Game {
   cockpit = false;
   private cockpitYaw = 0;
   private doorUntil = 0;
+  private seatPending = false;
+  private seatRequestedAt = 0;
+  private carKeyHeld = false;
+  private entryTime = -Infinity;
+  private entryPosition = new T.Vector3();
+  private entryRotation = new T.Quaternion();
   nearestCar() {
-    return this.cars.findIndex(
-      (c) =>
-        !c.driver && this.player.position.distanceTo(new T.Vector3(...c.p)) < 5,
-    );
+    let nearest = -1,
+      best = 25;
+    this.cars.forEach((c, index) => {
+      const distance = this.player.position.distanceToSquared(
+        new T.Vector3(...c.p),
+      );
+      if (!c.driver && distance < best) {
+        best = distance;
+        nearest = index;
+      }
+    });
+    return nearest;
   }
   useCar() {
     const i = this.vehicle >= 0 ? this.vehicle : this.nearestCar();
-    if (i < 0) return;
+    if (i < 0 || this.seatPending) return;
+    this.carKeyHeld = true;
     if (this.mode === "online") {
+      if (!this.network.active) return;
+      this.seatPending = true;
+      this.seatRequestedAt = performance.now();
       this.sendState();
-      this.network.send({ type: "vehicle", index: i });
+      this.network.send({
+        type: "vehicle",
+        action: this.vehicle < 0 ? "enter" : "exit",
+        index: i,
+      });
     } else this.cars[i].driver = this.vehicle >= 0 ? null : "local";
   }
   private previousCarPosition = new T.Vector3();
@@ -92,19 +114,27 @@ class Game {
       this.doorUntil = performance.now() + 650;
       this.carSpeed = 0;
       if (i >= 0) {
+        this.entryPosition.copy(this.render.camera.position);
+        this.entryRotation.copy(this.render.camera.quaternion);
+        this.entryTime = performance.now();
+        this.firing = this.aiming = false;
         this.player.reset(this.cars[i].p);
         this.cockpitYaw = 0;
         this.player.yaw = this.cars[i].yaw;
+        this.player.pitch = 0;
         this.previousCarPosition.copy(this.player.position);
         this.previousCarYaw = this.player.yaw;
       } else if (this.vehicle >= 0 && this.combat.hp > 0) {
         const p = this.player;
         this.physics.move(
           p.position,
-          new T.Vector3(-Math.cos(p.yaw) * 2.2, 0, Math.sin(p.yaw) * 2.2),
+          new T.Vector3(Math.cos(p.yaw), 0, -Math.sin(p.yaw)).multiplyScalar(
+            2.2 * this.render.countyCars[this.vehicle].doorSide,
+          ),
           1.76,
         );
       }
+      this.seatPending = false;
       this.vehicle = i;
     }
   }
@@ -291,6 +321,7 @@ class Game {
     this.city = city;
     this.cars = seed === COUNTY ? parkedCars() : [];
     this.vehicle = -1;
+    this.seatPending = false;
     this.carSpeed = 0;
     this.physics = physics;
     this.seed = seed;
@@ -595,7 +626,8 @@ class Game {
           -1.55,
           1.55,
         );
-      } else this.player.yaw -= e.movementX * sens;
+      } else if (this.seatPending) return;
+      else this.player.yaw -= e.movementX * sens;
       this.player.pitch = T.MathUtils.clamp(
         this.player.pitch - e.movementY * sens * (settings.invert ? -1 : 1),
         -1.48,
@@ -647,7 +679,10 @@ class Game {
           5,
         );
     });
-    document.addEventListener("keyup", (e) => this.keys.delete(e.code));
+    document.addEventListener("keyup", (e) => {
+      this.keys.delete(e.code);
+      if (e.code === "KeyE") this.carKeyHeld = false;
+    });
     document.addEventListener("mousedown", (e) => {
       if (this.state !== "play" || document.pointerLockElement !== canvas)
         return;
@@ -942,8 +977,18 @@ class Game {
     }
   }
   onNetwork(m: any) {
-    if (m.type === "snapshot" && m.cars && this.seed === COUNTY)
+    if (m.type === "vehicle-seat") {
+      this.seatPending = false;
+      if (this.seed === COUNTY && this.cars[m.index] && m.car) {
+        this.cars[m.index] = m.car;
+        this.syncSeat();
+      }
+    }
+    if (m.type === "snapshot" && m.cars && this.seed === COUNTY) {
       this.cars = m.cars;
+      if (this.seatPending && performance.now() - this.seatRequestedAt > 2000)
+        this.seatPending = false;
+    }
     if (
       m.type === "resumed" &&
       this.mode === "online" &&
@@ -951,6 +996,7 @@ class Game {
     )
       this.applyResume(m);
     if (m.type === "reconnecting" && this.mode === "online") {
+      this.seatPending = false;
       this.state = "paused";
       this.keys.clear();
       this.firing = false;
@@ -1049,6 +1095,7 @@ class Game {
     if (!this.network.active) return;
     this.network.send({
       type: "state",
+      vehicle: this.vehicle,
       p: this.player.position.toArray(),
       yaw: this.player.yaw,
       pitch: this.player.pitch,
@@ -1097,6 +1144,7 @@ class Game {
     if (this.state !== "play") return;
     this.elapsed += dt;
     const held = (...keys: string[]) => keys.some((k) => this.keys.has(k));
+    const grapple = held("KeyQ") || (!this.carKeyHeld && held("KeyE"));
     const input = {
       forward:
         Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown")),
@@ -1105,8 +1153,8 @@ class Game {
       sprint: held("ShiftLeft", "ShiftRight"),
       crouch: held("KeyC", "ControlLeft"),
       jump: held("Space"),
-      grapple: held("KeyQ", "KeyE"),
-      reel: held("KeyQ", "KeyE"),
+      grapple,
+      reel: grapple,
       boost: held("KeyF"),
     };
     this.input = input;
@@ -1146,7 +1194,7 @@ class Game {
         this.cars[this.vehicle].p = p.position.toArray();
         this.cars[this.vehicle].yaw = p.yaw;
       }
-    } else this.player.update(dt, input);
+    } else if (!this.seatPending) this.player.update(dt, input);
     const nearGround =
       this.player.velocity.y <= 0 &&
       !!this.physics.ray(
@@ -1183,7 +1231,12 @@ class Game {
       this.audio.tone(260, 0.1, "sine", 0.08, 450);
       if (this.mode !== "online") this.combat.score += 10;
     }
-    if (this.vehicle < 0 && this.firing && !this.player.traversing)
+    if (
+      this.vehicle < 0 &&
+      !this.seatPending &&
+      this.firing &&
+      !this.player.traversing
+    )
       this.combat.fire();
     this.combat.update(dt, this.time, this.render.camera);
     if (this.player.grounded) this.audio.step(this.time, this.player.speed);
@@ -1283,7 +1336,7 @@ class Game {
       const yaw = car.rotation.y;
       if (this.cockpit) {
         cam.position
-          .set(-0.345, 0.99, 0.075)
+          .copy(car.seat)
           .applyQuaternion(car.quaternion)
           .add(car.position);
         cam.rotation.set(p.pitch, yaw + this.cockpitYaw, 0, "YXZ");
@@ -1293,6 +1346,15 @@ class Game {
           .applyQuaternion(car.quaternion)
           .add(car.position);
         cam.lookAt(car.position.x, car.position.y + 1, car.position.z);
+      }
+      const entry = T.MathUtils.smoothstep(
+        (performance.now() - this.entryTime) / 450,
+        0,
+        1,
+      );
+      if (entry < 1) {
+        cam.position.lerp(this.entryPosition, 1 - entry);
+        cam.quaternion.slerp(this.entryRotation, 1 - entry);
       }
     }
     cam.fov = v.fov;
@@ -1562,11 +1624,16 @@ class Game {
     $("health-fill").style.backgroundColor =
       c.hp < 30 ? "#d23c4530" : "transparent";
     $("speed").textContent = String(Math.round(p.speed));
-    $("action").textContent =
-      this.vehicle >= 0
+    const nearby =
+      this.seed === COUNTY && this.vehicle < 0 ? this.nearestCar() : -1;
+    $("action").textContent = this.seatPending
+      ? this.vehicle < 0
+        ? "ENTERING…"
+        : "EXITING…"
+      : this.vehicle >= 0
         ? "DRIVING · E EXIT · V CAMERA"
-        : this.seed === COUNTY && this.nearestCar() >= 0
-          ? "E · ENTER CAR"
+        : nearby >= 0
+          ? "E · ENTER CAR · " + this.cars[nearby].kind.toUpperCase()
           : p.action;
     $("speed-fill").style.width = Math.min(100, (p.speed / 35) * 100) + "%";
     $("ammo").textContent = String(c.mags[c.weapon]).padStart(2, "0");

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
+import { generateLevel } from "../src/levels.ts";
 import { Rooms } from "../server/rooms.ts";
 const delay = (n: number) => new Promise((r) => setTimeout(r, n));
 async function connect(port: number) {
@@ -318,6 +319,65 @@ test("Rust rejects mismatched maps and keeps every join/respawn slot inside its 
   } finally {
     a.ws.close();
     b.ws.close();
+    rooms.dispose();
+    wss.close();
+  }
+});
+
+test("boarding keeps the parked pose across late walking packets and old driving packets after exit", async () => {
+  const wss = new WebSocketServer({ port: 0 });
+  await new Promise((r) => wss.once("listening", r));
+  const rooms = new Rooms(wss, generateLevel),
+    a = await connect((wss.address() as any).port);
+  try {
+    a.ws.send(JSON.stringify({ type: "public", seed: "switchback-county" }));
+    const welcome = await until(() =>
+      a.messages.find((m) => m.type === "welcome"),
+    );
+    const room = rooms.rooms.get(welcome.code)!,
+      [socket, runner] = [...room.players][0],
+      car = room.cars![0],
+      parked = [...car.p];
+    const facing = car.yaw + 1.8,
+      heading = car.yaw;
+    runner.moveCredit = 6;
+    runner.p = [car.p[0] - 2, car.p[1], car.p[2]];
+    const walking = {
+      type: "state",
+      p: [...runner.p],
+      yaw: facing,
+      pitch: 0,
+      vehicle: -1,
+    };
+    rooms.handle(socket, walking);
+    rooms.handle(socket, { type: "vehicle", action: "enter", index: 0 });
+    rooms.handle(socket, walking);
+    assert.equal(car.driver, runner.id);
+    assert.equal(
+      car.yaw,
+      heading,
+      "a walking camera packet rotated a parked car",
+    );
+    assert.deepEqual(car.p, parked);
+    assert.equal(runner.yaw, heading);
+    rooms.handle(socket, { type: "vehicle", action: "enter", index: 0 });
+    assert.equal(car.driver, runner.id);
+    const driving = {
+      type: "state",
+      p: [car.p[0], car.p[1], car.p[2] - 0.15],
+      yaw: heading + 0.03,
+      pitch: 0,
+      vehicle: 0,
+    };
+    rooms.handle(socket, driving);
+    assert.equal(car.yaw, driving.yaw);
+    rooms.handle(socket, { type: "vehicle", action: "exit", index: 0 });
+    rooms.handle(socket, { ...driving, yaw: 2.9 });
+    assert.equal(car.driver, null);
+    assert.equal(car.yaw, driving.yaw);
+    assert.equal(runner.yaw, driving.yaw);
+  } finally {
+    a.ws.close();
     rooms.dispose();
     wss.close();
   }

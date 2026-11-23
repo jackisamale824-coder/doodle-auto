@@ -29,6 +29,16 @@ try {
           resolve();
         }
         if (m.type === "snapshot") {
+          if (client.yaw === undefined && client.spawn && m.cars) {
+            const distance = (car) =>
+              Math.hypot(
+                car.p[0] - client.spawn[0],
+                car.p[2] - client.spawn[2],
+              );
+            client.yaw = m.cars.reduce((a, b) =>
+              distance(a) < distance(b) ? a : b,
+            ).yaw;
+          }
           client.snapshots++;
           client.maxDrivers = Math.max(
             client.maxDrivers,
@@ -43,11 +53,12 @@ try {
   for (let n = 0; n < 40; n++) {
     for (const c of clients) {
       const [x, y, z] = c.spawn;
+      assert.ok(Number.isFinite(c.yaw));
       c.ws.send(
         JSON.stringify({
           type: "state",
-          p: [x, y, z - n * 0.2],
-          yaw: 0,
+          p: [x - Math.sin(c.yaw) * n * 0.2, y, z - Math.cos(c.yaw) * n * 0.2],
+          yaw: c.yaw,
           pitch: 0,
         }),
       );
