@@ -12,5 +12,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src", "server", "tests", "vite.config.ts"]
+  "include": ["src", "server", "tests", "vite.config.ts", "vite.app.config.ts"],
+  "exclude": ["src/cloudflare.ts", ".cloudflare/types"]
 }

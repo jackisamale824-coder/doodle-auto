@@ -17,6 +17,7 @@ const vite = production
       await import("vite")
     ).createServer({
       root,
+      configFile: path.join(root, "vite.app.config.ts"),
       server: {
         middlewareMode: true,
         hmr: { port: Number(process.env.PORT || 4173) + 20000 },
