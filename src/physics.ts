@@ -8,6 +8,8 @@ import RAPIER from "@dimforge/rapier3d-compat";
 import { Vector3 } from "three";
 import { type Box, type V3, worldRay } from "./world.ts";
 import { routeRope } from "./rope-path.ts";
+import { VEHICLE_DIMENSIONS } from "./county-vehicle-dimensions.ts";
+import type { CountyCar } from "./county.ts";
 export const GRAPPLE_RANGE = 120;
 const WORLD_GROUPS = 0xffffffff;
 export class Physics {
@@ -20,6 +22,16 @@ export class Physics {
   private structureColliders = new Map<Box, RAPIER.Collider>();
   private boxHandles = new Map<number, Box>();
   private clearanceCells = new Map<string, Box[]>();
+  private vehicleColliders: RAPIER.Collider[] = [];
+  private vehicleBoxes: Box[] = [];
+  private vehicleHandles = new Map<number, number>();
+  private vehicleColliderState: {
+    x: number;
+    y: number;
+    z: number;
+    yaw: number;
+    active: boolean;
+  }[] = [];
   constructor(public boxes: Box[]) {
     this.hasMeshes = boxes.some((b) => b.mesh);
     this.world = new RAPIER.World({ x: 0, y: 0, z: 0 });
@@ -93,6 +105,79 @@ export class Physics {
     }
     return { grounded: this.controller.computedGrounded(), wall, moved: m };
   }
+  setVehicleColliders(cars: readonly CountyCar[], occupied = -1) {
+    if (this.vehicleColliders.length !== cars.length) {
+      for (const collider of this.vehicleColliders)
+        this.world.removeCollider(collider, true);
+      this.vehicleColliders = [];
+      this.vehicleBoxes = [];
+      this.vehicleHandles.clear();
+      this.vehicleColliderState = [];
+    }
+    let changed = false;
+    cars.forEach((car, i) => {
+      const [halfWidth, halfLength, roofHeight] = VEHICLE_DIMENSIONS[car.kind];
+      let collider = this.vehicleColliders[i];
+      if (!collider) {
+        collider = this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(
+            halfWidth,
+            roofHeight / 2,
+            halfLength,
+          ).setFriction(0.7),
+        );
+        this.vehicleColliders[i] = collider;
+        this.vehicleHandles.set(collider.handle, i);
+        this.vehicleBoxes[i] = {
+          p: [car.p[0], car.p[1] + roofHeight / 2, car.p[2]],
+          s: [halfWidth * 2, roofHeight, halfLength * 2],
+          kind: "county-vehicle",
+          solid: true,
+          vehicleIndex: i,
+        };
+        this.vehicleColliderState[i] = {
+          x: NaN,
+          y: NaN,
+          z: NaN,
+          yaw: NaN,
+          active: false,
+        };
+      }
+      const active = i !== occupied,
+        previous = this.vehicleColliderState[i];
+      if (
+        previous.x === car.p[0] &&
+        previous.y === car.p[1] &&
+        previous.z === car.p[2] &&
+        previous.yaw === car.yaw &&
+        previous.active === active
+      )
+        return;
+      collider.setTranslation({
+        x: car.p[0],
+        y: car.p[1] + roofHeight / 2,
+        z: car.p[2],
+      });
+      collider.setRotation({
+        x: 0,
+        y: Math.sin(car.yaw / 2),
+        z: 0,
+        w: Math.cos(car.yaw / 2),
+      });
+      collider.setCollisionGroups(active ? WORLD_GROUPS : 0);
+      const box = this.vehicleBoxes[i];
+      box.p = [car.p[0], car.p[1] + roofHeight / 2, car.p[2]];
+      this.vehicleColliderState[i] = {
+        x: car.p[0],
+        y: car.p[1],
+        z: car.p[2],
+        yaw: car.yaw,
+        active,
+      };
+      changed = true;
+    });
+    if (changed) this.queriesDirty = true;
+  }
   clear(pos: Vector3, height = 1.76) {
     this.refreshQueries();
     if (this.hasMeshes || this.structureColliders.size || this.rubble.size) {
@@ -144,6 +229,9 @@ export class Physics {
     if (fallen) return fallen;
     if (!hit) return null;
     let box = this.boxHandles.get(hit.collider.handle);
+    const vehicleIndex = this.vehicleHandles.get(hit.collider.handle);
+    if (!box && vehicleIndex !== undefined)
+      box = this.vehicleBoxes[vehicleIndex];
     if (box?.mesh && !box.piece && hit.featureId !== undefined) {
       const key = hit.collider.handle + ":" + hit.featureId;
       let surface = this.triangleBoxes.get(key);

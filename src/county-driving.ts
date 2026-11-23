@@ -185,6 +185,7 @@ export class CountyDriveWorld {
     input: number,
     damage?: (box: Box, amount: number) => void,
     own?: CountyCar,
+    tirePull = 0,
   ) {
     const dt = DRIVE_DT,
       wheelbase = dimensions[kind][3];
@@ -201,7 +202,8 @@ export class CountyDriveWorld {
     if (Math.abs(speed) < 0.025 && !throttle) speed = 0;
     // Steering lock narrows at speed; yaw curvature follows the bicycle model.
     const maxSteer = 0.6 / (1 + 0.0027 * speed * speed);
-    state.steer += (-side * maxSteer - state.steer) * (1 - Math.exp(-8 * dt));
+    const steerTarget = clamp(-side * maxSteer + tirePull, -0.75, 0.75);
+    state.steer += (steerTarget - state.steer) * (1 - Math.exp(-8 * dt));
     state.speed = speed;
     if (!speed) return false;
     const distance = speed * dt,

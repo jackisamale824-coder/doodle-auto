@@ -4,6 +4,7 @@ import { type City, type Box, type V3, randomSeed } from "./world.ts";
 export const INK = "#222bc3",
   RED = "#d23c45",
   PAPER = "#f7f5e9",
+  SKY = "#87ceeb",
   GOLD = "#dfa52b";
 const vertex = `varying vec3 vNormal; varying vec3 vLocal; varying vec3 vLocalNormal; varying vec3 vWorld; varying float vDepth;
 void main(){vLocal=position;vLocalNormal=normal;vec4 p=vec4(position,1.);vec3 n=normal;
@@ -150,11 +151,11 @@ export class Renderer {
       alpha: false,
       powerPreference: "high-performance",
     });
-    this.renderer.setClearColor(PAPER);
+    this.renderer.setClearColor(SKY);
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.outputColorSpace = T.SRGBColorSpace;
-    this.scene.background = new T.Color(PAPER);
-    this.scene.fog = new T.Fog(PAPER, 65, 250);
+    this.scene.background = new T.Color(SKY);
+    this.scene.fog = new T.Fog(SKY, 65, 250);
     this.camera.rotation.order = "YXZ";
     this.scene.add(this.cityGroup, this.camera);
     this.inkPost.uniforms.color.value = this.inkTarget.texture;

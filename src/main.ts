@@ -249,6 +249,7 @@ class Game {
         pending.input,
         undefined,
         this.cars[this.vehicle],
+        this.render.countyCars[this.vehicle]?.tirePull ?? 0,
       );
       pending.pose = { ...pose };
     }
@@ -488,7 +489,7 @@ class Game {
     $("duel").hidden = $("public-mode").hidden = this.archive;
     if (this.archive) this.menuMode = "roam";
     if (this.countySelected)
-      document.title = "doodlesCreed — Switchback County";
+      document.title = "doodlesCreed — Switchback County · Suncoast";
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
@@ -661,6 +662,12 @@ class Game {
       this.audio,
       this.mode === "contract" && seed !== COUNTY,
     );
+    this.combat.vehicleShot = (index, origin, direction, point) =>
+      this.render.countyCars[index]?.damageShot(
+        new T.Vector3(...origin),
+        new T.Vector3(...direction),
+        new T.Vector3(...point),
+      ) ?? null;
     this.combat.online = this.mode === "online";
     this.combat.onSurfaceHit = (index, damage) =>
       this.structures?.damage(index, damage);
@@ -1272,7 +1279,7 @@ class Game {
         : "Face other players and waves of ink rivals in the oil yard.",
       duel: "Players only. First to 15 eliminations wins.",
       roam: county
-        ? "Drive, explore and meet the locals in your own County."
+        ? "Cruise a GTA VI-inspired suncoast: palms, busy streets, fast cars, and a county with a life of its own."
         : "Explore the map and practice movement on your own.",
       contract:
         "Eliminate six rivals, collect three rooftop marks, then return to spawn.",
@@ -1773,6 +1780,7 @@ class Game {
             ? undefined
             : (box, amount) => this.structures!.damage(box.pieceId!, amount),
           car,
+          this.render.countyCars[this.vehicle]?.tirePull ?? 0,
         );
         this.applyDrivePose(pose);
         if (online) {
@@ -1802,7 +1810,11 @@ class Game {
       p.action = "DRIVING";
       p.grounded = true;
       this.aiming = false;
-    } else if (!this.seatPending) this.player.update(dt, input);
+    } else if (!this.seatPending) {
+      if (this.seed === COUNTY)
+        this.physics.setVehicleColliders(this.cars, this.vehicle);
+      this.player.update(dt, input);
+    }
     const nearGround =
       this.vehicle < 0 &&
       this.player.velocity.y <= 0 &&

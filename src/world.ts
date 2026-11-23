@@ -25,6 +25,7 @@ export interface Box {
   s: V3;
   kind: string;
   solid: boolean;
+  vehicleIndex?: number;
   ink?: string;
   cell?: [number, number];
 }

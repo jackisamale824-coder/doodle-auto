@@ -284,6 +284,12 @@ export class Combat {
     range: number,
     baseDamage: number,
   ) => { distance: number; region: HitRegion; kill: boolean } | null;
+  vehicleShot?: (
+    index: number,
+    origin: V3,
+    dir: V3,
+    point: V3,
+  ) => "tire" | "glass" | null;
   shotOrigin = () => this.player.eye;
   fire() {
     if (this.hp <= 0 || this.cooldown > 0 || this.reloadTime > 0) return false;
@@ -387,6 +393,17 @@ export class Combat {
           target.model.fall?.(0);
           if (Math.random() < 0.5) this.hp = Math.min(100, this.hp + 8);
         }
+      } else if (surface?.box?.vehicleIndex !== undefined) {
+        const damage = this.vehicleShot?.(
+          surface.box.vehicleIndex,
+          origin.toArray(),
+          dir.toArray(),
+          point.toArray(),
+        );
+        if (damage) {
+          this.audio.hit();
+          this.burst(point, damage === "glass" ? "#c9efff" : "#343a43", 8);
+        } else this.burst(point, INK, 3);
       } else {
         if (!this.online && surface?.box?.pieceId !== undefined)
           this.onSurfaceHit(surface.box.pieceId, gun.damage);

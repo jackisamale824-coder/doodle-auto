@@ -76,26 +76,33 @@ export async function drawCounty(city: City, group: T.Group) {
     lamps.setMatrixAt(i, matrix.matrix);
   });
   group.add(lamps);
-  const trunkGeo = new T.CylinderGeometry(0.14, 0.24, 3.3, 8);
-  const trunkMat = new T.MeshBasicMaterial({ color: 0x7887a5 });
-  const crown = new T.SphereGeometry(1, 14, 9),
-    colors = [];
-  const vertex = crown.getAttribute("position"),
-    leaf = new T.Color();
-  for (let i = 0; i < vertex.count; i++) {
-    normal.fromBufferAttribute(crown.attributes.normal, i);
-    const { x, y, z } = normal;
-    const radius =
-      1 +
-      0.13 * Math.sin(5 * x + 2 * z) * Math.cos(5 * y - 3 * z) +
-      0.08 * Math.sin(7 * z - 4 * y);
-    vertex.setXYZ(i, x * radius, y * radius, z * radius);
-    const light = normal.dot(sun) + 0.12 * Math.sin(x * 7 + y * 4);
-    leaf.setHex(light > 0.55 ? 0xe3e7e1 : light > -0.12 ? 0xb9c7d4 : 0x90a2ba);
-    colors.push(leaf.r, leaf.g, leaf.b);
+  const trunkGeo = new T.CylinderGeometry(0.14, 0.24, 4.2, 8);
+  const trunkMat = new T.MeshBasicMaterial({ color: 0x8b6749 });
+  const frond = new T.BufferGeometry(),
+    frondPositions: number[] = [],
+    frondIndices: number[] = [];
+  const segments = 12;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments,
+      x = 2.8 * t,
+      y = -1.75 * t * t,
+      width = 0.04 + 0.34 * Math.sin(Math.PI * t);
+    frondPositions.push(x, y - width, 0, x, y + width, 0);
+    if (i < segments) {
+      const a = i * 2;
+      frondIndices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
   }
-  crown.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
-  const leafMat = new T.MeshBasicMaterial({ vertexColors: true });
+  frond.setAttribute(
+    "position",
+    new T.Float32BufferAttribute(frondPositions, 3),
+  );
+  frond.setIndex(frondIndices);
+  frond.computeVertexNormals();
+  const leafMat = new T.MeshBasicMaterial({
+    color: 0x5b9b56,
+    side: T.DoubleSide,
+  });
   const cells = new Map<string, typeof city.boxes>();
   for (const tree of city.boxes.filter((b) => b.kind === "county-tree")) {
     const cell = Math.floor(tree.p[0] / 96) + "," + Math.floor(tree.p[2] / 96);
@@ -104,18 +111,19 @@ export async function drawCounty(city: City, group: T.Group) {
   }
   for (const trees of cells.values()) {
     const trunks = new T.InstancedMesh(trunkGeo, trunkMat, trees.length),
-      leaves = new T.InstancedMesh(crown, leafMat, trees.length);
+      leaves = new T.InstancedMesh(frond, leafMat, trees.length * 8);
     trees.forEach(({ p }, i) => {
-      matrix.position.set(p[0], 1.65, p[2]);
+      matrix.position.set(p[0], 2.1, p[2]);
       matrix.scale.set(1, 1, 1);
       matrix.updateMatrix();
       trunks.setMatrixAt(i, matrix.matrix);
-      const slim = rng() > 0.65;
-      matrix.position.y = 4.15 + rng() * 0.75;
-      matrix.scale.set(slim ? 1.4 : 2.2, slim ? 2.8 : 2.05, slim ? 1.45 : 2);
-      matrix.rotation.y = rng() * 6.28;
-      matrix.updateMatrix();
-      leaves.setMatrixAt(i, matrix.matrix);
+      for (let j = 0; j < 8; j++) {
+        matrix.position.set(p[0], 4.1 + rng() * 0.25, p[2]);
+        matrix.scale.setScalar(0.82 + rng() * 0.28);
+        matrix.rotation.set(0, (j / 8) * Math.PI * 2, 0);
+        matrix.updateMatrix();
+        leaves.setMatrixAt(i * 8 + j, matrix.matrix);
+      }
     });
     group.add(trunks, leaves);
   }
