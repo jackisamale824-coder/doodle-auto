@@ -153,6 +153,10 @@ and press E to drive. Use W/S to accelerate or reverse, A/D to steer and Space t
 The fleet includes saloons, coupes, family minivans, taxis and compact delivery vans. Look for a taxi rank near town hall or a delivery van at the market. Press V to switch between the chase camera and the driver’s seat. In the cockpit, use the mouse to look around. Press E again to open the driver’s door and return to foot combat. Westhaven and Eastbank share a highway with open
 highlands on either side. Each public county holds up to 30 human players. Rust remains available from the main menu.
 
+Follow the valley road from Westhaven’s freight yards to Eastbank’s terraced neighborhoods. Street hierarchy, land use and frontage constraints guide the seeded block layout. Look at a building door and press **E** to open or close it. Homes, shops, factories and civic buildings have furnished rooms and access to their upper floors. Gunfire can break doors, windows, walls, fittings, floors and roofs. Removing a support can drop its attached fittings. When the remaining supports can no longer balance a storey, the connected section tips under gravity and collides with the street and nearby buildings. Fallen pieces still block movement and can be broken again. Changes last for the match and are visible to players who join later.
+
+To benchmark a structural collapse at a fixed 1280 × 720 resolution, run `COUNTY_HARDWARE_GL=1 COUNTY_TEST_ORIGIN=http://127.0.0.1:4173 node scripts/county-collapse-check.mjs` against the local development server.
+
 To exercise capacity on an empty local development server, run
 `COUNTY_TEST_WS=ws://127.0.0.1:4173/ws node scripts/county-load.mjs`.
 

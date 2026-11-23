@@ -1,3 +1,7 @@
+import { initializeRapier } from "../src/rapier-init.ts";
+import type { RubblePose } from "../src/county-rubble.ts";
+import { CountyWreckage } from "../src/county-wreckage.ts";
+import { CountyStructures } from "../src/county-structures.ts";
 import { COUNTY, parkedCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
@@ -50,6 +54,9 @@ export interface ReserveRequest {
   roomCode?: string;
 }
 interface Room {
+  structures?: CountyStructures;
+  wreckage?: CountyWreckage;
+  rubbleUpdates?: Map<number, RubblePose>;
   cars?: CountyCar[];
   roomId: string;
   code: string;
@@ -102,6 +109,10 @@ export class Rooms {
     private levelFactory: (seed: string) => City = generateCity,
     private options?: WorkerOptions,
   ) {
+    let ready = false;
+    const engine = initializeRapier().then(() => {
+      ready = true;
+    });
     this.sessions = new Sessions(options?.resumeMs);
     const alive = new WeakSet<WebSocket>();
     wss.on("connection", (ws) => {
@@ -126,7 +137,16 @@ export class Rooms {
           return;
         }
         try {
-          this.handle(ws, JSON.parse(raw.toString()));
+          const message = JSON.parse(raw.toString());
+          if (ready) this.handle(ws, message);
+          else
+            void engine
+              .then(() => {
+                if (ws.readyState === WebSocket.OPEN) this.handle(ws, message);
+              })
+              .catch(() =>
+                send(ws, { type: "error", message: "Unable to start match." }),
+              );
         } catch {
           send(ws, { type: "error", message: "Invalid game message." });
         }
@@ -156,8 +176,10 @@ export class Rooms {
     for (const [key, value] of this.reservations)
       if (value.result.expiresAt <= Date.now()) this.reservations.delete(key);
     for (const room of this.rooms.values())
-      if (!room.players.size && !this.admissions.count(room.roomId))
+      if (!room.players.size && !this.admissions.count(room.roomId)) {
+        room.wreckage?.dispose();
         this.rooms.delete(room.code);
+      }
   }
   reserve(request: ReserveRequest) {
     try {
@@ -229,6 +251,7 @@ export class Rooms {
         players: new Map(),
         created: Date.now(),
       };
+      this.initializeStructures(room);
       this.rooms.set(code, room);
     }
     if (!available(room)) throw new Error("Room is full.");
@@ -300,6 +323,24 @@ export class Rooms {
       this.sessions.detach(ws);
     }
   }
+  private initializeStructures(room: Room) {
+    if (room.seed !== COUNTY) return;
+    room.rubbleUpdates = new Map();
+    room.wreckage = new CountyWreckage(room.city.boxes, (m) => {
+      if (m.type === "rubble-poses")
+        for (const pose of m.poses) room.rubbleUpdates!.set(pose.id, pose);
+      else this.broadcast(room, m);
+    });
+    room.spatial.rubble = room.wreckage;
+    room.structures = new CountyStructures(
+      room.city.boxes,
+      (index, state, _box, detached) => {
+        if (!detached)
+          this.broadcast(room, { type: "structure", index, state });
+      },
+      room.wreckage,
+    );
+  }
   private sessionSnapshot(
     r: Room,
     p: PlayerState,
@@ -319,6 +360,8 @@ export class Rooms {
       tickRate: 30,
       player: { ...p },
       ...p,
+      rubble: r.wreckage && [...r.wreckage.clusters.values()],
+      structures: r.structures && [...r.structures.states],
       sessionExpiresIn: this.sessions.resumeMs,
       reloadRemaining: Math.max(0, p.reloadUntil - Date.now()),
       fireRemaining: Math.max(
@@ -410,6 +453,14 @@ export class Rooms {
     this.lastTick = stamp;
     this.prune();
     for (const r of this.rooms.values()) {
+      r.wreckage?.step(dt);
+      if (this.tickCount % 2 === 0 && r.rubbleUpdates?.size) {
+        this.broadcast(r, {
+          type: "rubble-poses",
+          poses: [...r.rubbleUpdates.values()],
+        });
+        r.rubbleUpdates.clear();
+      }
       const humans = [...r.players.values()];
       const npcRosterBefore = r.npcs.map((p) => p.id).join(",");
       r.ai?.update(
@@ -519,7 +570,15 @@ export class Rooms {
         continue;
       }
       if (ws.bufferedAmount >= 32768) {
-        if (m.type === "roster") ws.close(1008, "Slow connection");
+        if (
+          m.type === "roster" ||
+          m.type === "structure" ||
+          m.type === "rubble-spawn" ||
+          m.type === "rubble-remove" ||
+          (m.type === "rubble-poses" &&
+            m.poses.some((p: { sleep: boolean }) => p.sleep))
+        )
+          ws.close(1008, "Slow connection");
         continue;
       }
       if (m.type === "snapshot" && this.compact.has(ws)) {
@@ -558,9 +617,10 @@ export class Rooms {
     this.memberships.delete(ws);
     const session = this.sessions.bySocket(ws);
     if (session) this.sessions.records.delete(session.id);
-    if (!r.players.size && !this.admissions.count(r.roomId))
+    if (!r.players.size && !this.admissions.count(r.roomId)) {
+      r.wreckage?.dispose();
       this.rooms.delete(r.code);
-    else this.roster(r);
+    } else this.roster(r);
   }
   handle(ws: WebSocket, m: any) {
     if (!m || typeof m.type !== "string") return;
@@ -681,6 +741,7 @@ export class Rooms {
           players: new Map(),
           created: Date.now(),
         };
+        this.initializeStructures(r);
         this.rooms.set(code, r);
       } else if (m.type === "join")
         r = this.rooms.get(String(m.code).trim().toUpperCase());
@@ -743,6 +804,8 @@ export class Rooms {
             )
           : {}),
         type: "welcome",
+        rubble: r.wreckage && [...r.wreckage.clusters.values()],
+        structures: r.structures && [...r.structures.states],
         id: p.id,
         code: r.code,
         seed: r.seed,
@@ -762,6 +825,27 @@ export class Rooms {
       return;
     }
     const vehicle = r.cars?.find((c) => c.driver === p.id);
+    if (m.type === "door" && r.structures) {
+      if (
+        !vehicle &&
+        p.hp > 0 &&
+        p.ready !== false &&
+        Number.isInteger(m.index) &&
+        typeof m.open === "boolean"
+      ) {
+        const occupants = [...r.players.values(), ...r.npcs].filter(
+          (a) => a.hp > 0,
+        );
+        r.structures.operate(
+          m.index,
+          m.open,
+          [p.p[0], p.p[1] + p.height - 0.15, p.p[2]],
+          occupants,
+          r.spatial.ray.bind(r.spatial),
+        );
+      }
+      return;
+    }
     if (m.type === "vehicle" && r.cars) {
       const car = Number.isInteger(m.index) ? r.cars[m.index] : undefined;
       const action = m.action ?? (vehicle ? "exit" : "enter");
@@ -925,7 +1009,8 @@ export class Rooms {
           for (let k = 0; k < 3; k++) d[k] /= len;
         }
         const maxRange = p.weapon === 3 ? 220 : 90;
-        let nearest = r.spatial.ray(origin, d, maxRange)?.distance ?? maxRange,
+        const surface = r.spatial.ray(origin, d, maxRange);
+        let nearest = surface?.distance ?? maxRange,
           victim: PlayerState | undefined,
           head = false,
           region: HitRegion = "body",
@@ -950,6 +1035,8 @@ export class Rooms {
           }
         }
         endpoint = origin.map((v, i) => v + d[i] * nearest) as V3;
+        if (!victim && surface?.box.pieceId !== undefined)
+          r.structures?.damage(surface.box.pieceId, damages[p.weapon]);
         if (victim) {
           const damage = Math.round(damages[p.weapon] * HIT_MULTIPLIER[region]);
           this.hurt(r, victim, p, damage, region, hitSide);
@@ -969,6 +1056,7 @@ export class Rooms {
   dispose() {
     clearInterval(this.timer);
     clearInterval(this.heartbeat);
+    for (const room of this.rooms.values()) room.wreckage?.dispose();
     this.rooms.clear();
     this.memberships.clear();
     this.sessions.records.clear();

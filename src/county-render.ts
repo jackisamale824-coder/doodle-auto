@@ -1,12 +1,12 @@
 import { loadFleet } from "./county-car.ts";
-import { isCityMass } from "./county-architecture.ts";
+import { isCountyPiece } from "./county-architecture.ts";
 import { countyBuildings } from "./county-buildings.ts";
 import * as T from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl } from "./release-info.ts";
 import { inkMaterial, INK } from "./render.ts";
-import { TOWNS, elevation, parkedCars } from "./county.ts";
+import { elevation, parkedCars } from "./county.ts";
+import { drawCountyRoads } from "./county-roads.ts";
 import { randomSeed, type City } from "./world.ts";
 
 export async function drawCounty(city: City, group: T.Group) {
@@ -28,14 +28,14 @@ export async function drawCounty(city: City, group: T.Group) {
   const paper = new T.Color(0xf4f2e8),
     blue = new T.Color(0x9daac7),
     color = new T.Color();
+  countyBuildings(group, city.boxes.filter(isCountyPiece));
   const [vehicle, lamp, rock] = await Promise.all([
     loadFleet(),
     geometry("lamp"),
     geometry("outcrop"),
   ]);
-  const roofs: T.BufferGeometry[][] = [[], []];
   for (const box of city.boxes) {
-    if (!box.mesh) continue;
+    if (!box.mesh || box.piece) continue;
     const geo = new T.BufferGeometry();
     geo.setAttribute(
       "position",
@@ -54,13 +54,7 @@ export async function drawCounty(city: City, group: T.Group) {
       colors.push(color.r, color.g, color.b);
     }
     geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
-    if (box.kind === "county-roof") roofs[Number(box.p[0] > 0)].push(geo);
-    else group.add(new T.Mesh(geo, terrainTint));
-  }
-  for (const district of roofs) {
-    if (!district.length) continue;
-    group.add(new T.Mesh(mergeGeometries(district), terrainTint));
-    district.forEach((g) => g.dispose());
+    group.add(new T.Mesh(geo, terrainTint));
   }
   const cars = parkedCars().map((c, i) => {
     const m = vehicle(
@@ -72,85 +66,16 @@ export async function drawCounty(city: City, group: T.Group) {
     group.add(m);
     return m;
   });
-  // One opaque road surface and one marking batch. Leave junctions clear.
-  const asphalt: number[] = [],
-    markings: number[] = [];
-  function rect(
-    out: number[],
-    x: number,
-    z: number,
-    w: number,
-    d: number,
-    y: number,
-  ) {
-    const l = x - w / 2,
-      r = x + w / 2,
-      t = z - d / 2,
-      b = z + d / 2;
-    out.push(l, y, b, r, y, b, r, y, t, l, y, b, r, y, t, l, y, t);
-  }
-  for (const { a, b, width } of city.plan!.streets) {
-    const alongX = a[2] === b[2],
-      cx = (a[0] + b[0]) / 2,
-      cz = (a[2] + b[2]) / 2;
-    const length = Math.abs(alongX ? b[0] - a[0] : b[2] - a[2]);
-    rect(
-      asphalt,
-      cx,
-      cz,
-      alongX ? length : width,
-      alongX ? width : length,
-      0.042,
-    );
-    if (alongX && cz === 0 && length < 1000) continue;
-    for (let offset = 5; offset < length - 2; offset += 10) {
-      const x = alongX ? a[0] + offset : cx,
-        z = alongX ? cz : a[2] + offset;
-      if (
-        TOWNS.some(
-          (t) =>
-            Math.abs(x - t) < 140 &&
-            Math.abs(z) < 140 &&
-            Math.abs(
-              (alongX ? x - t : z) - 44 * Math.round((alongX ? x - t : z) / 44),
-            ) < 8,
-        )
-      )
-        continue;
-      rect(markings, x, z, alongX ? 3 : 0.14, alongX ? 0.14 : 3, 0.05);
-    }
-  }
-  for (const town of TOWNS)
-    for (const dx of [-88, -44, 0, 44, 88]) {
-      const x = town + dx;
-      for (const offset of [-10, 10])
-        for (let i = -4; i <= 4; i++) {
-          rect(markings, x + offset, i * 1.15, 2.3, 0.48, 0.054);
-          rect(markings, x + i * 1.15, offset, 0.48, 2.3, 0.054);
-        }
-    }
-  for (const [vertices, tint] of [
-    [asphalt, 0xcdd3dd],
-    [markings, 0xfbf9f1],
-  ] as const) {
-    const geo = new T.BufferGeometry();
-    geo.setAttribute("position", new T.Float32BufferAttribute(vertices, 3));
-    group.add(new T.Mesh(geo, new T.MeshBasicMaterial({ color: tint })));
-  }
-  countyBuildings(group, city.boxes.filter(isCityMass));
+  const lightPositions = drawCountyRoads(group, city.plan.streets);
   const rng = randomSeed("county-landscape");
   const matrix = new T.Object3D();
-  for (const town of TOWNS) {
-    for (const start of [-130, 2]) {
-      const lamps = new T.InstancedMesh(lamp, mat, 6);
-      for (let i = 0; i < 6; i++) {
-        matrix.position.set(town + 6, 0, start + i * 22);
-        matrix.updateMatrix();
-        lamps.setMatrixAt(i, matrix.matrix);
-      }
-      group.add(lamps);
-    }
-  }
+  const lamps = new T.InstancedMesh(lamp, mat, lightPositions.length);
+  lightPositions.forEach((p, i) => {
+    matrix.position.fromArray(p);
+    matrix.updateMatrix();
+    lamps.setMatrixAt(i, matrix.matrix);
+  });
+  group.add(lamps);
   const trunkGeo = new T.CylinderGeometry(0.14, 0.24, 3.3, 8);
   const trunkMat = new T.MeshBasicMaterial({ color: 0x7887a5 });
   const crown = new T.SphereGeometry(1, 14, 9),
@@ -197,7 +122,7 @@ export async function drawCounty(city: City, group: T.Group) {
   for (let i = 0; i < 150;) {
     const x = (rng() - 0.5) * 1560,
       z = (rng() - 0.5) * 1560;
-    if (Math.abs(z) < 165) continue;
+    if (elevation(x, z) < 1) continue;
     const stone = new T.Mesh(rock, mat);
     stone.position.set(x, elevation(x, z) - 0.3, z);
     stone.rotation.y = rng() * Math.PI * 2;

@@ -1,4 +1,8 @@
 import { RELEASE_ID } from "./release-info.ts";
+import { RubbleView } from "./county-rubble-view.ts";
+import { CountyWreckage, type RubbleMessage } from "./county-wreckage.ts";
+import { CountyDebris } from "./county-debris.ts";
+import { CountyStructures } from "./county-structures.ts";
 import { COUNTY, countyLadders, parkedCars, type CountyCar } from "./county.ts";
 import { CoverPeek, peekEye, validatedLean } from "./cover-peek.ts";
 import { WeaponClearance } from "./weapon-clearance.ts";
@@ -75,6 +79,49 @@ class Game {
   private entryTime = -Infinity;
   private entryPosition = new T.Vector3();
   private entryRotation = new T.Quaternion();
+  private wreckage?: CountyWreckage;
+  private rubbleView?: RubbleView;
+  get rubbleClusters() {
+    return this.rubbleView?.roster.clusters;
+  }
+  private structures?: CountyStructures;
+  private debris?: CountyDebris;
+  private restoringStructures = false;
+  private aimedDoor() {
+    if (!this.structures || this.vehicle >= 0) return;
+    const box = this.physics.ray(
+      this.player.eye,
+      this.player.forward,
+      3.5,
+    )?.box;
+    if (
+      box?.piece === "door" &&
+      this.player.eye.distanceTo(new T.Vector3(...box.p)) <= 3.5
+    )
+      return box.pieceId;
+  }
+  private useDoor(index: number) {
+    const open = this.structures!.states.get(index) !== 1;
+    if (this.mode === "online") {
+      this.sendState();
+      this.network.send({ type: "door", index, open });
+    } else {
+      const p = this.player;
+      this.structures!.operate(
+        index,
+        open,
+        p.eye.toArray(),
+        [
+          { p: p.position.toArray(), height: p.height },
+          ...this.combat.bots
+            .filter((b) => b.hp > 0)
+            .map((b) => ({ p: b.p.toArray() as V3, height: 1.76 })),
+        ],
+        (o, d, n) =>
+          this.physics.ray(new T.Vector3(...o), new T.Vector3(...d), n),
+      );
+    }
+  }
   nearestCar() {
     let nearest = -1,
       best = 25;
@@ -252,7 +299,7 @@ class Game {
         .querySelector(".grapple-only")
         ?.insertAdjacentHTML(
           "beforebegin",
-          "<p><b>E beside a car</b> enter or exit · WASD drive · Space brake</p>",
+          "<p><b>E</b> open doors or enter cars · WASD drive · Space brake</p>",
         );
       document.querySelector<HTMLAnchorElement>(
         'a[href="/?mode=county"]',
@@ -309,6 +356,8 @@ class Game {
       return;
     }
     this.combat?.dispose();
+    this.rubbleView?.clear();
+    this.wreckage?.dispose();
     this.physics?.dispose();
     for (const r of this.remotes.values()) r.dispose();
     this.remotes.clear();
@@ -328,6 +377,35 @@ class Game {
     this.district = district;
     await this.render.build(city);
     if (version !== this.buildVersion) return;
+    this.debris =
+      seed === COUNTY ? new CountyDebris(this.render.cityGroup) : undefined;
+    this.rubbleView =
+      seed === COUNTY
+        ? new RubbleView(this.render.cityGroup, city.boxes, physics)
+        : undefined;
+    this.wreckage =
+      seed === COUNTY && this.mode !== "online"
+        ? new CountyWreckage(city.boxes, (m) => this.rubbleMessage(m, false))
+        : undefined;
+    this.structures =
+      seed === COUNTY
+        ? new CountyStructures(
+            city.boxes,
+            (_index, state, box, detached) => {
+              if (
+                state === 2 &&
+                !detached &&
+                !this.restoringStructures &&
+                this.state === "play"
+              )
+                this.debris?.break(box, this.player.position);
+              physics.updateStructure(box);
+              box.onPieceState?.(state);
+            },
+            this.wreckage,
+          )
+        : undefined;
+    if (this.mode === "online") this.restoreStructures();
     this.player = new Controller(physics, spawn ?? city.spawns[0]);
     this.player.ladders =
       city.arena?.ladders ?? (seed === COUNTY ? countyLadders(city.boxes) : []);
@@ -364,6 +442,8 @@ class Game {
       this.mode === "contract",
     );
     this.combat.online = this.mode === "online";
+    this.combat.onSurfaceHit = (index, damage) =>
+      this.structures?.damage(index, damage);
     this.combat.onReload = () => {
       if (this.mode === "online") {
         this.sendState();
@@ -661,7 +741,9 @@ class Game {
         return;
       }
       if (e.code === "KeyE" && this.seed === COUNTY) {
-        this.useCar();
+        const door = this.aimedDoor();
+        if (door !== undefined && !this.seatPending) this.useDoor(door);
+        else this.useCar();
         return;
       }
       if (e.code === "KeyR") this.combat.reload();
@@ -850,7 +932,7 @@ class Game {
   }
   showHelp() {
     this.showDialog(
-      `<div class="modal-kicker">A FIELD GUIDE TO THE ROOFTOPS</div><h2>Keep your momentum.</h2><p>${this.seed === COUNTY ? "Climb building ladders, vault barriers or approach a car and press E to drive. Press E again to get out." : this.city.arena ? "Climb the tower ladders, vault low walls, and use double jumps and air boosts to navigate Rust." : "Every building has an open front door and stairs to the roof. Swing across streets, vault low walls, and run alongside walls in the air."}</p><div class="help-grid"><kbd>W A S D</kbd><span>Move · Mouse to look</span><kbd>SHIFT</kbd><span>Sprint and build speed</span><kbd>SPACE</kbd><span>Jump · Vault · Mantle · Wall jump</span><kbd>C / CTRL</kbd><span>Crouch · Slide while sprinting</span>${!this.player.grappleEnabled ? "" : "<kbd>Q / E</kbd><span>Tap to hook / release · Hold to reel in</span><kbd>SPACE</kbd><span>Launch while grappling</span>"}<kbd>LMB / RMB</kbd><span>Fire / Aim down sights</span><kbd>1 2 3 4 / WHEEL</kbd><span>Rifle · Shotgun · Pistol · Sniper</span><kbd>SPACE / F in air</kbd><span>Double jump / directional boost · one shared charge per landing</span><kbd>R</kbd><span>Reload (unlimited reserve ammo)</span><kbd>ESC / TAB</kbd><span>Pause / Scoreboard</span></div><p>District run: erase six rivals, collect the three gold marks on rooftops, then return to the starting plaza. Free roam is a combat-free practice city.</p><button id="help-done" class="primary-button">GOT IT. LET’S GO. <span>↗</span></button>`,
+      `<div class="modal-kicker">A FIELD GUIDE TO THE ROOFTOPS</div><h2>Keep your momentum.</h2><p>${this.seed === COUNTY ? "Look at a door and press E to open or close it. Fire to break through walls, floors and roofs. Approach a parked car and press E to drive." : this.city.arena ? "Climb the tower ladders, vault low walls, and use double jumps and air boosts to navigate Rust." : "Every building has an open front door and stairs to the roof. Swing across streets, vault low walls, and run alongside walls in the air."}</p><div class="help-grid"><kbd>W A S D</kbd><span>Move · Mouse to look</span><kbd>SHIFT</kbd><span>Sprint and build speed</span><kbd>SPACE</kbd><span>Jump · Vault · Mantle · Wall jump</span><kbd>C / CTRL</kbd><span>Crouch · Slide while sprinting</span>${!this.player.grappleEnabled ? "" : "<kbd>Q / E</kbd><span>Tap to hook / release · Hold to reel in</span><kbd>SPACE</kbd><span>Launch while grappling</span>"}<kbd>LMB / RMB</kbd><span>Fire / Aim down sights</span><kbd>1 2 3 4 / WHEEL</kbd><span>Rifle · Shotgun · Pistol · Sniper</span><kbd>SPACE / F in air</kbd><span>Double jump / directional boost · one shared charge per landing</span><kbd>R</kbd><span>Reload (unlimited reserve ammo)</span><kbd>ESC / TAB</kbd><span>Pause / Scoreboard</span></div><p>District run: erase six rivals, collect the three gold marks on rooftops, then return to the starting plaza. Free roam is a combat-free practice city.</p><button id="help-done" class="primary-button">GOT IT. LET’S GO. <span>↗</span></button>`,
     );
     $("help-done").onclick = () => this.closeDialog();
   }
@@ -976,7 +1058,29 @@ class Game {
       );
     }
   }
+  private rubbleMessage(m: RubbleMessage, remote: boolean) {
+    if (!this.rubbleView) return;
+    if (m.type === "rubble-spawn") {
+      if (remote) for (const i of m.indices) this.structures?.set(i, 2, true);
+      this.rubbleView.add(m);
+    } else if (m.type === "rubble-remove") this.rubbleView.remove(m.index);
+    else this.rubbleView.move(m.poses, remote ? 1 / 15 : 1 / 60);
+  }
+  private restoreStructures() {
+    this.restoringStructures = true;
+    this.structures?.restore(this.network.structures);
+    this.rubbleView?.clear();
+    for (const c of this.network.rubble.clusters.values())
+      this.rubbleView?.add(c);
+    this.restoringStructures = false;
+  }
   onNetwork(m: any) {
+    if (this.mode === "online" && this.state !== "loading") {
+      if (m.type === "structure") this.structures?.set(m.index, m.state);
+      if (["rubble-spawn", "rubble-remove", "rubble-poses"].includes(m.type))
+        this.rubbleMessage(m, true);
+      if (m.type === "resumed") this.restoreStructures();
+    }
     if (m.type === "vehicle-seat") {
       this.seatPending = false;
       if (this.seed === COUNTY && this.cars[m.index] && m.car) {
@@ -1186,6 +1290,12 @@ class Game {
       const delta = p.velocity.clone().multiplyScalar(dt);
       delta.y = -0.12;
       const result = this.physics.move(p.position, delta, 1.5);
+      // A stationary car can settle vertically without the capsule sliding it
+      // sideways off a triangle seam as the driver takes the seat.
+      if (this.carSpeed === 0) {
+        p.position.x = this.previousCarPosition.x;
+        p.position.z = this.previousCarPosition.z;
+      }
       if (result.wall) this.carSpeed = 0;
       p.action = "DRIVING";
       p.grounded = result.grounded;
@@ -1505,6 +1615,61 @@ class Game {
   drawCityMap() {
     const canvas = $<HTMLCanvasElement>("city-map"),
       c = canvas.getContext("2d")!;
+    if (this.seed === COUNTY) {
+      const p = this.player.position;
+      const scale = this.vehicle >= 0 ? 0.82 : 1.18;
+      c.clearRect(0, 0, 190, 190);
+      c.save();
+      c.translate(95 - p.x * scale, 95 - p.z * scale);
+      c.scale(scale, scale);
+      c.fillStyle = "#8d9eb72c";
+      for (const b of this.city.plan.parcels)
+        c.fillRect(b.x - b.w / 2, b.z - b.d / 2, b.w, b.d);
+      c.lineCap = "round";
+      for (const road of this.city.plan.streets) {
+        c.lineWidth = road.width * 0.62;
+        c.strokeStyle = road.class === "arterial" ? "#687da0" : "#a3afc0";
+        c.beginPath();
+        c.moveTo(road.a[0], road.a[2]);
+        c.lineTo(road.b[0], road.b[2]);
+        c.stroke();
+      }
+      c.restore();
+      c.save();
+      c.translate(95, 95);
+      c.rotate(-this.player.yaw);
+      c.fillStyle = "#d23c45";
+      c.beginPath();
+      c.moveTo(0, -6);
+      c.lineTo(5, 5);
+      c.lineTo(0, 2);
+      c.lineTo(-5, 5);
+      c.closePath();
+      c.fill();
+      c.restore();
+      const district = this.city.plan.blocks.find(
+        (b) =>
+          p.x >= b.minX - 8 &&
+          p.x <= b.maxX + 8 &&
+          p.z >= b.minZ - 8 &&
+          p.z <= b.maxZ + 8,
+      );
+      $("neighborhood-label").textContent = district
+        ? p.x < 0
+          ? "Westhaven"
+          : "Eastbank"
+        : this.city.plan.streets.some(
+              (s) =>
+                s.class === "arterial" &&
+                Math.hypot(
+                  p.x - (s.a[0] + s.b[0]) / 2,
+                  p.z - (s.a[2] + s.b[2]) / 2,
+                ) < 29,
+            )
+          ? "County Highway"
+          : "Highlands";
+      return;
+    }
     const mapBounds = this.city.arena
       ? Math.max(
           42,
@@ -1559,17 +1724,6 @@ class Game {
       c.arc(map(h.position[0]), map(h.position[2]), 2, 0, Math.PI * 2);
       c.fill();
     }
-    if (this.seed === COUNTY) {
-      c.fillStyle = "#222bc340";
-      for (const box of this.city.boxes)
-        if (box.kind === "building")
-          c.fillRect(
-            map(box.p[0] - box.s[0] / 2),
-            map(box.p[2] - box.s[2] / 2),
-            box.s[0] * scale,
-            box.s[2] * scale,
-          );
-    }
     const p = this.player.position;
     c.save();
     c.translate(map(p.x), map(p.z));
@@ -1583,17 +1737,6 @@ class Game {
     c.closePath();
     c.fill();
     c.restore();
-    if (this.seed === COUNTY) {
-      $("neighborhood-label").textContent =
-        Math.abs(p.z) > 145
-          ? "Highlands"
-          : p.x < -160
-            ? "Westhaven"
-            : p.x > 160
-              ? "Eastbank"
-              : "County Highway";
-      return;
-    }
     const nearest = this.city.buildings.reduce((a, b) =>
       Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z)
         ? b
@@ -1626,15 +1769,20 @@ class Game {
     $("speed").textContent = String(Math.round(p.speed));
     const nearby =
       this.seed === COUNTY && this.vehicle < 0 ? this.nearestCar() : -1;
+    const door = this.aimedDoor();
     $("action").textContent = this.seatPending
       ? this.vehicle < 0
         ? "ENTERING…"
         : "EXITING…"
       : this.vehicle >= 0
         ? "DRIVING · E EXIT · V CAMERA"
-        : nearby >= 0
-          ? "E · ENTER CAR · " + this.cars[nearby].kind.toUpperCase()
-          : p.action;
+        : door !== undefined
+          ? this.structures?.states.get(door) === 1
+            ? "E · CLOSE DOOR"
+            : "E · OPEN DOOR"
+          : nearby >= 0
+            ? "E · ENTER CAR · " + this.cars[nearby].kind.toUpperCase()
+            : p.action;
     $("speed-fill").style.width = Math.min(100, (p.speed / 35) * 100) + "%";
     $("ammo").textContent = String(c.mags[c.weapon]).padStart(2, "0");
     $("mag-size").textContent = String(gun.mag);
@@ -1720,7 +1868,11 @@ class Game {
       this.fpsTime = 0;
     }
     if (this.state !== "loading") {
-      if (this.seed === COUNTY) this.syncSeat();
+      if (this.seed === COUNTY) {
+        this.syncSeat();
+        if (this.state === "play") this.wreckage?.step(dt);
+        this.rubbleView?.update(dt);
+      }
       this.accumulator += dt;
       let count = 0;
       while (this.accumulator >= 1 / 120 && count++ < 6) {
@@ -1734,7 +1886,11 @@ class Game {
           this.sendState();
         }
       }
-      if (this.seed === COUNTY) this.syncCars(frameSeconds);
+      if (this.seed === COUNTY) {
+        this.syncCars(frameSeconds);
+        this.render.cityGroup.userData.updateDoors?.(dt);
+        this.debris?.update(dt);
+      }
       this.updateVisuals(dt);
       this.combat.renderShots(dt);
       if (this.state !== "menu" && this.frame % 3 === 0) this.updateHUD();

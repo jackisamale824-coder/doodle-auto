@@ -1,26 +1,31 @@
+import type { CountyWreckage } from "../src/county-wreckage.ts";
+import { openedDoor } from "../src/county-structures.ts";
 import { meshOverlapsBox } from "../src/mesh-collision.ts";
 import { worldRay, type Box, type V3 } from "../src/world.ts";
 // Shared static broadphase. Each query visits only cells intersecting its XZ bounds.
 export class Spatial {
+  rubble?: CountyWreckage;
   private cells = new Map<string, Box[]>();
   constructor(boxes: Box[]) {
     for (const b of boxes)
       if (b.solid) {
-        for (
-          let x = Math.floor((b.p[0] - b.s[0] / 2) / 12);
-          x <= Math.floor((b.p[0] + b.s[0] / 2) / 12);
-          x++
-        )
+        const bounds = b.piece === "door" ? [b, openedDoor(b)] : [b];
+        for (const shape of bounds)
           for (
-            let z = Math.floor((b.p[2] - b.s[2] / 2) / 12);
-            z <= Math.floor((b.p[2] + b.s[2] / 2) / 12);
-            z++
-          ) {
-            const k = x + "," + z;
-            const list = this.cells.get(k) ?? [];
-            list.push(b);
-            this.cells.set(k, list);
-          }
+            let x = Math.floor((shape.p[0] - shape.s[0] / 2) / 12);
+            x <= Math.floor((shape.p[0] + shape.s[0] / 2) / 12);
+            x++
+          )
+            for (
+              let z = Math.floor((shape.p[2] - shape.s[2] / 2) / 12);
+              z <= Math.floor((shape.p[2] + shape.s[2] / 2) / 12);
+              z++
+            ) {
+              const k = x + "," + z;
+              const list = this.cells.get(k) ?? [];
+              list.push(b);
+              this.cells.set(k, list);
+            }
       }
   }
   query(a: V3, b: V3, pad = 0) {
@@ -40,9 +45,11 @@ export class Spatial {
   }
   ray(o: V3, d: V3, max: number) {
     const end = o.map((v, i) => v + d[i] * max) as V3;
-    return worldRay(this.query(o, end), o, d, max);
+    const solid = worldRay(this.query(o, end), o, d, max);
+    return this.rubble?.sim?.ray(o, d, solid?.distance ?? max) ?? solid;
   }
   clear(p: V3, height = 1.85) {
+    if (this.rubble?.sim?.overlaps(p, height)) return false;
     const center: V3 = [p[0], p[1] + (height + 0.06) / 2, p[2]];
     const half: V3 = [0.33, (height - 0.06) / 2, 0.33];
     return !this.query(p, p, 0.4).some((b) => {

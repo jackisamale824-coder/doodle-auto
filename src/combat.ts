@@ -252,6 +252,7 @@ export class Combat {
       this.flashes.push({ mesh, life: 0.22, max: 0.22 });
     }
   }
+  onSurfaceHit = (_index: number, _damage: number) => {};
   shotOrigin = () => this.player.eye;
   fire() {
     if (this.hp <= 0 || this.cooldown > 0 || this.reloadTime > 0) return false;
@@ -280,8 +281,8 @@ export class Combat {
         )
         .normalize();
       const maxRange = this.weapon === 3 ? 220 : 95;
-      let range =
-        this.player.physics.ray(origin, dir, maxRange)?.distance ?? maxRange;
+      const surface = this.player.physics.ray(origin, dir, maxRange);
+      let range = surface?.distance ?? maxRange;
       let target: Bot | undefined,
         headshot = false,
         region: HitRegion = "body";
@@ -332,7 +333,11 @@ export class Combat {
           target.model.fall?.(0);
           if (Math.random() < 0.5) this.hp = Math.min(100, this.hp + 8);
         }
-      } else this.burst(point, INK, 3);
+      } else {
+        if (!this.online && surface?.box?.pieceId !== undefined)
+          this.onSurfaceHit(surface.box.pieceId, gun.damage);
+        this.burst(point, INK, 3);
+      }
     }
     if (this.mags[this.weapon] === 0) this.onNotice("R TO RELOAD");
     return true;
@@ -646,7 +651,11 @@ export class Combat {
         this.damage(p.damage);
         p.life = 0;
       }
-      if (blocked) p.life = 0;
+      if (blocked) {
+        if (blocked.box?.pieceId !== undefined)
+          this.onSurfaceHit(blocked.box.pieceId, p.damage);
+        p.life = 0;
+      }
       p.p.add(delta);
       p.mesh.position.copy(p.p);
       if (p.life <= 0) {

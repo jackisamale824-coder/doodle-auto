@@ -1,3 +1,7 @@
+import { PlayerRubble } from "./player-rubble.ts";
+import type { RubbleCluster } from "./county-wreckage.ts";
+import type { RubblePose } from "./county-rubble.ts";
+import { initializeRapier } from "./rapier-init.ts";
 import type { Ladder } from "./rust.ts";
 import type { MovingHook } from "./aerial.ts";
 import RAPIER from "@dimforge/rapier3d-compat";
@@ -5,18 +9,21 @@ import { Vector3 } from "three";
 import { type Box, type V3, worldRay } from "./world.ts";
 import { routeRope } from "./rope-path.ts";
 export const GRAPPLE_RANGE = 120;
-let initialized: Promise<void> | undefined;
+const WORLD_GROUPS = 0xffffffff;
 export class Physics {
   world: RAPIER.World;
   controller: RAPIER.KinematicCharacterController;
   collider: RAPIER.Collider;
+  private rubble: PlayerRubble;
   private hasMeshes = false;
   private triangleBoxes = new Map<string, Box>();
+  private structureColliders = new Map<Box, RAPIER.Collider>();
   private boxHandles = new Map<number, Box>();
   private clearanceCells = new Map<string, Box[]>();
   constructor(public boxes: Box[]) {
     this.hasMeshes = boxes.some((b) => b.mesh);
     this.world = new RAPIER.World({ x: 0, y: 0, z: 0 });
+    this.rubble = new PlayerRubble(this.world, boxes);
     for (const b of boxes)
       if (b.solid) {
         const c = this.world.createCollider(
@@ -32,6 +39,7 @@ export class Physics {
               ).setTranslation(...b.p),
         );
         this.boxHandles.set(c.handle, b);
+        if (b.piece) this.structureColliders.set(b, c);
         for (
           let x = Math.floor((b.p[0] - b.s[0] / 2) / 16);
           x <= Math.floor((b.p[0] + b.s[0] / 2) / 16);
@@ -57,11 +65,13 @@ export class Physics {
     this.world.step();
   }
   static async create(boxes: Box[]) {
-    initialized ??= RAPIER.init();
-    await initialized;
+    await initializeRapier();
     return new Physics(boxes);
   }
   move(pos: Vector3, delta: Vector3, height: number) {
+    if (this.rubble.prepareMovement(pos, delta, height))
+      this.queriesDirty = true;
+    this.refreshQueries();
     this.collider.setShape(
       new RAPIER.Capsule(Math.max(0.1, height / 2 - 0.33), 0.33),
     );
@@ -70,7 +80,7 @@ export class Physics {
       this.collider,
       delta,
       undefined,
-      undefined,
+      WORLD_GROUPS,
       (c) => c.handle !== this.collider.handle,
     );
     const m = this.controller.computedMovement();
@@ -84,15 +94,22 @@ export class Physics {
     return { grounded: this.controller.computedGrounded(), wall, moved: m };
   }
   clear(pos: Vector3, height = 1.76) {
-    if (this.hasMeshes)
-      return !this.world.intersectionWithShape(
-        { x: pos.x, y: pos.y + height / 2 + 0.02, z: pos.z },
-        { x: 0, y: 0, z: 0, w: 1 },
-        new RAPIER.Capsule(Math.max(0.1, height / 2 - 0.35), 0.3),
-        undefined,
-        undefined,
-        this.collider,
+    this.refreshQueries();
+    if (this.hasMeshes || this.structureColliders.size || this.rubble.size) {
+      const center = new Vector3(pos.x, pos.y + height / 2 + 0.02, pos.z);
+      const capsule = new RAPIER.Capsule(Math.max(0.1, height / 2 - 0.35), 0.3);
+      return (
+        !this.rubble.overlaps(center, capsule) &&
+        !this.world.intersectionWithShape(
+          center,
+          { x: 0, y: 0, z: 0, w: 1 },
+          capsule,
+          RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC,
+          WORLD_GROUPS,
+          this.collider,
+        )
       );
+    }
     for (
       let x = Math.floor((pos.x - 0.31) / 16);
       x <= Math.floor((pos.x + 0.31) / 16);
@@ -114,17 +131,20 @@ export class Physics {
     return true;
   }
   ray(o: Vector3, d: Vector3, max = 65) {
+    this.refreshQueries();
     const hit = this.world.castRayAndGetNormal(
       new RAPIER.Ray(o, d),
       max,
       true,
-      undefined,
-      undefined,
+      RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC,
+      WORLD_GROUPS,
       this.collider,
     );
+    const fallen = this.rubble.ray(o, d, hit?.timeOfImpact ?? max);
+    if (fallen) return fallen;
     if (!hit) return null;
     let box = this.boxHandles.get(hit.collider.handle);
-    if (box?.mesh && hit.featureId !== undefined) {
+    if (box?.mesh && !box.piece && hit.featureId !== undefined) {
       const key = hit.collider.handle + ":" + hit.featureId;
       let surface = this.triangleBoxes.get(key);
       if (!surface) {
@@ -154,6 +174,39 @@ export class Physics {
           point: o.clone().addScaledVector(d, hit.timeOfImpact).toArray() as V3,
         }
       : null;
+  }
+  addRubble(c: RubbleCluster) {
+    this.rubble.add(c);
+  }
+  poseRubble(pose: RubblePose) {
+    this.rubble.pose(pose);
+  }
+  removeRubblePart(index: number) {
+    if (this.rubble.remove(index)) this.queriesDirty = true;
+  }
+  clearRubble() {
+    if (this.rubble.clear()) this.queriesDirty = true;
+  }
+  updateStructure(box: Box) {
+    const collider = this.structureColliders.get(box);
+    if (!collider) return;
+    // Clearing query membership takes effect immediately. The old static
+    // bounds can stay in the BVH when hundreds of pieces detach in one tick.
+    collider.setCollisionGroups(box.solid ? WORLD_GROUPS : 0);
+    if (box.solid && box.piece === "door") {
+      collider.setShape(
+        new RAPIER.Cuboid(box.s[0] / 2, box.s[1] / 2, box.s[2] / 2),
+      );
+      collider.setTranslation({ x: box.p[0], y: box.p[1], z: box.p[2] });
+      this.queriesDirty = true;
+    }
+  }
+  private queriesDirty = false;
+  private refreshQueries() {
+    if (this.queriesDirty) {
+      this.world.step();
+      this.queriesDirty = false;
+    }
   }
   dispose() {
     this.world.free();
@@ -419,6 +472,8 @@ export class Controller {
       .addScaledVector(right, input.side);
     if (wish.lengthSq() > 1) wish.normalize();
     const old = this.position.clone();
+    if (this.activeLadder && this.activeLadder.top <= this.activeLadder.bottom)
+      this.activeLadder = null;
     if (this.activeLadder && (jump || hook || input.forward < -0.1)) {
       this.activeLadder = null;
       this.ladderCooldown = 0.4;

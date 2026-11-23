@@ -1,6 +1,7 @@
+import { RubbleRoster } from "./county-rubble-view.ts";
 import { RELEASE_ID } from "./release-info.ts";
 import { RUST_SCALE } from "./rust-boundary.ts";
-import type { V3 } from "./world.ts";
+import type { PieceState, V3 } from "./world.ts";
 export interface RemoteState {
   engaged?: boolean;
   id: string;
@@ -19,6 +20,8 @@ export interface RemoteState {
 }
 export class Network {
   constructor(private storagePrefix = "dc") {}
+  rubble = new RubbleRoster();
+  structures = new Map<number, PieceState>();
   socket: WebSocket | null = null;
   id = "";
   code = "";
@@ -258,6 +261,9 @@ export class Network {
         if (m.type === "welcome" || m.type === "resumed") {
           done = true;
           clearTimeout(timer);
+          this.rubble.reset();
+          for (const c of m.rubble ?? []) this.rubble.add(c);
+          this.structures = new Map(m.structures ?? []);
           this.id = m.id;
           this.code = m.code;
           this.active = true;
@@ -289,6 +295,19 @@ export class Network {
             }),
           );
           return;
+        }
+        if (
+          m.type === "rubble-spawn" ||
+          m.type === "rubble-remove" ||
+          m.type === "rubble-poses"
+        ) {
+          this.rubble.accept(m);
+          if (m.type === "rubble-spawn")
+            for (const i of m.indices) this.structures.set(i, 2);
+        }
+        if (m.type === "structure") {
+          if (m.state) this.structures.set(m.index, m.state);
+          else this.structures.delete(m.index);
         }
         if (m.type === "pong") {
           const rtt = performance.now() - m.time;

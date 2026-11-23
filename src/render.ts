@@ -206,7 +206,10 @@ export class Renderer {
     for (const b of city.boxes) {
       if (
         county &&
-        (b.kind === "building" || b.kind === "road" || b.kind === "county-tree")
+        (b.piece ||
+          b.kind === "building" ||
+          b.kind === "road" ||
+          b.kind === "county-tree")
       )
         continue;
       if (b.kind === "collision" || b.kind === "boundary" || b.mesh) continue;
@@ -810,6 +813,8 @@ export function disposeGroup(group: T.Group) {
     textures = new Set<T.Texture>();
   group.traverse((o) => {
     const m = o as T.Mesh;
+    if ((m as T.InstancedMesh).isInstancedMesh)
+      (m as T.InstancedMesh).dispose();
     if (m.geometry) geos.add(m.geometry);
     if (m.material)
       for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {

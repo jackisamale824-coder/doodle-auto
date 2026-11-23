@@ -14,7 +14,12 @@ import {
   type CityOverrides,
 } from "./city-plan.ts";
 export type V3 = [number, number, number];
+export type PieceState = 0 | 1 | 2;
 export interface Box {
+  piece?: "door" | "wall" | "roof" | "floor" | "furniture" | "fixture";
+  pieceId?: number;
+  buildingId?: string;
+  onPieceState?: (state: PieceState) => void;
   mesh?: TriangleMesh;
   p: V3;
   s: V3;
