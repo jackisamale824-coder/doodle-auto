@@ -1,3 +1,4 @@
+import { COUNTY, countyLadders, parkedCars, type CountyCar } from "./county.ts";
 import { CoverPeek, peekEye, validatedLean } from "./cover-peek.ts";
 import { WeaponClearance } from "./weapon-clearance.ts";
 /// <reference types="vite/client" />
@@ -58,7 +59,49 @@ type Mode = "contract" | "roam" | "online";
 class Game {
   render = new Renderer(canvas);
   audio = new AudioEngine();
-  network = new Network();
+  countySelected =
+    new URLSearchParams(location.search).get("mode") === "county";
+  network = new Network(this.countySelected ? "county" : "dc");
+  cars: CountyCar[] = [];
+  vehicle = -1;
+  carSpeed = 0;
+  nearestCar() {
+    return this.cars.findIndex(
+      (c) =>
+        !c.driver && this.player.position.distanceTo(new T.Vector3(...c.p)) < 5,
+    );
+  }
+  useCar() {
+    const i = this.vehicle >= 0 ? this.vehicle : this.nearestCar();
+    if (i < 0) return;
+    if (this.mode === "online") {
+      this.sendState();
+      this.network.send({ type: "vehicle", index: i });
+    } else this.cars[i].driver = this.vehicle >= 0 ? null : "local";
+    if (this.vehicle >= 0) {
+      const p = this.player,
+        side = new T.Vector3(Math.cos(p.yaw) * 2.2, 0, -Math.sin(p.yaw) * 2.2);
+      this.physics.move(p.position, side, 1.76);
+    }
+  }
+  syncCars() {
+    const mine = this.mode === "online" ? this.network.id : "local";
+    const i = this.cars.findIndex((c) => c.driver === mine);
+    if (this.vehicle !== i) {
+      this.carSpeed = 0;
+      if (i >= 0) {
+        this.player.reset(this.cars[i].p);
+        this.player.yaw = this.cars[i].yaw;
+      }
+      this.vehicle = i;
+    }
+    this.render.countyCars.forEach((model, k) => {
+      const c = this.cars[k];
+      if (!c) return;
+      model.position.fromArray(k === i ? this.player.position.toArray() : c.p);
+      model.rotation.y = k === i ? this.player.yaw : c.yaw;
+    });
+  }
   city!: City;
   physics!: Physics;
   player!: Controller;
@@ -106,7 +149,7 @@ class Game {
   async init() {
     if (new URLSearchParams(location.search).get("level") === "city")
       this.seed = "city:notebook";
-    else this.seed = "rust";
+    else this.seed = this.countySelected ? COUNTY : "rust";
     this.audio.volume = settings.volume;
     this.render.setQuality(settings.quality);
     $<HTMLInputElement>("seed").value = this.seed;
@@ -114,7 +157,32 @@ class Game {
     await this.build(this.seed, 1);
     const tagline = document.querySelector(".tagline");
     if (tagline && !this.city.arena)
-      tagline.textContent = "Procedural city · preserved build";
+      tagline.textContent = this.countySelected
+        ? "SWITCHBACK COUNTY · 30-player open world"
+        : "Procedural city · preserved build";
+    if (this.countySelected) {
+      document.title = "doodlesCreed — Switchback County";
+      $("public-mode").textContent = "PUBLIC COUNTY";
+      document
+        .querySelector(".notebook-footer")
+        ?.insertAdjacentHTML(
+          "beforeend",
+          '<a class="text-button" href="' +
+            new URL("models/CREDITS.txt", location.href).pathname +
+            '">MODEL CREDITS</a>',
+        );
+      document
+        .querySelector(".grapple-only")
+        ?.insertAdjacentHTML(
+          "beforebegin",
+          "<p><b>E beside a car</b> enter or exit · WASD drive · Space brake</p>",
+        );
+      document.querySelector<HTMLAnchorElement>(
+        'a[href="?mode=county"]',
+      )!.outerHTML =
+        '<a class="secondary-button" href="./">RUST · THE OIL YARD</a>';
+      this.paintLobbyOptions();
+    }
     this.state = "menu";
     $("loading").classList.add("hidden");
     $("menu").classList.remove("hidden");
@@ -174,16 +242,23 @@ class Game {
     }
     this.remoteRopes.clear();
     this.city = city;
+    this.cars = seed === COUNTY ? parkedCars() : [];
+    this.vehicle = -1;
+    this.carSpeed = 0;
     this.physics = physics;
     this.seed = seed;
     this.district = district;
     await this.render.build(city);
     if (version !== this.buildVersion) return;
     this.player = new Controller(physics, spawn ?? city.spawns[0]);
-    this.player.ladders = city.arena?.ladders ?? [];
-    this.player.grappleEnabled = !city.arena;
-    this.player.jumpHeightScale = city.arena ? 0.85 : 1;
-    document.body.classList.toggle("no-grapple", !!city.arena);
+    this.player.ladders =
+      city.arena?.ladders ?? (seed === COUNTY ? countyLadders(city.boxes) : []);
+    this.player.grappleEnabled = !city.arena && seed !== COUNTY;
+    this.player.jumpHeightScale = city.arena || seed === COUNTY ? 0.85 : 1;
+    document.body.classList.toggle(
+      "no-grapple",
+      !!city.arena || seed === COUNTY,
+    );
     if (city.arena)
       this.player.yaw = Math.atan2(
         this.player.position.x + 3,
@@ -495,6 +570,10 @@ class Game {
       if (this.state !== "play") return;
       this.keys.add(e.code);
       if (e.repeat) return;
+      if (e.code === "KeyE" && this.seed === COUNTY) {
+        this.useCar();
+        return;
+      }
       if (e.code === "KeyR") this.combat.reload();
       if (/^Digit[1234]$/.test(e.code))
         this.setWeapon(Number(e.code.slice(-1)) - 1);
@@ -553,7 +632,7 @@ class Game {
       this.activeLobby =
         data.lobbies.find(
           (r: { players: number; capacity: number; seed?: string }) =>
-            r.seed !== "switchback-county" &&
+            (r.seed === COUNTY) === this.countySelected &&
             r.players > 0 &&
             r.players < r.capacity,
         ) ?? null;
@@ -569,8 +648,9 @@ class Game {
     if ($<HTMLButtonElement>("play").disabled) return;
     const lobby = this.activeLobby;
     $("duel").classList.toggle("hidden", !this.publicSelected);
-    $("play").innerHTML =
-      "<span>PLAY</span><small>RUST · players + NPCs</small>";
+    $("play").innerHTML = this.countySelected
+      ? "<span>PLAY</span><small>COUNTY · players + NPCs</small>"
+      : "<span>PLAY</span><small>RUST · players + NPCs</small>";
     let join = document.getElementById(
       "existing-lobby",
     ) as HTMLButtonElement | null;
@@ -613,7 +693,7 @@ class Game {
       const welcome = await this.network.connect(
         code ? "join" : mode,
         String(safeRead("dc.name", "Runner")),
-        "",
+        this.countySelected ? COUNTY : "",
         code ?? "",
       );
       this.mode = "online";
@@ -625,7 +705,11 @@ class Game {
       this.updateMission();
       this.resume();
       this.notice(
-        this.network.duel ? "DUEL · REAL PLAYERS ONLY" : "WELCOME TO RUST",
+        this.network.duel
+          ? "DUEL · REAL PLAYERS ONLY"
+          : this.seed === COUNTY
+            ? "SWITCHBACK COUNTY · E TO ENTER A CAR"
+            : "WELCOME TO RUST",
         2,
       );
     } catch (error) {
@@ -665,7 +749,7 @@ class Game {
   }
   showHelp() {
     this.showDialog(
-      `<div class="modal-kicker">A FIELD GUIDE TO THE ROOFTOPS</div><h2>Keep your momentum.</h2><p>${this.city.arena ? "Climb the tower ladders, vault low walls, and use double jumps and air boosts to navigate Rust." : "Every building has an open front door and stairs to the roof. Swing across streets, vault low walls, and run alongside walls in the air."}</p><div class="help-grid"><kbd>W A S D</kbd><span>Move · Mouse to look</span><kbd>SHIFT</kbd><span>Sprint and build speed</span><kbd>SPACE</kbd><span>Jump · Vault · Mantle · Wall jump</span><kbd>C / CTRL</kbd><span>Crouch · Slide while sprinting</span>${this.city.arena ? "" : "<kbd>Q / E</kbd><span>Tap to hook / release · Hold to reel in</span><kbd>SPACE</kbd><span>Launch while grappling</span>"}<kbd>LMB / RMB</kbd><span>Fire / Aim down sights</span><kbd>1 2 3 4 / WHEEL</kbd><span>Rifle · Shotgun · Pistol · Sniper</span><kbd>SPACE / F in air</kbd><span>Double jump / directional boost · one shared charge per landing</span><kbd>R</kbd><span>Reload (unlimited reserve ammo)</span><kbd>ESC / TAB</kbd><span>Pause / Scoreboard</span></div><p>District run: erase six rivals, collect the three gold marks on rooftops, then return to the starting plaza. Free roam is a combat-free practice city.</p><button id="help-done" class="primary-button">GOT IT. LET’S GO. <span>↗</span></button>`,
+      `<div class="modal-kicker">A FIELD GUIDE TO THE ROOFTOPS</div><h2>Keep your momentum.</h2><p>${this.seed === COUNTY ? "Climb building ladders, vault barriers or approach a car and press E to drive. Press E again to get out." : this.city.arena ? "Climb the tower ladders, vault low walls, and use double jumps and air boosts to navigate Rust." : "Every building has an open front door and stairs to the roof. Swing across streets, vault low walls, and run alongside walls in the air."}</p><div class="help-grid"><kbd>W A S D</kbd><span>Move · Mouse to look</span><kbd>SHIFT</kbd><span>Sprint and build speed</span><kbd>SPACE</kbd><span>Jump · Vault · Mantle · Wall jump</span><kbd>C / CTRL</kbd><span>Crouch · Slide while sprinting</span>${!this.player.grappleEnabled ? "" : "<kbd>Q / E</kbd><span>Tap to hook / release · Hold to reel in</span><kbd>SPACE</kbd><span>Launch while grappling</span>"}<kbd>LMB / RMB</kbd><span>Fire / Aim down sights</span><kbd>1 2 3 4 / WHEEL</kbd><span>Rifle · Shotgun · Pistol · Sniper</span><kbd>SPACE / F in air</kbd><span>Double jump / directional boost · one shared charge per landing</span><kbd>R</kbd><span>Reload (unlimited reserve ammo)</span><kbd>ESC / TAB</kbd><span>Pause / Scoreboard</span></div><p>District run: erase six rivals, collect the three gold marks on rooftops, then return to the starting plaza. Free roam is a combat-free practice city.</p><button id="help-done" class="primary-button">GOT IT. LET’S GO. <span>↗</span></button>`,
     );
     $("help-done").onclick = () => this.closeDialog();
   }
@@ -792,6 +876,8 @@ class Game {
     }
   }
   onNetwork(m: any) {
+    if (m.type === "snapshot" && m.cars && this.seed === COUNTY)
+      this.cars = m.cars;
     if (
       m.type === "resumed" &&
       this.mode === "online" &&
@@ -961,7 +1047,34 @@ class Game {
     const action = this.player.action,
       hooks = this.player.hooks;
     const previousBodyY = this.player.position.y;
-    this.player.update(dt, input);
+    if (this.vehicle >= 0) {
+      const p = this.player;
+      this.carSpeed =
+        T.MathUtils.clamp(this.carSpeed + input.forward * 17 * dt, -12, 40) *
+        Math.exp(-dt * (input.jump ? 5 : input.forward ? 0.12 : 0.7));
+      p.yaw -=
+        input.side *
+        1.6 *
+        dt *
+        Math.min(1, Math.abs(this.carSpeed) / 6) *
+        Math.sign(this.carSpeed);
+      p.velocity.set(
+        -Math.sin(p.yaw) * this.carSpeed,
+        0,
+        -Math.cos(p.yaw) * this.carSpeed,
+      );
+      const delta = p.velocity.clone().multiplyScalar(dt);
+      delta.y = -0.12;
+      const result = this.physics.move(p.position, delta, 1.5);
+      if (result.wall) this.carSpeed = 0;
+      p.action = "DRIVING";
+      p.grounded = result.grounded;
+      this.aiming = false;
+      if (this.mode !== "online") {
+        this.cars[this.vehicle].p = p.position.toArray();
+        this.cars[this.vehicle].yaw = p.yaw;
+      }
+    } else this.player.update(dt, input);
     const nearGround =
       this.player.velocity.y <= 0 &&
       !!this.physics.ray(
@@ -998,7 +1111,8 @@ class Game {
       this.audio.tone(260, 0.1, "sine", 0.08, 450);
       if (this.mode !== "online") this.combat.score += 10;
     }
-    if (this.firing && !this.player.traversing) this.combat.fire();
+    if (this.vehicle < 0 && this.firing && !this.player.traversing)
+      this.combat.fire();
     this.combat.update(dt, this.time, this.render.camera);
     if (this.player.grounded) this.audio.step(this.time, this.player.speed);
     if (
@@ -1016,7 +1130,12 @@ class Game {
           this.player.position.distanceTo(new T.Vector3(...p)) < 2.3
         ) {
           this.collected.add(i);
-          this.render.beaconMeshes[i].visible = false;
+          const mark =
+            this.render.beaconMeshes[i] ??
+            this.render.cityGroup.children.filter(
+              (o) => o.name === "county-mark",
+            )[i];
+          if (mark) mark.visible = false;
           this.combat.score += 300;
           this.combat.hp = Math.min(100, this.combat.hp + 25);
           this.audio.collect();
@@ -1041,11 +1160,11 @@ class Game {
       if (this.rope) this.rope.visible = false;
       const t = settings.reduced ? 0 : this.time * 0.025;
       cam.position.set(
-        46 + Math.sin(t) * 5,
+        (this.seed === COUNTY ? -295 : 46) + Math.sin(t) * 5,
         this.city.arena ? 26 : 29,
         50 + Math.cos(t) * 4,
       );
-      cam.lookAt(-4, 3, 0);
+      cam.lookAt(this.seed === COUNTY ? -320 : -4, 3, 0);
       cam.fov = 58;
       cam.updateProjectionMatrix();
       this.weaponMesh.visible = false;
@@ -1087,13 +1206,20 @@ class Game {
         peek * 0.12,
       "YXZ",
     );
+    if (this.vehicle >= 0) {
+      cam.position
+        .copy(p.position)
+        .add(new T.Vector3(Math.sin(p.yaw) * 6, 3.1, Math.cos(p.yaw) * 6));
+      cam.lookAt(p.position.clone().add(new T.Vector3(0, 1, 0)));
+    }
     cam.fov = v.fov;
     cam.updateProjectionMatrix();
     const scoped =
       this.combat.weapon === 3 ? T.MathUtils.smoothstep(v.ads, 0.65, 0.98) : 0;
     $("sniper-scope").style.opacity = String(scoped);
     $("crosshair").style.opacity = String(1 - scoped);
-    this.weaponMesh.visible = this.combat.hp > 0 && scoped < 0.98;
+    this.weaponMesh.visible =
+      this.vehicle < 0 && this.combat.hp > 0 && scoped < 0.98;
     const reloadProgress =
       this.combat.reloadTime > 0
         ? 1 - this.combat.reloadTime / WEAPONS[this.combat.weapon].reload
@@ -1152,6 +1278,7 @@ class Game {
       if (!model) continue;
       model.group.visible =
         state.hp > 0 &&
+        !this.cars.some((c) => c.driver === state.id) &&
         (!state.npc ||
           this.player.position.distanceTo(new T.Vector3(...state.p)) <=
             NPC_RADIUS);
@@ -1266,6 +1393,17 @@ class Game {
       c.arc(map(h.position[0]), map(h.position[2]), 2, 0, Math.PI * 2);
       c.fill();
     }
+    if (this.seed === COUNTY) {
+      c.fillStyle = "#222bc340";
+      for (const box of this.city.boxes)
+        if (box.kind === "building")
+          c.fillRect(
+            map(box.p[0] - box.s[0] / 2),
+            map(box.p[2] - box.s[2] / 2),
+            box.s[0] * scale,
+            box.s[2] * scale,
+          );
+    }
     const p = this.player.position;
     c.save();
     c.translate(map(p.x), map(p.z));
@@ -1279,6 +1417,17 @@ class Game {
     c.closePath();
     c.fill();
     c.restore();
+    if (this.seed === COUNTY) {
+      $("neighborhood-label").textContent =
+        Math.abs(p.z) > 145
+          ? "Highlands"
+          : p.x < -160
+            ? "Westhaven"
+            : p.x > 160
+              ? "Eastbank"
+              : "County Highway";
+      return;
+    }
     const nearest = this.city.buildings.reduce((a, b) =>
       Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z)
         ? b
@@ -1309,7 +1458,12 @@ class Game {
     $("health-fill").style.backgroundColor =
       c.hp < 30 ? "#d23c4530" : "transparent";
     $("speed").textContent = String(Math.round(p.speed));
-    $("action").textContent = p.action;
+    $("action").textContent =
+      this.vehicle >= 0
+        ? "DRIVING · E TO EXIT"
+        : this.seed === COUNTY && this.nearestCar() >= 0
+          ? "E · ENTER CAR"
+          : p.action;
     $("speed-fill").style.width = Math.min(100, (p.speed / 35) * 100) + "%";
     $("ammo").textContent = String(c.mags[c.weapon]).padStart(2, "0");
     $("mag-size").textContent = String(gun.mag);
@@ -1393,6 +1547,7 @@ class Game {
       this.fpsTime = 0;
     }
     if (this.state !== "loading") {
+      if (this.seed === COUNTY) this.syncCars();
       this.accumulator += dt;
       let count = 0;
       while (this.accumulator >= 1 / 120 && count++ < 6) {
@@ -1423,14 +1578,10 @@ interface $Marker {
   label: string;
   icon: string;
 }
-if (new URLSearchParams(location.search).get("mode") === "county") {
-  void import("./drive.ts").then((m) => m.startDrive());
-} else {
-  const game = new Game();
-  if (import.meta.env.DEV) (window as any).__doodles = game;
-  game.init().catch((e) => {
-    console.error(e);
-    $("loading").innerHTML =
-      '<strong>We couldn’t draw this district.</strong><span>Enable WebGL in your browser, then refresh to try again.</span><button onclick="location.reload()">TRY AGAIN</button>';
-  });
-}
+const game = new Game();
+if (import.meta.env.DEV) (window as any).__doodles = game;
+game.init().catch((e) => {
+  console.error(e);
+  $("loading").innerHTML =
+    '<strong>We couldn’t draw this district.</strong><span>Enable WebGL in your browser, then refresh to try again.</span><button onclick="location.reload()">TRY AGAIN</button>';
+});

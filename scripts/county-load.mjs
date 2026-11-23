@@ -30,7 +30,10 @@ try {
         }
         if (m.type === "snapshot") {
           client.snapshots++;
-          client.maxDrivers = Math.max(client.maxDrivers, m.players.length);
+          client.maxDrivers = Math.max(
+            client.maxDrivers,
+            m.players.filter((p) => !p.npc).length,
+          );
         }
         if (m.type === "correction") client.corrected = true;
       });

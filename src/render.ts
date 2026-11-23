@@ -174,8 +174,11 @@ export class Renderer {
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
   }
+  countyCars: T.Mesh[] = [];
   async build(city: City) {
-    this.inkPost.uniforms.groundAware.value = city.arena ? 1 : 0;
+    this.countyCars = [];
+    this.inkPost.uniforms.groundAware.value =
+      city.arena || city.seed === "switchback-county" ? 1 : 0;
     disposeGroup(this.cityGroup);
     this.cityGroup = new T.Group();
     this.scene.add(this.cityGroup);
@@ -352,6 +355,12 @@ export class Renderer {
       this.blimpMeshes.push({ model: g, path });
     }
     unit.dispose();
+    if (city.seed === "switchback-county") {
+      this.countyCars = await (
+        await import("./county-render.ts")
+      ).drawCounty(city, this.cityGroup);
+      return;
+    }
     if (city.arena) {
       await this.buildArena(city);
       return;
@@ -741,7 +750,9 @@ export class Renderer {
           center[0] - this.camera.position.x,
           center[1] - this.camera.position.z,
         );
-        child.visible = child.userData.farCenter ? dist > 145 : dist <= 145;
+        child.visible = child.userData.farCenter
+          ? dist > 145
+          : dist <= (child.userData.detailRange ?? 145);
       } else if (child.position.x || child.position.z)
         child.visible =
           Math.hypot(

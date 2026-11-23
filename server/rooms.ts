@@ -1,4 +1,4 @@
-import { COUNTY, elevation } from "../src/county.ts";
+import { COUNTY, parkedCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
 import { RELOAD_SECONDS } from "../src/weapon-balance.ts";
@@ -50,6 +50,7 @@ export interface ReserveRequest {
   roomCode?: string;
 }
 interface Room {
+  cars?: CountyCar[];
   roomId: string;
   code: string;
   seed: string;
@@ -213,11 +214,9 @@ export class Rooms {
           : String(request.seed || "paper").slice(0, 40);
       const city = this.levelFactory(seed),
         spatial = new Spatial(city.boxes);
-      const ai =
-        request.type === "public" && seed !== COUNTY
-          ? new Npcs(city, spatial)
-          : null;
+      const ai = request.type === "public" ? new Npcs(city, spatial) : null;
       room = {
+        cars: seed === COUNTY ? parkedCars() : undefined,
         roomId: randomUUID(),
         code,
         seed,
@@ -437,8 +436,12 @@ export class Rooms {
           send(ws, { type: "ammo", mags: p.mags, reloadRemaining: 0 });
         }
       }
+      for (const car of r.cars ?? [])
+        if (car.driver && !humans.some((p) => p.id === car.driver && p.hp > 0))
+          car.driver = null;
       this.broadcast(r, {
         type: "snapshot",
+        cars: this.tickCount % 3 === 0 ? r.cars : undefined,
         time: now,
         wave:
           r.ai?.waves.snapshot(r.npcs.filter((p) => p.hp > 0).length) ?? null,
@@ -523,6 +526,7 @@ export class Rooms {
           type: "snapshot",
           time: m.time,
           wave: m.wave,
+          cars: m.cars,
           actors: m.players.map((p: any) => [
             ...p.p,
             p.yaw,
@@ -546,6 +550,8 @@ export class Rooms {
   leave(ws: WebSocket) {
     const r = this.memberships.get(ws);
     if (!r) return;
+    const driver = r.players.get(ws)?.id;
+    for (const c of r.cars ?? []) if (c.driver === driver) c.driver = null;
     r.players.delete(ws);
     this.memberships.delete(ws);
     const session = this.sessions.bySocket(ws);
@@ -658,11 +664,9 @@ export class Rooms {
             m.type === "public" && seed !== COUNTY
               ? this.publicWorld!.spatial
               : new Spatial(city.boxes);
-        const ai =
-          m.type === "public" && seed !== COUNTY
-            ? new Npcs(city, spatial)
-            : null;
+        const ai = m.type === "public" ? new Npcs(city, spatial) : null;
         r = {
+          cars: seed === COUNTY ? parkedCars() : undefined,
           roomId: randomUUID(),
           code,
           seed,
@@ -755,7 +759,19 @@ export class Rooms {
       this.leave(ws);
       return;
     }
-    if (r.seed === COUNTY && m.type !== "state") return;
+    const vehicle = r.cars?.find((c) => c.driver === p.id);
+    if (m.type === "vehicle" && r.cars && p.hp > 0) {
+      if (vehicle) vehicle.driver = null;
+      else {
+        const car = r.cars[m.index];
+        if (car && !car.driver && distance(car.p, p.p) < 5) {
+          car.driver = p.id;
+          p.p = [...car.p];
+        }
+      }
+      return;
+    }
+    if (vehicle && m.type === "fire") return;
     if (m.type === "state" && p.hp > 0) {
       if (
         !validVector(m.p) ||
@@ -772,8 +788,6 @@ export class Rooms {
       p.lastMove = now;
       if (
         (r.city.arena && !insideRust(m.p, 0.25)) ||
-        (r.seed === COUNTY &&
-          Math.abs(m.p[1] - elevation(m.p[0], m.p[2])) > 0.5) ||
         displacement > p.moveCredit ||
         !r.spatial.movement(p.p, m.p, p.height) ||
         m.p[1] < -5 ||
@@ -790,6 +804,10 @@ export class Rooms {
       }
       p.moveCredit -= displacement;
       p.p = m.p;
+      if (vehicle) {
+        vehicle.p = [...p.p];
+        vehicle.yaw = m.yaw;
+      }
       p.yaw = m.yaw;
       p.pitch = Math.max(-1.5, Math.min(1.5, m.pitch));
       const nextWeapon = [0, 1, 2, 3].includes(m.weapon) ? m.weapon : 0;
