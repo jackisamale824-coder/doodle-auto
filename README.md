@@ -144,3 +144,14 @@ Air actions share one charge per landing: press **Space** again in the air for a
 Solo district runs and public multiplayer cities now use shared wave settings: 4 enemies in wave 1, 7 in wave 2, 10 in wave 3, adding 3 per wave up to 40. Clear all remaining enemies to start a six-second break; later waves feed reinforcements in faster, with at most 16 NPCs alive simultaneously. Reaction time, movement speed, attack rate and damage increase within caps. Shooters flank and retreat when wounded; later solo waves lead projectile shots. Free roam stays combat-free and private PvP rooms retain their existing mode. The HUD shows wave number, enemies remaining and the next-wave countdown.
 
 NPC presence is bounded to a 100 m player radius. Solo NPCs outside it are removed and requeued; multiplayer NPCs remain active while near any living player, with distant NPC models hidden per client. Replacement spawns use clear navigation positions 20–60 m from a player, at least 20 m from every player, separated from other NPCs, and behind cover across the full body silhouette for every player within rendering range. If no hidden position is valid, spawning retries after 0.5 seconds. Requeuing does not award kills or change a wave's remaining-enemy total.
+
+### Switchback County
+
+Choose **Switchback County** from the main menu, or open `/?mode=county`.
+Each driver gets a car. Follow the highway between Westhaven and Eastbank or
+head into the highlands. Use W/S to accelerate or reverse, A/D to steer and
+Space to brake. A shared free-drive room holds 30 drivers and matchmaking
+opens another when it fills. Rust remains available from the main menu.
+
+To exercise capacity on an empty local development server, run
+`COUNTY_TEST_WS=ws://127.0.0.1:4173/ws node scripts/county-load.mjs`.

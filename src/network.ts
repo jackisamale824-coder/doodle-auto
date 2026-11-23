@@ -17,6 +17,7 @@ export interface RemoteState {
   lean?: number;
 }
 export class Network {
+  constructor(private storagePrefix = "dc") {}
   socket: WebSocket | null = null;
   id = "";
   code = "";
@@ -49,15 +50,22 @@ export class Network {
   reconnecting = false;
   private read(key: string) {
     try {
-      return JSON.parse(sessionStorage.getItem(key) || "null");
+      return JSON.parse(
+        sessionStorage.getItem(key.replace(/^dc/, this.storagePrefix)) ||
+          "null",
+      );
     } catch {
       return null;
     }
   }
   private save(key: string, value: any) {
     try {
-      if (value) sessionStorage.setItem(key, JSON.stringify(value));
-      else sessionStorage.removeItem(key);
+      if (value)
+        sessionStorage.setItem(
+          key.replace(/^dc/, this.storagePrefix),
+          JSON.stringify(value),
+        );
+      else sessionStorage.removeItem(key.replace(/^dc/, this.storagePrefix));
     } catch {
       /* Private browsing may disable storage. */
     }
@@ -73,6 +81,7 @@ export class Network {
       !url.pathname.startsWith(`/releases/${record.releaseId}/`)
     )
       throw Error("This match is unavailable. Please try again.");
+    if (this.storagePrefix === "county") url.searchParams.set("mode", "county");
     location.replace(url.href);
     return new Promise<never>(() => {});
   }

@@ -552,8 +552,10 @@ class Game {
       const data = await response.json();
       this.activeLobby =
         data.lobbies.find(
-          (r: { players: number; capacity: number }) =>
-            r.players > 0 && r.players < r.capacity,
+          (r: { players: number; capacity: number; seed?: string }) =>
+            r.seed !== "switchback-county" &&
+            r.players > 0 &&
+            r.players < r.capacity,
         ) ?? null;
       if (this.publicSelected && this.state === "menu")
         this.paintLobbyOptions();
@@ -1421,10 +1423,14 @@ interface $Marker {
   label: string;
   icon: string;
 }
-const game = new Game();
-if (import.meta.env.DEV) (window as any).__doodles = game;
-game.init().catch((e) => {
-  console.error(e);
-  $("loading").innerHTML =
-    '<strong>We couldn’t draw this district.</strong><span>Enable WebGL in your browser, then refresh to try again.</span><button onclick="location.reload()">TRY AGAIN</button>';
-});
+if (new URLSearchParams(location.search).get("mode") === "county") {
+  void import("./drive.ts").then((m) => m.startDrive());
+} else {
+  const game = new Game();
+  if (import.meta.env.DEV) (window as any).__doodles = game;
+  game.init().catch((e) => {
+    console.error(e);
+    $("loading").innerHTML =
+      '<strong>We couldn’t draw this district.</strong><span>Enable WebGL in your browser, then refresh to try again.</span><button onclick="location.reload()">TRY AGAIN</button>';
+  });
+}

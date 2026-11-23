@@ -1,3 +1,4 @@
+import { COUNTY, elevation } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
 import { RELOAD_SECONDS } from "../src/weapon-balance.ts";
@@ -181,7 +182,8 @@ export class Rooms {
       }
     }
     const available = (r: Room) =>
-      r.players.size + this.admissions.count(r.roomId) < (r.public ? 16 : 8);
+      r.players.size + this.admissions.count(r.roomId) <
+      (r.seed === COUNTY ? 30 : r.public ? 16 : 8);
     let room = request.roomId
       ? [...this.rooms.values()].find((r) => r.roomId === request.roomId)
       : request.type === "join"
@@ -189,7 +191,10 @@ export class Rooms {
         : request.type === "public" || request.type === "duel"
           ? [...this.rooms.values()].find(
               (r) =>
-                (request.type === "public" ? r.public : r.duel) && available(r),
+                (request.type === "public"
+                  ? r.public &&
+                    (request.seed === COUNTY) === (r.seed === COUNTY)
+                  : r.duel) && available(r),
             )
           : undefined;
     if (!room && (request.type === "join" || request.roomId))
@@ -202,11 +207,16 @@ export class Rooms {
         throw new Error("A unique directory room code is required.");
       const seed =
         request.type === "public"
-          ? "public-city-v1"
+          ? request.seed === COUNTY
+            ? COUNTY
+            : "public-city-v1"
           : String(request.seed || "paper").slice(0, 40);
       const city = this.levelFactory(seed),
         spatial = new Spatial(city.boxes);
-      const ai = request.type === "public" ? new Npcs(city, spatial) : null;
+      const ai =
+        request.type === "public" && seed !== COUNTY
+          ? new Npcs(city, spatial)
+          : null;
       room = {
         roomId: randomUUID(),
         code,
@@ -253,7 +263,7 @@ export class Rooms {
         public: r.public,
         duel: r.duel,
         players: r.players.size,
-        capacity: r.public ? 16 : 8,
+        capacity: r.seed === COUNTY ? 30 : r.public ? 16 : 8,
       })),
       tickCount: this.tickCount,
       tickP99Ms:
@@ -362,11 +372,12 @@ export class Rooms {
       .filter((r) => r.public || r.duel)
       .map((r) => ({
         code: r.code,
+        seed: r.seed,
         mode: r.duel ? "duel" : "play",
         players: [...r.players.keys()].filter(
           (ws) => ws.readyState === WebSocket.OPEN,
         ).length,
-        capacity: r.public ? 16 : 8,
+        capacity: r.seed === COUNTY ? 30 : r.public ? 16 : 8,
       }))
       .filter((r) => r.players > 0)
       .sort((a, b) => b.players - a.players);
@@ -379,7 +390,8 @@ export class Rooms {
       if (!safe.length) throw new Error("Rust has no safe spawn points");
       return [...safe[index % safe.length]];
     }
-    if (!r.public) return [...r.city.spawns[index % r.city.spawns.length]];
+    if (!r.public || r.seed === COUNTY)
+      return [...r.city.spawns[index % r.city.spawns.length]];
     const center = r.city.spawns[0],
       near = r.city.streetNodes
         .filter((i) => distance(r.city.nodes[i], center) > 7)
@@ -602,7 +614,9 @@ export class Rooms {
         r = [...this.rooms.values()].find((r) =>
           m.type === "duel"
             ? r.duel && r.players.size < 8
-            : r.public && r.players.size < 16,
+            : r.public &&
+              (r.seed === COUNTY) === (m.seed === COUNTY) &&
+              r.players.size < (r.seed === COUNTY ? 30 : 16),
         );
       if (
         m.type === "create" ||
@@ -628,21 +642,26 @@ export class Rooms {
         } while (this.rooms.has(code));
         const seed =
           m.type === "public"
-            ? "public-city-v1"
+            ? m.seed === COUNTY
+              ? COUNTY
+              : "public-city-v1"
             : String(m.seed || "paper").slice(0, 40);
-        if (m.type === "public" && !this.publicWorld) {
+        if (m.type === "public" && seed !== COUNTY && !this.publicWorld) {
           const city = this.levelFactory(seed);
           this.publicWorld = { city, spatial: new Spatial(city.boxes) };
         }
         const city =
-            m.type === "public"
+            m.type === "public" && seed !== COUNTY
               ? this.publicWorld!.city
               : this.levelFactory(seed),
           spatial =
-            m.type === "public"
+            m.type === "public" && seed !== COUNTY
               ? this.publicWorld!.spatial
               : new Spatial(city.boxes);
-        const ai = m.type === "public" ? new Npcs(city, spatial) : null;
+        const ai =
+          m.type === "public" && seed !== COUNTY
+            ? new Npcs(city, spatial)
+            : null;
         r = {
           roomId: randomUUID(),
           code,
@@ -666,7 +685,7 @@ export class Rooms {
         });
         return;
       }
-      if (r.players.size >= (r.public ? 16 : 8)) {
+      if (r.players.size >= (r.seed === COUNTY ? 30 : r.public ? 16 : 8)) {
         send(ws, { type: "error", message: "That room is full (8 players)." });
         return;
       }
@@ -736,6 +755,7 @@ export class Rooms {
       this.leave(ws);
       return;
     }
+    if (r.seed === COUNTY && m.type !== "state") return;
     if (m.type === "state" && p.hp > 0) {
       if (
         !validVector(m.p) ||
@@ -752,6 +772,8 @@ export class Rooms {
       p.lastMove = now;
       if (
         (r.city.arena && !insideRust(m.p, 0.25)) ||
+        (r.seed === COUNTY &&
+          Math.abs(m.p[1] - elevation(m.p[0], m.p[2])) > 0.5) ||
         displacement > p.moveCredit ||
         !r.spatial.movement(p.p, m.p, p.height) ||
         m.p[1] < -5 ||
