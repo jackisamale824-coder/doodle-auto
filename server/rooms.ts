@@ -1,4 +1,11 @@
 import {
+  FISTS,
+  PUNCHES,
+  nextPunch,
+  punchHit,
+  type Punch,
+} from "../src/fists.ts";
+import {
   CountyDriveWorld,
   DRIVE_DT,
   type DrivePose,
@@ -41,6 +48,9 @@ export interface PlayerState {
   anchor: V3 | null;
   lastMove: number;
   lastShot: number;
+  swing?: Punch;
+  punchPending?: boolean;
+  punchReadyAt?: number;
   deadAt: number;
   shieldUntil: number;
   mags: number[];
@@ -496,7 +506,9 @@ export class Rooms {
       reloadRemaining: Math.max(0, p.reloadUntil - Date.now()),
       fireRemaining: Math.max(
         0,
-        p.lastShot + FIRE_INTERVAL_MS[p.weapon] - Date.now(),
+        (p.weapon === FISTS
+          ? (p.punchReadyAt ?? 0)
+          : p.lastShot + FIRE_INTERVAL_MS[p.weapon]) - Date.now(),
       ),
       sequence: 0,
       wave: r.ai?.waves.snapshot(r.npcs.filter((p) => p.hp > 0).length) ?? null,
@@ -641,6 +653,50 @@ export class Rooms {
       for (const [ws, p] of r.players) {
         if (p.ready === false && now - p.lastMove > 60000)
           ws.close(1008, "Loading timeout");
+        if (
+          p.punchPending &&
+          p.swing &&
+          now >= p.swing.start + PUNCHES[p.swing.move].contact * 1000
+        ) {
+          p.punchPending = false;
+          if (
+            p.hp > 0 &&
+            p.ready !== false &&
+            p.weapon === FISTS &&
+            ws.readyState === WebSocket.OPEN &&
+            !r.cars?.some((c) => c.driver === p.id)
+          ) {
+            const actors = [...humans, ...r.npcs].filter(
+              (a) =>
+                a !== p &&
+                a.hp > 0 &&
+                now >= a.shieldUntil &&
+                a.ready !== false,
+            );
+            const result = punchHit(
+              [p.p[0], p.p[1] + p.height - 0.16, p.p[2]],
+              p.yaw,
+              p.pitch,
+              p.swing.move,
+              actors,
+              r.spatial.ray.bind(r.spatial),
+            );
+            if (result) {
+              const { actor, hit } = result,
+                damage = PUNCHES[p.swing.move].damage;
+              this.hurt(r, actor, p, damage, hit.region, hit.side);
+              send(ws, {
+                type: "hit",
+                melee: true,
+                head: hit.head,
+                region: hit.region,
+                damage,
+                kill: actor.hp === 0,
+                npc: !!actor.npc,
+              });
+            }
+          }
+        }
         if (p.reloadUntil && now >= p.reloadUntil) {
           p.mags[p.reloadWeapon] = [30, 8, 14, 5][p.reloadWeapon];
           p.reloadUntil = 0;
@@ -670,6 +726,10 @@ export class Rooms {
           kills: p.kills,
           deaths: p.deaths,
           weapon: p.weapon,
+          swing:
+            p.weapon === FISTS && p.swing && now < (p.punchReadyAt ?? 0)
+              ? p.swing
+              : undefined,
           height: p.height,
           lean: p.lean ?? 0,
           anchor: p.anchor,
@@ -796,9 +856,10 @@ export class Rooms {
             p.anchor,
             p.lean ?? 0,
             p.engaged ? 1 : 0,
-            ...(r.citizens
+            ...(r.citizens || p.swing
               ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
               : []),
+            ...(p.swing ? [p.swing] : []),
           ]),
         });
         ws.send(compact);
@@ -1066,6 +1127,7 @@ export class Rooms {
           !car.driver &&
           distance(car.p, p.p) < 5
         ) {
+          p.punchPending = false;
           car.driver = p.id;
           r.wreckage?.prepare();
           this.drivers.delete(p);
@@ -1142,8 +1204,12 @@ export class Rooms {
       }
       p.yaw = m.yaw;
       p.pitch = Math.max(-1.5, Math.min(1.5, m.pitch));
-      const nextWeapon = [0, 1, 2, 3].includes(m.weapon) ? m.weapon : 0;
-      if (nextWeapon !== p.weapon) p.reloadUntil = 0;
+      const nextWeapon = [0, 1, 2, 3, FISTS].includes(m.weapon) ? m.weapon : 0;
+      if (nextWeapon !== p.weapon) {
+        p.reloadUntil = 0;
+        p.swing = undefined;
+        p.punchPending = false;
+      }
       p.weapon = nextWeapon;
       p.height = Number.isFinite(m.height)
         ? Math.max(1.08, Math.min(1.76, m.height))
@@ -1164,6 +1230,7 @@ export class Rooms {
     }
     if (
       m.type === "reload" &&
+      p.weapon !== FISTS &&
       p.hp > 0 &&
       !p.reloadUntil &&
       p.mags[p.weapon] < [30, 8, 14, 5][p.weapon]
@@ -1185,6 +1252,9 @@ export class Rooms {
       }
       p.p = this.spawn(r, Math.floor(Math.random() * 16));
       p.hp = 100;
+      p.swing = undefined;
+      p.punchPending = false;
+      p.punchReadyAt = 0;
       if (r.citizens) p.notoriety = 0;
       p.mags = [30, 8, 14, 5];
       p.reloadUntil = 0;
@@ -1194,10 +1264,34 @@ export class Rooms {
       send(ws, { type: "respawn", p: p.p });
       return;
     }
-    if (m.type === "fire" && p.hp > 0 && p.ready !== false) {
+    if (
+      m.type === "punch" &&
+      p.weapon === FISTS &&
+      p.hp > 0 &&
+      p.ready !== false &&
+      !vehicle &&
+      !p.reloadUntil
+    ) {
+      const now = Date.now();
+      // Allow small packet timing variations without shortening the server's attack cycle.
+      const ready = p.punchReadyAt ?? 0;
+      if (p.punchPending || now + 45 < ready || now - p.lastShot < 110) return;
+      const swing = nextPunch(p.swing, Math.max(now, ready));
+      p.swing = swing;
+      p.punchPending = true;
+      p.punchReadyAt = swing.start + PUNCHES[swing.move].duration * 1000;
+      return;
+    }
+    if (
+      m.type === "fire" &&
+      p.weapon !== FISTS &&
+      p.hp > 0 &&
+      p.ready !== false
+    ) {
       const now = Date.now(),
         damages = [24, 14, 35, 90];
       if (
+        now < (p.punchReadyAt ?? 0) ||
         now - p.lastShot < FIRE_INTERVAL_MS[p.weapon] ||
         p.reloadUntil ||
         p.mags[p.weapon] <= 0

@@ -1,3 +1,4 @@
+import { FISTS, PUNCHES, nextPunch, type Punch } from "./fists.ts";
 import { combatStep, shotDelay } from "./enemy-movement.ts";
 import { RELOAD_SECONDS } from "./weapon-balance.ts";
 import { actorHit, HIT_MULTIPLIER, type HitRegion } from "./actor-hit.ts";
@@ -51,6 +52,16 @@ export const WEAPONS = [
     reload: RELOAD_SECONDS[3],
     spread: 0,
   },
+  {
+    name: "FISTS",
+    tag: "05 / MELEE",
+    mag: 0,
+    interval: PUNCHES[0].duration,
+    damage: PUNCHES[0].damage,
+    pellets: 0,
+    reload: 0,
+    spread: 0,
+  },
 ];
 interface Bot {
   id: number;
@@ -90,6 +101,18 @@ export class Combat {
   score = 0;
   weapon = 0;
   mags = WEAPONS.map((g) => g.mag);
+  punch?: Punch;
+  private punchClock = 0;
+  private punchPending = false;
+  get punchAge() {
+    return this.punch ? (this.punchClock - this.punch.start) / 1000 : 1;
+  }
+  onPunch = () => {};
+  onPunchContact = (_move: number) => {};
+  cancelPunch() {
+    this.punchPending = false;
+    this.punch = undefined;
+  }
   cooldown = 0;
   reloadTime = 0;
   hurt = 0;
@@ -214,12 +237,14 @@ export class Combat {
       i === this.weapon
     )
       return false;
+    this.cancelPunch();
     this.weapon = i;
     this.reloadTime = 0;
     this.audio.tone(250, 0.05, "triangle");
     return true;
   }
   reload() {
+    if (this.weapon === FISTS) return;
     if (
       this.reloadTime > 0 ||
       this.mags[this.weapon] === WEAPONS[this.weapon].mag
@@ -262,6 +287,14 @@ export class Combat {
   shotOrigin = () => this.player.eye;
   fire() {
     if (this.hp <= 0 || this.cooldown > 0 || this.reloadTime > 0) return false;
+    if (this.weapon === FISTS) {
+      this.punch = nextPunch(this.punch, this.punchClock);
+      this.cooldown = PUNCHES[this.punch.move].duration;
+      this.punchPending = true;
+      this.audio.noise(0.065, 0.07);
+      this.onPunch();
+      return true;
+    }
     const gun = WEAPONS[this.weapon];
     if (this.mags[this.weapon] <= 0) {
       this.reload();
@@ -439,6 +472,16 @@ export class Combat {
     return [];
   }
   update(dt: number, time: number, camera: T.Camera) {
+    this.punchClock += dt * 1000;
+    if (
+      this.punchPending &&
+      this.punch &&
+      this.punchAge >= PUNCHES[this.punch.move].contact
+    ) {
+      this.punchPending = false;
+      if (!this.online && this.hp > 0 && this.weapon === FISTS)
+        this.onPunchContact(this.punch.move);
+    }
     this.cooldown -= dt;
     this.hurt = Math.max(0, this.hurt - dt * 1.5);
     this.hitTime -= dt;

@@ -1,3 +1,5 @@
+import { FISTS, PUNCHES, punchHit } from "./fists.ts";
+import { buildFists, animateFists } from "./fist-view.ts";
 import { Spatial } from "../server/spatial.ts";
 import { CountyCitizens, type CountyCitizen } from "./county-citizens.ts";
 import { CountyRagdolls } from "./county-ragdoll.ts";
@@ -332,6 +334,7 @@ class Game {
         this.entryPosition.copy(this.render.camera.position);
         this.entryRotation.copy(this.render.camera.quaternion);
         this.entryTime = performance.now();
+        this.combat.cancelPunch();
         this.firing = this.aiming = false;
         this.player.reset(this.cars[i].p);
         this.cockpitYaw = 0;
@@ -698,6 +701,58 @@ class Game {
         ? muzzle.getWorldPosition(new T.Vector3())
         : this.player.eye.clone().addScaledVector(this.player.forward, 0.5);
     };
+    this.combat.onPunch = () => {
+      if (this.mode === "online") {
+        this.sendState();
+        this.network.send({ type: "punch" });
+      }
+    };
+    this.combat.onPunchContact = (move) => {
+      if (this.vehicle >= 0 || this.seatPending || this.player.traversing)
+        return;
+      const amount = PUNCHES[move].damage,
+        p = this.player;
+      const targets = [
+        ...(this.citizens?.actors ?? [])
+          .filter((a) => a.hp > 0)
+          .map((a) => ({ ...a, citizen: a, bot: undefined })),
+        ...this.combat.bots
+          .filter((b) => b.hp > 0)
+          .map((b) => ({
+            p: b.p.toArray() as V3,
+            yaw: b.model.group.rotation.y - Math.PI,
+            height: 1.76,
+            bot: b,
+            citizen: undefined,
+          })),
+      ];
+      const result = punchHit(
+        p.eye.toArray(),
+        p.yaw,
+        p.pitch,
+        move,
+        targets,
+        (o, d, n) =>
+          this.physics.ray(new T.Vector3(...o), new T.Vector3(...d), n),
+      );
+      if (!result) return;
+      const { actor, hit } = result;
+      const model = actor.bot?.model ?? this.remotes.get(actor.citizen!.id);
+      model?.react(hit.region, hit.side, amount);
+      if (actor.citizen) this.injureCitizen(actor.citizen, amount);
+      else if (actor.bot) {
+        actor.bot.hp = Math.max(0, actor.bot.hp - amount);
+        if (!actor.bot.hp) {
+          this.combat.kills++;
+          this.combat.score += 100;
+          actor.bot.model.fall(0);
+        }
+      }
+      this.combat.hitRegion = hit.region;
+      this.combat.hitTime = 0.16;
+      this.audio.tone(125, 0.09, "triangle", 0.26, 48);
+      if ((actor.citizen ?? actor.bot)!.hp <= 0) this.audio.npcEliminated();
+    };
     this.combat.onFire = () => {
       this.viewMotion.shot(this.combat.weapon);
       if (this.citizens) this.notoriety = notorietyAfter(this.notoriety, 2);
@@ -720,7 +775,9 @@ class Game {
   setWeapon(i: number, force = false) {
     if (!force && !this.combat.switchWeapon(i)) return;
     disposeGroup(this.weaponMesh);
-    this.weaponMesh = buildWeapon(i);
+    this.weaponMesh = i === FISTS ? buildFists() : buildWeapon(i);
+    $("ammo-row").classList.toggle("hidden", i === FISTS);
+    if (i === FISTS) this.aiming = false;
     this.render.camera.add(this.weaponMesh);
     $("weapon-name").textContent = WEAPONS[i].name;
     [...$("weapon-slots").children].forEach((el, n) =>
@@ -1032,7 +1089,7 @@ class Game {
         return;
       }
       if (e.code === "KeyR") this.combat.reload();
-      if (/^Digit[1234]$/.test(e.code))
+      if (/^Digit[12345]$/.test(e.code))
         this.setWeapon(Number(e.code.slice(-1)) - 1);
       if (e.code === "KeyM") {
         this.audio.enabled = !this.audio.enabled;
@@ -1053,8 +1110,17 @@ class Game {
     document.addEventListener("mousedown", (e) => {
       if (this.state !== "play" || document.pointerLockElement !== canvas)
         return;
-      if (e.button === 0) this.firing = true;
-      if (e.button === 2) this.aiming = true;
+      if (e.button === 0) {
+        this.firing = true;
+        if (
+          this.combat.weapon === FISTS &&
+          this.vehicle < 0 &&
+          !this.seatPending &&
+          !this.player.traversing
+        )
+          this.combat.fire();
+      }
+      if (e.button === 2 && this.combat.weapon !== FISTS) this.aiming = true;
     });
     document.addEventListener("mouseup", (e) => {
       if (e.button === 0) this.firing = false;
@@ -1208,7 +1274,8 @@ class Game {
         ? [["Q / E", "Hook or release. Hold to reel in."]]
         : []),
       ["LMB / RMB", "Fire / aim"],
-      ["1–4 / Wheel", "Switch weapon"],
+      ["1–5 / Wheel", "Switch weapon · 5 equips fists"],
+      ["LMB with fists", "Punch · hold for jab, cross and hook"],
       ["R", "Reload"],
       ...(county
         ? [
@@ -1467,6 +1534,7 @@ class Game {
     if (m.type === "hit") {
       this.combat.hitTime = 0.2;
       this.combat.hitRegion = m.region ?? (m.head ? "head" : "body");
+      if (m.melee) this.audio.tone(125, 0.09, "triangle", 0.26, 48);
       if (m.kill && m.npc) this.audio.npcEliminated();
       else if (m.kill) this.audio.playerEliminated();
       else this.audio.hit();
@@ -1485,6 +1553,7 @@ class Game {
       this.combat.reloadTime = Math.max(0, m.reloadRemaining / 1000);
     }
     if (m.type === "respawn") {
+      this.combat.cancelPunch();
       this.player.reset(m.p);
       this.notoriety = 0;
       this.combat.hp = 100;
@@ -1812,54 +1881,72 @@ class Game {
     $("crosshair").style.opacity = String(1 - scoped);
     this.weaponMesh.visible =
       this.vehicle < 0 && this.combat.hp > 0 && scoped < 0.98;
-    const reloadProgress =
-      this.combat.reloadTime > 0
-        ? 1 - this.combat.reloadTime / WEAPONS[this.combat.weapon].reload
-        : 0;
-    const reload = animateWeaponParts(
-      this.weaponMesh,
-      this.combat.weapon,
-      reloadProgress,
-      recoil,
-    );
-    const reloadScale = settings.reduced ? 0.35 : 1;
-    const vaultPose = Math.sin(Math.PI * p.traversalProgress);
-    // One camera-local pose: stride, restrained look sway, then shared shot impulse.
-    this.weaponMesh.position.set(
-      0.3 * (1 - v.ads) + v.swayX * steady + reload.x * reloadScale,
-      T.MathUtils.lerp(
-        -0.3,
-        this.combat.weapon === 0 ? -0.0816 : -0.046,
+    if (this.combat.weapon === FISTS) {
+      this.weaponMesh.position.set(
+        v.swayX * steady,
+        v.bob * 0.35 + v.swayY * steady,
+        0,
+      );
+      animateFists(
+        this.weaponMesh,
+        this.combat.punch?.move ?? 0,
+        this.combat.punchAge,
+        this.time,
+      );
+    } else {
+      const reloadProgress =
+        this.combat.reloadTime > 0
+          ? 1 - this.combat.reloadTime / WEAPONS[this.combat.weapon].reload
+          : 0;
+      const reload = animateWeaponParts(
+        this.weaponMesh,
+        this.combat.weapon,
+        reloadProgress,
+        recoil,
+      );
+      const reloadScale = settings.reduced ? 0.35 : 1;
+      const vaultPose = Math.sin(Math.PI * p.traversalProgress);
+      // One camera-local pose: stride, restrained look sway, then shared shot impulse.
+      this.weaponMesh.position.set(
+        0.3 * (1 - v.ads) + v.swayX * steady + reload.x * reloadScale,
+        T.MathUtils.lerp(
+          -0.3,
+          this.combat.weapon === 0 ? -0.0816 : -0.046,
+          v.ads,
+        ) +
+          v.bob * 0.35 +
+          v.swayY * steady -
+          -reload.y * reloadScale -
+          vaultPose * 0.14,
+        T.MathUtils.lerp(
+          this.combat.weapon === 2 ? -0.38 : -0.68,
+          -0.72,
+          v.ads,
+        ) +
+          recoil * 0.035,
+      );
+      this.weaponMesh.rotation.set(
+        reload.pitch * reloadScale + recoil * 0.04 - vaultPose * 0.3,
+        -0.04 * (1 - v.ads),
+        reload.roll * reloadScale +
+          v.bob * 0.3 -
+          vaultPose * 0.22 +
+          this.combat.hurt * (settings.reduced ? 0.01 : 0.045),
+      );
+      const clearance = this.weaponClearance.update(
+        dt,
+        cam.position,
+        cam.quaternion,
+        this.combat.weapon,
         v.ads,
-      ) +
-        v.bob * 0.35 +
-        v.swayY * steady -
-        -reload.y * reloadScale -
-        vaultPose * 0.14,
-      T.MathUtils.lerp(this.combat.weapon === 2 ? -0.38 : -0.68, -0.72, v.ads) +
-        recoil * 0.035,
-    );
-    this.weaponMesh.rotation.set(
-      reload.pitch * reloadScale + recoil * 0.04 - vaultPose * 0.3,
-      -0.04 * (1 - v.ads),
-      reload.roll * reloadScale +
-        v.bob * 0.3 -
-        vaultPose * 0.22 +
-        this.combat.hurt * (settings.reduced ? 0.01 : 0.045),
-    );
-    const clearance = this.weaponClearance.update(
-      dt,
-      cam.position,
-      cam.quaternion,
-      this.combat.weapon,
-      v.ads,
-      this.physics.ray.bind(this.physics),
-    );
-    // Apply last, after reload/ADS/recoil; only the viewmodel is raised.
-    this.weaponMesh.rotation.x += clearance.pitch;
-    this.weaponMesh.position.z += clearance.retract;
-    this.weaponMesh.position.y -= clearance.lower;
-    this.weaponMesh.scale.setScalar(0.68);
+        this.physics.ray.bind(this.physics),
+      );
+      // Apply last, after reload/ADS/recoil; only the viewmodel is raised.
+      this.weaponMesh.rotation.x += clearance.pitch;
+      this.weaponMesh.position.z += clearance.retract;
+      this.weaponMesh.position.y -= clearance.lower;
+      this.weaponMesh.scale.setScalar(0.68);
+    }
     if (!this.rope) {
       this.rope = new GrappleVisual();
       this.render.scene.add(this.rope);
@@ -1923,6 +2010,12 @@ class Game {
           continue;
         }
       }
+      if (!state.npc)
+        model.setFistPose(
+          state.weapon === FISTS,
+          state.swing?.move ?? 0,
+          state.swing ? (now - state.swing.start) / 1000 : 1,
+        );
       const desiredYaw = state.yaw + Math.PI;
       const turn = Math.atan2(
         Math.sin(desiredYaw - model.group.rotation.y),
@@ -2177,14 +2270,16 @@ class Game {
             ? "E · ENTER CAR · " + this.cars[nearby].kind.toUpperCase()
             : p.action;
     $("speed-fill").style.width = Math.min(100, (p.speed / 35) * 100) + "%";
-    $("ammo").textContent = String(c.mags[c.weapon]).padStart(2, "0");
+    $("ammo").textContent = String(c.mags[c.weapon] ?? 0).padStart(2, "0");
     $("mag-size").textContent = String(gun.mag);
     $("reload-label").textContent =
-      c.reloadTime > 0
-        ? "RELOADING…"
-        : c.mags[c.weapon] === 0
-          ? "EMPTY · R TO RELOAD"
-          : gun.tag + " · R RELOAD";
+      c.weapon === FISTS
+        ? "LMB · PUNCH"
+        : c.reloadTime > 0
+          ? "RELOADING…"
+          : c.mags[c.weapon] === 0
+            ? "EMPTY · R TO RELOAD"
+            : gun.tag + " · R RELOAD";
     $("score").textContent = String(c.score).padStart(4, "0");
     $("timer").textContent = timeLabel(this.elapsed);
     $("hook-fill").style.width = p.stamina * 100 + "%";

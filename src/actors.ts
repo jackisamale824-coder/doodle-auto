@@ -1,3 +1,4 @@
+import { punchPose } from "./fists.ts";
 import type { HitRegion } from "./actor-hit.ts";
 import { solveArm } from "./rig-ik.ts";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
@@ -254,6 +255,15 @@ export class Doodle {
       this.impact + Math.max(0.35, Math.min(0.8, damage / 50)),
     );
   }
+  private fists = false;
+  private fistMove = 0;
+  private fistAge = 1;
+  setFistPose(equipped: boolean, move: number, age: number) {
+    this.fists = equipped;
+    this.fistMove = move;
+    this.fistAge = age;
+    this.aimRig.visible = !equipped;
+  }
   fire() {
     this.recoil = Math.min(0.07, this.recoil + 0.05);
   }
@@ -338,7 +348,30 @@ export class Doodle {
     this.aimRig.position.y =
       0.42 + Math.sin(t * 2.2) * 0.004 + 0.038 * this.ready;
     this.aimRig.updateMatrix();
-    if (this.role === "civilian" && this.civilianAction !== "shoot") {
+    if (this.fists) {
+      for (const [arm, elbow, side] of [
+        [this.leftArm, this.leftElbow, -1],
+        [this.rightArm, this.rightElbow, 1],
+      ] as const) {
+        // The avatar faces local +Z, the first-person camera faces -Z.
+        const pose = punchPose(this.fistMove, this.fistAge, -side);
+        const height = 0.15 + pose.y,
+          reach = 0.21 + pose.z;
+        const c = Math.cos(this.aimPitch),
+          s = Math.sin(this.aimPitch);
+        solveArm(
+          arm,
+          elbow,
+          new T.Vector3(
+            side * 0.21 - pose.x,
+            arm.position.y + height * c + reach * s,
+            reach * c - height * s,
+          ),
+          new T.Vector3(side * 0.6, -1, -0.2),
+        );
+        if (side === 1) this.spine.rotation.y += pose.twist;
+      }
+    } else if (this.role === "civilian" && this.civilianAction !== "shoot") {
       this.gestureTime += step;
       // A shove extends both hands together. A punch extends the lead hand while the rear hand guards the chest.
       const drive = Math.sin(Math.min(1, this.gestureTime / 0.46) * Math.PI);
