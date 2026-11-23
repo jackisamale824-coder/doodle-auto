@@ -171,7 +171,8 @@ server.on("upgrade", (req, socket, head) => {
         const origin = new URL(req.headers.origin);
         validOrigin =
           ["http:", "https:"].includes(origin.protocol) &&
-          origin.host === req.headers.host;
+          origin.host ===
+            (req.headers["x-doodle-public-host"] ?? req.headers.host);
       } catch {
         validOrigin = false;
       }

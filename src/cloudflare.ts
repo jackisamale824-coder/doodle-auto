@@ -21,6 +21,7 @@ export class GameContainer extends DurableObject<Env> {
     url.protocol = "http:";
     url.host = "container";
     const forwarded = new Request(url, request);
+    forwarded.headers.set("x-doodle-public-host", new URL(request.url).host);
     forwarded.headers.delete("host");
     return this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
   }
