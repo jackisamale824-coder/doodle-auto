@@ -79,9 +79,9 @@ try {
   await other.locator("#player-name").fill("Marginalia");
   await other.locator("#room-input").fill(code);
   await other.locator("#join-room").click();
-  await other.waitForSelector("#enter-room", { timeout: 30000 });
-  assert.equal((await other.locator(".room-code").innerText()).trim(), code);
-  await other.locator("#enter-room").click();
+  await other.waitForSelector("#hud:not(.hidden)", { timeout: 30000 });
+  if (await other.locator("#resume").isVisible())
+    await other.locator("#resume").click();
   await other.waitForFunction(() => !!document.pointerLockElement);
   await other.keyboard.down("Tab");
   await other.waitForFunction(

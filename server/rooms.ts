@@ -313,10 +313,9 @@ export class Rooms {
         : request.type === "public" || request.type === "duel"
           ? [...this.rooms.values()].find(
               (r) =>
-                (request.type === "public"
-                  ? r.public &&
-                    (request.seed === COUNTY) === (r.seed === COUNTY)
-                  : r.duel) && available(r),
+                (request.type === "public" ? r.public : r.duel) &&
+                (request.seed === COUNTY) === (r.seed === COUNTY) &&
+                available(r),
             )
           : undefined;
     if (!room && (request.type === "join" || request.roomId))
@@ -882,7 +881,9 @@ export class Rooms {
       if (m.type === "public" || m.type === "duel")
         r = [...this.rooms.values()].find((r) =>
           m.type === "duel"
-            ? r.duel && r.players.size < 8
+            ? r.duel &&
+              (r.seed === COUNTY) === (m.seed === COUNTY) &&
+              r.players.size < (r.seed === COUNTY ? 30 : 8)
             : r.public &&
               (r.seed === COUNTY) === (m.seed === COUNTY) &&
               r.players.size < (r.seed === COUNTY ? 30 : 16),

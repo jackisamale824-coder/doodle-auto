@@ -11,18 +11,19 @@ const browser = await chromium.launch({
   ],
 });
 let peer;
+const url = process.env.GAME_URL || "http://127.0.0.1:5199";
 try {
   const page = await browser.newPage({
     viewport: { width: 1200, height: 850 },
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://127.0.0.1:5199");
+  await page.goto(url);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.waitForSelector("#duel:not(.hidden)");
-  assert.match(await page.locator("#play").innerText(), /^PLAY/);
+  assert.equal(await page.locator("#play").innerText(), "Join public game");
   await page.screenshot({ path: "output/playwright/menu-play-duel.png" });
-  peer = new WebSocket("ws://127.0.0.1:5199/ws");
+  peer = new WebSocket(new URL("/ws", url.replace(/^http/, "ws")));
   await new Promise((r) => peer.on("open", r));
   const welcome = new Promise((r) =>
     peer.on("message", (raw) => {
@@ -30,19 +31,22 @@ try {
       if (m.type === "welcome") r(m);
     }),
   );
-  peer.send(JSON.stringify({ type: "duel", name: "Duel partner" }));
-  const room = await welcome;
-  await page.waitForFunction(() =>
-    document.querySelector("#play").textContent.includes("JOIN LOBBY"),
+  const mapScale = await page.evaluate(() =>
+    import("/src/rust-boundary.ts").then((m) => m.RUST_SCALE),
   );
-  assert.equal(await page.locator("#duel").isVisible(), false);
-  assert.match(await page.locator("#play").innerText(), /duel.*1\/8/);
-  await page.screenshot({ path: "output/playwright/menu-join-duel.png" });
+  peer.send(JSON.stringify({ type: "duel", name: "Duel partner", mapScale }));
+  await welcome;
+  await page.locator("#duel").click();
+  assert.equal(await page.locator("#play").innerText(), "Join duel");
+  await page.waitForFunction(() =>
+    document.querySelector("#mode-detail").textContent.includes("1/8"),
+  );
   peer.close();
   peer = null;
-  await page.waitForSelector("#duel:not(.hidden)");
-  assert.match(await page.locator("#play").innerText(), /^PLAY/);
-  await page.locator("#duel").click();
+  await page.waitForFunction(
+    () => !document.querySelector("#mode-detail").textContent.includes("1/8"),
+  );
+  await page.locator("#play").click();
   await page.waitForFunction(
     () => window.__doodles.network.duel && window.__doodles.mode === "online",
   );
@@ -55,7 +59,7 @@ try {
   );
   assert.deepEqual(errors, []);
   console.log(
-    "Menu verified: empty Play/Duel, occupied Join Duel (1/8), disconnect restores choices, Duel click enters without NPCs.",
+    "Verified public and duel selection, live occupancy, and joining a players-only duel.",
   );
 } finally {
   peer?.close();

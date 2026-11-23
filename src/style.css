@@ -1126,10 +1126,10 @@ dialog input[type="checkbox"] {
 #menu {
   display: flex;
   align-items: safe center;
-  justify-content: center;
-  padding: 22px 16px;
+  justify-content: flex-start;
   overflow: auto;
-  background: #f7f5e94d;
+  padding: clamp(16px, 5vw, 86px);
+  background: linear-gradient(90deg, #f7f5e95e, transparent 70%);
 }
 #menu::before {
   display: none;
@@ -1137,131 +1137,153 @@ dialog input[type="checkbox"] {
 #menu .menu-copy {
   position: relative;
   inset: auto;
-  width: min(880px, 100%);
-  padding: 22px 38px 18px;
-  border: 3px solid var(--ink);
-  border-radius: 13px 7px 9px 6px;
-  background: #faf8eef2;
-  box-shadow: 6px 7px 0 #21265d24;
-  text-align: center;
-  transform: rotate(-0.3deg);
+  width: min(410px, 100%);
+  max-width: none;
+  padding: clamp(21px, 3vw, 36px);
+  border: 2px solid var(--ink);
+  border-radius: 6px 11px 7px 5px;
+  background: #faf8f0;
+  box-shadow: 5px 6px 0 #35457926;
 }
 #menu h1 {
-  font-family: "Patrick Hand", cursive;
   width: auto;
-  font-size: clamp(45px, 6.5vw, 84px);
+  margin: 0 0 22px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--ink);
+  font:
+    700 clamp(44px, 5vw, 64px)/0.95 "Caveat",
+    cursive;
   letter-spacing: -2px;
-  line-height: 1.05;
-  margin: 0 0 7px;
   transform: none;
 }
-#menu .tagline {
-  font-size: 27px;
-  margin-bottom: 18px;
-}
-#menu #play {
-  width: min(390px, 100%);
-  margin: 0 auto 14px;
-  display: flex;
-  flex-direction: column;
-  padding: 10px 20px;
-  border-radius: 12px 7px 10px 8px;
-  transform: rotate(-1deg);
-  font-size: 43px;
-  line-height: 1.1;
-  letter-spacing: 0;
-}
-#menu button small {
+.map-field label,
+.match-modes legend {
   display: block;
-  font-size: 17px;
-  font-weight: 400;
-  letter-spacing: 0.5px;
-  margin-top: 5px;
+  font:
+    700 12px/1.4 "DM Sans",
+    sans-serif;
+  color: #394875;
+  margin-bottom: 6px;
 }
-#menu #online {
-  width: min(270px, 100%);
-  margin: 0 auto 18px;
-  display: flex;
-  flex-direction: column;
-  padding: 8px 15px;
-  border: 2px solid var(--red);
-  color: var(--paper);
-  background: var(--red);
-  border-radius: 9px 7px 9px 5px;
-  font-size: 26px;
-  line-height: 1.1;
-  letter-spacing: 0;
-}
-#menu .mode-switch {
-  border-top: 2px solid var(--ink);
-  padding-top: 12px;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-#menu .mode-switch button {
-  font: inherit;
-  font-size: 18px;
-  letter-spacing: 0;
-  border: 1px solid var(--ink);
-  border-radius: 5px;
-  padding: 5px 15px;
+.map-field select {
+  width: 100%;
+  padding: 5px 9px;
+  border: 1px solid #8790b9;
+  border-radius: 4px;
+  background: #fffdf6;
   color: var(--ink);
+  font:
+    25px "Patrick Hand",
+    cursive;
+  cursor: pointer;
 }
-#menu .mode-switch button.selected {
-  background: var(--ink);
-  color: var(--paper);
+#seed-options {
+  margin-top: 8px;
 }
-.notebook-controls {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  text-align: left;
+#seed-options summary,
+.notebook-footer > *,
+#main-menu {
+  font:
+    500 13px/1.45 "DM Sans",
+    sans-serif;
+  letter-spacing: 0;
+  color: #355085;
+  cursor: pointer;
 }
-.notebook-controls h2 {
-  font-size: 21px;
-  font-weight: 400;
-  border-bottom: 2px solid var(--ink);
-  padding-bottom: 3px;
-  margin: 0 0 8px;
+#seed-options .seed-row {
+  display: flex;
+  margin: 8px 0;
+  gap: 8px;
 }
-.notebook-controls p {
-  font-size: 18px;
-  line-height: 1.4;
-  margin: 3px 0;
+#seed-options .seed-row input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
 }
-.notebook-controls b {
-  color: var(--red);
+#seed-options .seed-row button {
+  width: auto;
+  height: auto;
+  padding: 4px 8px;
+  font: inherit;
+}
+.match-modes {
+  border: 0;
+  margin: 20px 0 0;
+  padding: 0;
+  min-width: 0;
+}
+.mode-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.mode-options button {
+  flex: 1 0 auto;
+  border: 1px solid #a5adc6;
+  border-radius: 4px;
+  background: transparent;
+  padding: 8px 7px;
+  font:
+    500 13px/1.4 "DM Sans",
+    sans-serif;
+}
+.mode-options button[aria-pressed="true"] {
+  background: #e1e6fa;
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
   font-weight: 700;
 }
-#menu .seed-row {
-  justify-content: center;
-  border-top: 2px solid var(--ink);
-  padding-top: 12px;
-  margin: 17px 0 10px;
-  font-size: 18px;
+.mode-options button:hover {
+  background: #eef0fa;
 }
-#menu .seed-row label {
-  font: inherit;
+#mode-detail {
+  margin: 9px 0 20px;
+  min-height: 2.9em;
+  color: #41506a;
+  font:
+    400 14px/1.45 "DM Sans",
+    sans-serif;
+}
+#menu #play,
+#menu #online {
+  display: block;
+  width: 100%;
+  text-align: center;
   letter-spacing: 0;
+  margin: 0;
+  font:
+    26px/1.2 "Patrick Hand",
+    cursive;
+  padding: 11px;
 }
-#menu .seed-row input {
-  font: inherit;
-  width: 180px;
+#menu #online {
+  margin-top: 10px;
+  font-size: 20px;
+  background: transparent;
+}
+#menu #online:hover {
+  background: #eef0fa;
 }
 .notebook-footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 15px;
+  gap: 18px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--line);
+  margin-top: 22px;
+  padding-top: 12px;
 }
-.notebook-footer button {
-  font: inherit;
-  font-size: 17px;
-  letter-spacing: 0;
+.notebook-footer > * {
+  padding: 5px 0;
   text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.notebook-footer a {
+  margin-left: auto;
+}
+:where(button, a, select, summary):focus-visible {
+  outline: 3px solid #9c650b;
+  outline-offset: 3px;
 }
 #hud {
   font-family: "Patrick Hand", cursive;
@@ -1303,24 +1325,13 @@ dialog .secondary-button {
 }
 @media (max-width: 650px) {
   #menu {
-    padding: 10px;
+    justify-content: center;
+    padding: 16px;
   }
   #menu .menu-copy {
-    padding: 18px;
-  }
-  .notebook-controls {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-  .notebook-footer {
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  #menu h1 {
-    font-size: 52px;
+    padding: 20px;
   }
 }
-
 #hud #weapon-name {
   font-size: 23px;
   letter-spacing: 0;
@@ -1345,19 +1356,6 @@ dialog .secondary-button {
   font-size: 20px;
   letter-spacing: 1px;
 }
-#menu .seed-row {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-}
-#menu .seed-row input {
-  flex: 0 1 180px;
-}
-#menu .seed-row button {
-  margin: 0;
-  flex: 0 0 30px;
-}
-
 #city-map-panel {
   position: absolute;
   right: 38px;
@@ -1499,58 +1497,6 @@ dialog .secondary-button {
   display: none !important;
 }
 
-#menu .menu-actions {
-  display: flex;
-  gap: 18px;
-  justify-content: center;
-  margin: 0 auto 14px;
-  max-width: 798px;
-}
-#menu .menu-actions > button {
-  flex: 1;
-  min-width: 0;
-  min-height: 96px;
-  margin: 0;
-  align-items: center;
-  justify-content: center;
-  font-family: "Patrick Hand", cursive;
-  font-weight: 700;
-}
-#menu #duel {
-  max-width: 390px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 10px 20px;
-  border: 2px solid var(--ink);
-  border-radius: 7px 12px 8px 10px;
-  background: var(--paper);
-  color: var(--ink);
-  font-family: "Patrick Hand", cursive;
-  font-size: 43px;
-  font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: 0;
-  box-shadow: -4px 5px 0 #222bc323;
-  transform: rotate(1deg);
-}
-#menu #duel:hover {
-  background: #e8e7f5;
-}
-@media (max-width: 550px) {
-  #menu .menu-actions {
-    flex-direction: column;
-  }
-  #menu #duel,
-  #menu .menu-actions #play {
-    width: 100%;
-    max-width: none;
-  }
-}
-#menu .menu-actions #play {
-  margin: 0;
-}
-
 #notoriety {
   margin-top: 6px;
   width: 145px;
@@ -1568,4 +1514,46 @@ dialog .secondary-button {
   width: 100%;
   height: 8px;
   accent-color: var(--ink);
+}
+
+.pause-tools,
+.code-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pause-tools button {
+  flex: 1;
+}
+#main-menu {
+  display: block;
+  margin: 20px auto 0;
+}
+.code-entry input {
+  min-width: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+}
+.code-entry #join-room {
+  margin: 0;
+  white-space: nowrap;
+  width: auto;
+  flex: none;
+}
+dialog h2 {
+  margin: 0 25px 15px 0;
+}
+dialog h2:focus {
+  outline: none;
+}
+dialog .help-grid {
+  grid-template-columns: minmax(105px, auto) 1fr;
+}
+dialog .help-grid span {
+  font:
+    14px/1.45 "DM Sans",
+    sans-serif;
+}
+dialog .error:empty {
+  display: none;
 }

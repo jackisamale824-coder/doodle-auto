@@ -16,95 +16,54 @@
     <div id="hurt"></div>
     <div id="loading">
       <div class="loading-pencil">✎</div>
-      <strong>Sketching the oil yard…</strong
-      ><span>Good things start with a blank page.</span>
+      <strong>Loading map…</strong>
     </div>
     <section id="menu" class="screen hidden" aria-label="Main menu">
       <main class="menu-copy">
         <h1>doodlesCreed</h1>
-        <p class="tagline">RUST · a scribbled oil-yard showdown</p>
-        <div class="menu-actions">
-          <button id="play" class="primary-button">
-            <span>PLAY</span><small>RUST · players + NPCs</small>
-          </button>
-          <button id="duel" class="primary-button">
-            <span>DUEL</span><small>real players only · no NPCs</small>
-          </button>
+        <div class="map-field">
+          <label for="map-picker">Map</label>
+          <select id="map-picker">
+            <option value="rust">Rust · Oil Yard</option>
+            <option value="county">Switchback County</option>
+            <option value="archive">City Archive</option>
+          </select>
         </div>
-        <a class="secondary-button" href="/?mode=county"
-          >SWITCHBACK COUNTY · OPEN WORLD</a
-        >
+        <details id="seed-options">
+          <summary>Map seed</summary>
+          <div class="seed-row">
+            <input
+              id="seed"
+              value="rust"
+              maxlength="40"
+              spellcheck="false"
+              aria-label="Map seed"
+            /><button id="reroll" type="button">Randomize</button>
+          </div>
+        </details>
+        <fieldset class="match-modes">
+          <legend>Game mode</legend>
+          <div class="mode-options">
+            <button id="public-mode" aria-pressed="true">Public</button>
+            <button id="duel" aria-pressed="false">Duel</button>
+            <button id="roam-mode" aria-pressed="false">Free roam</button>
+            <button id="contract-mode" aria-pressed="false">
+              District run
+            </button>
+          </div>
+        </fieldset>
+        <p id="mode-detail"></p>
+        <button id="play" class="primary-button">Join public game</button>
         <button id="online" class="secondary-button">
-          <span>PRIVATE ROOM</span
-          ><small>share a room code · up to 8 players</small>
+          Create or join a private room
         </button>
-        <div class="mode-switch" aria-label="Game mode">
-          <span>mode</span
-          ><button id="public-mode" class="selected" aria-pressed="true">
-            PUBLIC RUST</button
-          ><button id="contract-mode" aria-pressed="false">DISTRICT RUN</button
-          ><button id="roam-mode" aria-pressed="false">FREE ROAM</button>
-        </div>
-        <div class="notebook-controls">
-          <div>
-            <h2>MOVE LIKE YOU MEAN IT</h2>
-            <p>
-              <b>WASD</b> move &nbsp; <b>Mouse</b> look &nbsp;
-              <b>Shift</b> sprint
-            </p>
-            <p><b>Space</b> jump / vault · again for double jump</p>
-            <p><b>F in air</b> directional boost · shares double-jump charge</p>
-            <p><b>Space near a wall</b> mantle / wall jump</p>
-            <p><b>C / Ctrl</b> crouch · slide with momentum</p>
-            <p class="grapple-only">
-              <b>Q / E</b> grapple · hold to reel · tap to release
-            </p>
-            <p class="grapple-only">
-              <b>Space while hooked</b> launch across the street
-            </p>
-          </div>
-          <div>
-            <h2>LEAVE YOUR MARK</h2>
-            <p><b>LMB</b> fire &nbsp; <b>RMB</b> aim down sights</p>
-            <p><b>1–3 / wheel</b> rifle · shotgun · pistol</p>
-            <p>
-              <b>R</b> reload &nbsp; <b>Tab</b> scoreboard &nbsp;
-              <b>Esc</b> pause
-            </p>
-            <p id="guide-contract">
-              <b>District run</b> 6 rivals + 3 rooftop marks
-            </p>
-            <p id="guide-roam"><b>Free roam</b> the oil yard to practice in</p>
-            <p id="guide-public">
-              <b>Public Rust</b> online players + shared NPCs
-            </p>
-          </div>
-        </div>
-        <div class="seed-row">
-          <label for="seed">arena seed</label
-          ><input
-            id="seed"
-            value="rust"
-            maxlength="40"
-            spellcheck="false"
-            aria-label="City seed"
-          /><button
-            id="reroll"
-            aria-label="Generate a new city seed"
-            title="Redraw the city"
+        <footer class="notebook-footer">
+          <button id="help" class="text-button">Controls</button>
+          <button id="settings" class="text-button">Settings</button>
+          <a id="model-credits" href="models/CREDITS.txt" hidden
+            >Model credits</a
           >
-            ↻
-          </button>
-        </div>
-        <div class="notebook-footer">
-          <a class="text-button" href="?level=city">CITY ARCHIVE</a>
-          <button id="help" class="text-button">HOW TO PLAY</button
-          ><span
-            ><em id="building-count">25</em> buildings · every roof is a
-            route</span
-          ><button id="settings" class="text-button">SETTINGS</button>
-        </div>
-        <span id="district-stamp" hidden></span>
+        </footer>
       </main>
     </section>
     <section id="hud" class="hidden" aria-label="Game HUD">
@@ -186,7 +145,7 @@
       <div id="board" class="hidden"></div>
       <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE</div>
     </section>
-    <dialog id="dialog">
+    <dialog id="dialog" aria-labelledby="dialog-title">
       <button id="close-dialog" class="close-button" aria-label="Close dialog">
         ×
       </button>

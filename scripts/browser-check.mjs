@@ -286,8 +286,7 @@ try {
   await second.locator("#player-name").fill("Marginalia");
   await second.locator("#room-input").fill(code);
   await second.locator("#join-room").click();
-  await second.waitForSelector("#enter-room", { timeout: 30000 });
-  await second.locator("#enter-room").click();
+  await second.waitForSelector("#hud:not(.hidden)", { timeout: 30000 });
   await resume(second);
   await second.waitForFunction(
     () => window.__doodles.network.players.length === 2,

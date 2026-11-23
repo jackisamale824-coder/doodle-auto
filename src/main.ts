@@ -400,13 +400,16 @@ class Game {
   combat!: Combat;
   mode: Mode = "contract";
   soloMode: Mode = "contract";
-  publicSelected = true;
-  activeLobby: {
+  private archive =
+    new URLSearchParams(location.search).get("level") === "city";
+  private menuMode: "public" | "duel" | "roam" | "contract" = "public";
+  private dismissDialog: () => void = () => this.closeDialog();
+  private lobbies: {
     code: string;
     mode: "play" | "duel";
     players: number;
     capacity: number;
-  } | null = null;
+  }[] = [];
   private checkingLobbies = false;
   state: "menu" | "play" | "paused" | "dead" | "complete" | "loading" =
     "loading";
@@ -447,47 +450,22 @@ class Game {
     $<HTMLInputElement>("seed").value = this.seed;
     await document.fonts.ready;
     await this.build(this.seed, 1);
-    const tagline = document.querySelector(".tagline");
-    if (tagline && !this.city.arena)
-      tagline.textContent = this.countySelected
-        ? "SWITCHBACK COUNTY · 30-player open world"
-        : "Procedural city · preserved build";
-    if (this.countySelected) {
+    const map = this.countySelected
+      ? "county"
+      : this.archive
+        ? "archive"
+        : "rust";
+    $<HTMLSelectElement>("map-picker").value = map;
+    $("contract-mode").hidden = this.countySelected;
+    $("roam-mode").textContent = this.countySelected ? "Solo" : "Free roam";
+    $("seed-options").hidden = this.countySelected;
+    $("model-credits").hidden = !this.countySelected;
+    $("duel").hidden = $("public-mode").hidden = this.archive;
+    if (this.archive) this.menuMode = "roam";
+    if (this.countySelected)
       document.title = "doodlesCreed — Switchback County";
-      $("public-mode").textContent = "PUBLIC COUNTY";
-      $("contract-mode").hidden = true;
-      $("roam-mode").textContent = "SOLO COUNTY";
-      $("online").querySelector("small")!.textContent =
-        "share a room code · up to 30 players";
-      $("guide-contract").innerHTML =
-        "<b>Notoriety</b> starts at zero each life";
-      $("guide-roam").innerHTML =
-        "<b>Solo County</b> explore with pedestrians and traffic";
-      $("guide-public").innerHTML =
-        "<b>Public County</b> share the streets with up to 30 players";
-      document
-        .querySelector(".notebook-footer")
-        ?.insertAdjacentHTML(
-          "beforeend",
-          '<a class="text-button" href="' +
-            new URL("models/CREDITS.txt", location.href).pathname +
-            '">MODEL CREDITS</a>',
-        );
-      document
-        .querySelector(".grapple-only")
-        ?.insertAdjacentHTML(
-          "beforebegin",
-          "<p><b>E</b> open doors or enter cars · WASD drive · Space brake</p>",
-        );
-      document.querySelector<HTMLAnchorElement>(
-        'a[href="/?mode=county"]',
-      )!.outerHTML =
-        '<a class="secondary-button" href="./">RUST · THE OIL YARD</a>';
-      this.paintLobbyOptions();
-    }
+    this.paintLobbyOptions();
     this.state = "menu";
-    $("loading").classList.add("hidden");
-    $("menu").classList.remove("hidden");
     this.bind();
     try {
       const restored = await this.network.bootstrap();
@@ -512,6 +490,8 @@ class Game {
       );
       $("session-menu").onclick = () => this.mainMenu();
     }
+    $("loading").classList.add("hidden");
+    $("menu").classList.toggle("hidden", this.state !== "menu");
     const invite = new URLSearchParams(location.search).get("room");
     if (this.mode !== "online" && invite && /^[A-Z0-9]{5}$/i.test(invite)) {
       this.showOnline();
@@ -726,7 +706,7 @@ class Game {
         this.network.send({ type: "fire" });
       }
     };
-    $("building-count").textContent = String(this.city.buildings.length);
+
     this.collected.clear();
     this.elapsed = 0;
     this.setWeapon(0, true);
@@ -809,13 +789,11 @@ class Game {
     document.exitPointerLock();
     this.showPause();
   }
-  showPause(
-    title = "TAKE A BREATHER",
-    body = "Your next great shortcut is out there.",
-  ) {
+  showPause(title = "Paused", body = "") {
     this.showDialog(
-      `<div class="modal-kicker">DOODLESCREED / ${this.mode === "online" ? "LIVE MATCH" : "PAUSED"}</div><h2>${title}</h2><p>${body}</p>${this.mode === "online" ? `<p>Room <b>${escape(this.network.code)}</b> · The match continues while you pause.</p>` : ""}<button id="resume" class="primary-button">BACK TO THE ROOFTOPS <span>↗</span></button><button id="pause-settings" class="secondary-button">SETTINGS</button><button id="main-menu" class="secondary-button">RETURN TO SKETCHBOOK</button>`,
+      `<h2>${title}</h2>${body ? `<p>${body}</p>` : ""}${this.mode === "online" ? `<p>Room <b>${escape(this.network.code)}</b> · The match continues while you pause.</p>` : ""}<button id="resume" class="primary-button">Resume game</button><div class="pause-tools"><button id="pause-controls" class="secondary-button">Controls</button><button id="pause-settings" class="secondary-button">Settings</button></div><button id="main-menu" class="text-button">Leave for main menu</button>`,
     );
+    $("pause-controls").onclick = () => this.showHelp(true);
     $("resume").onclick = () => this.resume();
     $("pause-settings").onclick = () => this.showSettings(true);
     $("main-menu").onclick = () => this.mainMenu();
@@ -833,9 +811,28 @@ class Game {
     this.weaponMesh.visible = false;
     void this.build($<HTMLInputElement>("seed").value.trim() || "notebook", 1);
   }
-  showDialog(html: string) {
+  showDialog(html: string, back?: () => void) {
+    this.dismissDialog =
+      back ??
+      (() => {
+        if (
+          this.state === "paused" &&
+          (this.mode !== "online" || this.network.active)
+        )
+          this.resume();
+        else if (["paused", "dead", "complete"].includes(this.state))
+          this.mainMenu();
+        else this.closeDialog();
+      });
     $("dialog-content").innerHTML = html;
+    const heading = $("dialog-content").querySelector("h2");
+    if (heading) heading.id = "dialog-title";
     if (!dialog.open) dialog.showModal();
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    dialog.scrollTop = 0;
   }
   closeDialog() {
     if (dialog.open) dialog.close();
@@ -899,19 +896,50 @@ class Game {
       : "";
   }
   bind() {
-    $("play").onclick = () => {
-      this.district = 1;
-      if (this.publicSelected) void this.joinPublic("public");
-      else void this.start(this.soloMode);
+    $<HTMLSelectElement>("map-picker").onchange = (event) => {
+      const value = (event.currentTarget as HTMLSelectElement).value;
+      $("menu").classList.add("hidden");
+      $("loading").classList.remove("hidden");
+      location.assign(
+        value === "county"
+          ? "/?mode=county"
+          : value === "archive"
+            ? "/?level=city"
+            : "/",
+      );
     };
-    $("duel").onclick = () => void this.joinPublic("duel");
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted && this.state === "menu") {
+        $("loading").classList.add("hidden");
+        $("menu").classList.remove("hidden");
+      }
+    });
+    $("play").onclick = () => {
+      if (this.busy) return;
+      this.district = 1;
+      const mode = this.menuMode;
+      if (mode === "public" || mode === "duel") {
+        const lobby = this.lobbies.find(
+          (r) => r.mode === (mode === "public" ? "play" : "duel"),
+        );
+        void this.joinPublic(mode, lobby?.code);
+      } else void this.start(mode);
+    };
+    for (const [id, mode] of [
+      ["public-mode", "public"],
+      ["duel", "duel"],
+      ["roam-mode", "roam"],
+      ["contract-mode", "contract"],
+    ] as const) {
+      $(id).onclick = () => {
+        this.menuMode = mode;
+        this.paintLobbyOptions();
+      };
+    }
     void this.refreshLobbies();
     setInterval(() => {
       if (this.state === "menu") void this.refreshLobbies();
     }, 3000);
-    $("public-mode").onclick = () => this.selectPublic();
-    $("contract-mode").onclick = () => this.selectMode("contract");
-    $("roam-mode").onclick = () => this.selectMode("roam");
     $("reroll").onclick = () => {
       const words = ["paper", "rooftops", "sketch", "ink", "creed", "bluebird"];
       $<HTMLInputElement>("seed").value =
@@ -929,16 +957,11 @@ class Game {
     $("settings").onclick = () => this.showSettings();
     $("online").onclick = () => this.showOnline();
     $("close-dialog").onclick = () => {
-      if (this.state === "paused") this.resume();
-      else if (this.state === "dead" || this.state === "complete")
-        this.mainMenu();
-      else this.closeDialog();
+      if (!this.busy) this.dismissDialog();
     };
     dialog.addEventListener("cancel", (e) => {
-      if (this.state === "paused") {
-        e.preventDefault();
-        this.resume();
-      }
+      e.preventDefault();
+      if (!this.busy) this.dismissDialog();
     });
     document.addEventListener("pointerlockchange", () => {
       this.lookReady = performance.now() + 120;
@@ -972,7 +995,12 @@ class Game {
       );
     });
     document.addEventListener("keydown", (e) => {
-      if ((e.target as HTMLElement).matches("input")) return;
+      if (
+        this.state !== "play" ||
+        dialog.open ||
+        (e.target as HTMLElement).matches("input,select")
+      )
+        return;
       if (
         [
           "Space",
@@ -1059,76 +1087,73 @@ class Game {
     this.checkingLobbies = true;
     try {
       const response = await fetch("/lobbies", { cache: "no-store" });
-      if (!response.ok) return;
+      if (!response.ok) throw Error("Lobby status unavailable");
       const data = await response.json();
-      this.activeLobby =
-        data.lobbies.find(
-          (r: {
-            players: number;
-            capacity: number;
-            seed?: string;
-            releaseId?: string;
-          }) =>
-            (!this.countySelected ||
-              !r.releaseId ||
-              r.releaseId === RELEASE_ID) &&
-            (r.seed === COUNTY) === this.countySelected &&
-            r.players > 0 &&
-            r.players < r.capacity,
-        ) ?? null;
-      if (this.publicSelected && this.state === "menu")
-        this.paintLobbyOptions();
+      this.lobbies = data.lobbies.filter(
+        (r: {
+          seed?: string;
+          releaseId?: string;
+          players: number;
+          capacity: number;
+        }) =>
+          (!r.releaseId || r.releaseId === RELEASE_ID) &&
+          (r.seed === COUNTY) === this.countySelected &&
+          r.players > 0 &&
+          r.players < r.capacity,
+      );
+      if (this.state === "menu") this.paintLobbyOptions();
     } catch {
-      /* Keep Play/Duel usable during a temporary status failure. */
+      this.lobbies = [];
+      if (this.state === "menu") this.paintLobbyOptions();
     } finally {
       this.checkingLobbies = false;
     }
   }
-  paintLobbyOptions() {
-    if ($<HTMLButtonElement>("play").disabled) return;
-    const lobby = this.activeLobby;
-    $("duel").classList.toggle("hidden", !this.publicSelected);
-    $("play").innerHTML = this.countySelected
-      ? "<span>PLAY</span><small>COUNTY · players + citizens</small>"
-      : "<span>PLAY</span><small>RUST · players + NPCs</small>";
-    let join = document.getElementById(
-      "existing-lobby",
-    ) as HTMLButtonElement | null;
-    if (!join) {
-      join = document.createElement("button");
-      join.id = "existing-lobby";
-      join.className = "secondary-button";
-      $("play").after(join);
-    }
-    join.classList.toggle("hidden", !lobby || !this.publicSelected);
-    join.textContent = lobby
-      ? `JOIN LOBBY · ${lobby.players}/${lobby.capacity} PLAYERS`
-      : "JOIN LOBBY";
-    join.onclick = () => {
-      if (lobby)
-        void this.joinPublic(
-          lobby.mode === "duel" ? "duel" : "public",
-          lobby.code,
-        );
+  private paintLobbyOptions() {
+    if (this.busy) return;
+    const mode = this.menuMode,
+      county = this.countySelected;
+    const text = {
+      public: county
+        ? "Explore a shared city with traffic and up to 30 players."
+        : "Face other players and waves of ink rivals in the oil yard.",
+      duel: "Players only. First to 15 eliminations wins.",
+      roam: county
+        ? "Drive, explore and meet the locals in your own County."
+        : "Explore the map and practice movement on your own.",
+      contract:
+        "Eliminate six rivals, collect three rooftop marks, then return to spawn.",
     };
-  }
-  selectPublic() {
-    this.publicSelected = true;
-    $("public-mode").classList.add("selected");
-    $("public-mode").setAttribute("aria-pressed", "true");
-    for (const id of ["contract-mode", "roam-mode"]) {
-      $(id).classList.remove("selected");
-      $(id).setAttribute("aria-pressed", "false");
+    const lobby =
+      (mode === "duel" || mode === "public") &&
+      this.lobbies.find((r) => r.mode === (mode === "duel" ? "duel" : "play"));
+    $("mode-detail").textContent =
+      text[mode] +
+      (lobby ? ` · ${lobby.players}/${lobby.capacity} players in lobby` : "");
+    $("play").textContent = {
+      public: "Join public game",
+      duel: "Join duel",
+      roam: county ? "Play solo" : "Start free roam",
+      contract: "Start district run",
+    }[mode];
+    for (const [id, value] of [
+      ["public-mode", "public"],
+      ["duel", "duel"],
+      ["roam-mode", "roam"],
+      ["contract-mode", "contract"],
+    ]) {
+      $(id).setAttribute("aria-pressed", String(value === mode));
     }
-    this.paintLobbyOptions();
-    void this.refreshLobbies();
+    if (mode === "contract" || mode === "roam") this.soloMode = mode;
   }
   async joinPublic(mode: "public" | "duel" = "public", code?: string) {
+    if (this.busy) return;
+    this.busy = true;
+    $("menu").inert = true;
     const button = $<HTMLButtonElement>("play");
     button.disabled = true;
     $<HTMLButtonElement>("duel").disabled = true;
-    button.innerHTML =
-      "<span>JOINING…</span><small>finding your public city</small>";
+    button.textContent = "Joining…";
     try {
       const welcome = await this.network.connect(
         code ? "join" : mode,
@@ -1158,6 +1183,7 @@ class Game {
       this.showDialog(
         `<h2>Couldn’t join the city.</h2><p>${escape((error as Error).message)}</p><button id="public-retry" class="primary-button">TRY AGAIN</button>`,
       );
+      $("menu").classList.remove("hidden");
       $("public-retry").onclick = () => {
         this.closeDialog();
         void this.joinPublic(mode);
@@ -1165,41 +1191,44 @@ class Game {
     } finally {
       button.disabled = false;
       $<HTMLButtonElement>("duel").disabled = false;
-      this.selectPublic();
+      this.busy = false;
+      $("menu").inert = false;
+      this.paintLobbyOptions();
     }
   }
-  selectMode(mode: "contract" | "roam") {
-    this.publicSelected = false;
-    document.getElementById("existing-lobby")?.classList.add("hidden");
-    $("duel").classList.add("hidden");
-    $("public-mode").classList.remove("selected");
-    $("public-mode").setAttribute("aria-pressed", "false");
-    $("play").innerHTML =
-      "<span>PLAY SOLO</span><small>your own " +
-      (this.countySelected
-        ? "Switchback County"
-        : mode === "roam"
-          ? "practice city"
-          : "district run") +
-      "</small>";
-    this.soloMode = mode;
-    $("contract-mode").classList.toggle("selected", mode === "contract");
-    $("roam-mode").classList.toggle("selected", mode === "roam");
-    $("contract-mode").setAttribute(
-      "aria-pressed",
-      String(mode === "contract"),
-    );
-    $("roam-mode").setAttribute("aria-pressed", String(mode === "roam"));
-  }
-  showHelp() {
+  showHelp(paused = false) {
+    const back = () => (paused ? this.showPause() : this.closeDialog());
+    const county = this.seed === COUNTY;
+    const controls = [
+      ["W A S D / Mouse", "Move / look"],
+      ["Shift / Ctrl", "Sprint / crouch or slide"],
+      ["Space", "Jump, vault or mantle"],
+      ["Space / F in air", "Double jump or boost"],
+      ...(this.player.grappleEnabled
+        ? [["Q / E", "Hook or release. Hold to reel in."]]
+        : []),
+      ["LMB / RMB", "Fire / aim"],
+      ["1–4 / Wheel", "Switch weapon"],
+      ["R", "Reload"],
+      ...(county
+        ? [
+            ["E", "Open a door or enter / exit a car"],
+            ["W S / A D", "Accelerate or reverse / steer"],
+            ["Space / V in car", "Brake / change camera"],
+          ]
+        : []),
+      ["Tab / Esc", "Scoreboard / pause"],
+    ];
     this.showDialog(
-      `<div class="modal-kicker">A FIELD GUIDE TO THE ROOFTOPS</div><h2>Keep your momentum.</h2><p>${this.seed === COUNTY ? "Look at a door and press E to open or close it. Fire to break through walls, floors and roofs. Approach a parked car and press E to drive." : this.city.arena ? "Climb the tower ladders, vault low walls, and use double jumps and air boosts to navigate Rust." : "Every building has an open front door and stairs to the roof. Swing across streets, vault low walls, and run alongside walls in the air."}</p><div class="help-grid"><kbd>W A S D</kbd><span>Move · Mouse to look</span><kbd>SHIFT</kbd><span>Sprint and build speed</span><kbd>SPACE</kbd><span>Jump · Vault · Mantle · Wall jump</span><kbd>C / CTRL</kbd><span>Crouch · Slide while sprinting</span>${!this.player.grappleEnabled ? "" : "<kbd>Q / E</kbd><span>Tap to hook / release · Hold to reel in</span><kbd>SPACE</kbd><span>Launch while grappling</span>"}<kbd>LMB / RMB</kbd><span>Fire / Aim down sights</span><kbd>1 2 3 4 / WHEEL</kbd><span>Rifle · Shotgun · Pistol · Sniper</span><kbd>SPACE / F in air</kbd><span>Double jump / directional boost · one shared charge per landing</span><kbd>R</kbd><span>Reload (unlimited reserve ammo)</span><kbd>ESC / TAB</kbd><span>Pause / Scoreboard</span></div><p>${this.seed === COUNTY ? "Gunfire, injuries and crashes into buildings raise notoriety. Above 30% citizens shove or cut you off. Above 50% they fight, and above 75% they may shoot or ram you." : "District run: erase six rivals, collect the three gold marks on rooftops, then return to the starting plaza. Free roam is a combat-free practice city."}</p><button id="help-done" class="primary-button">GOT IT. LET’S GO. <span>↗</span></button>`,
+      `<h2>Controls</h2><div class="help-grid">${controls.map(([key, action]) => `<kbd>${key}</kbd><span>${action}</span>`).join("")}</div>${county ? "<p>Notoriety starts at zero. Above 30% citizens may shove or cut you off, above 50% they fight, and above 75% they may shoot or ram.</p>" : ""}<button id="help-done" class="secondary-button">Back</button>`,
+      back,
     );
-    $("help-done").onclick = () => this.closeDialog();
+    $("help-done").onclick = back;
   }
   showSettings(paused = false) {
     this.showDialog(
-      `<div class="modal-kicker">MAKE YOURSELF AT HOME</div><h2>Your kind of flow.</h2><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label><button id="settings-done" class="primary-button">SAVE & RETURN <span>↗</span></button>`,
+      `<h2>Settings</h2><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label><button id="settings-done" class="primary-button">Done</button>`,
+      () => (paused ? this.showPause() : this.closeDialog()),
     );
     for (const key of ["sensitivity", "fov", "volume"])
       $<HTMLInputElement>(key).oninput = (e) => {
@@ -1221,18 +1250,24 @@ class Game {
   }
   showOnline() {
     this.showDialog(
-      `<div class="modal-kicker">BETTER WITH A LITTLE COMPETITION</div><h2>Meet on the rooftops.</h2><p>${this.countySelected ? "Share the County with up to 30 players. Everyone sees the same traffic, pedestrians and building damage." : "Create a district and share its room code. Everyone gets the same city. Eight runners, three weapons, first to 15."}</p><label for="player-name">YOUR NAME</label><input id="player-name" maxlength="16" value="${escape(safeRead("dc.name", "Runner"))}" placeholder="Runner"><button id="create-room" class="primary-button">CREATE A ROOM <span>↗</span></button><div class="room-divider">OR JOIN YOUR FRIENDS</div><label for="room-input">ROOM CODE</label><input id="room-input" maxlength="5" placeholder="ABCDE" style="text-transform:uppercase;letter-spacing:5px"><button id="join-room" class="secondary-button">JOIN ROOM</button><p id="network-error" class="error" role="alert"></p>`,
+      `<h2>Private room</h2><label for="player-name">Your name</label><input id="player-name" maxlength="16" value="${escape(safeRead("dc.name", "Runner"))}"><form id="room-form"><label for="room-input">Room code</label><div class="code-entry"><input id="room-input" maxlength="5" placeholder="ABCDE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="join-room" class="primary-button">Join room</button></div></form><div class="room-divider">or</div><button id="create-room" class="secondary-button">Create a new room</button><p id="network-error" class="error" role="status"></p>`,
     );
     $("create-room").onclick = () => void this.join("create");
-    $("join-room").onclick = () => void this.join("join");
+    $("room-form").onsubmit = (e) => {
+      e.preventDefault();
+      void this.join("join");
+    };
   }
   async join(type: "create" | "join") {
     const name = $<HTMLInputElement>("player-name").value.trim() || "Runner",
       code = $<HTMLInputElement>("room-input").value.trim();
-    if (type === "join" && code.length !== 5) {
+    if (this.busy) return;
+    if (type === "join" && !/^[a-z0-9]{5}$/i.test(code)) {
       $("network-error").textContent = "Enter the five-character room code.";
+      $("room-input").focus();
       return;
     }
+    this.busy = true;
     localStorage.setItem("dc.name", JSON.stringify(name));
     $<HTMLButtonElement>("create-room").disabled = true;
     $<HTMLButtonElement>("join-room").disabled = true;
@@ -1244,7 +1279,6 @@ class Game {
         $<HTMLInputElement>("seed").value || "notebook",
         code,
       );
-      $<HTMLInputElement>("seed").value = welcome.seed;
       this.mode = "online";
       this.state = "loading";
       await this.build(welcome.seed, 1, welcome.spawn);
@@ -1252,8 +1286,12 @@ class Game {
       $("hud").classList.remove("hidden");
       this.updateMission();
       this.state = "paused";
+      if (type === "join") {
+        this.resume();
+        return;
+      }
       this.showDialog(
-        `<div class="modal-kicker">YOUR DISTRICT IS READY</div><h2>Room for a little chaos.</h2><p>Share this code with your friends. They can join while you play.</p><div class="room-code">${escape(welcome.code)}</div><button id="copy-invite" class="primary-button">COPY INVITE LINK ↗</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">COPY ROOM CODE</button><button id="enter-room" class="primary-button">ENTER MATCH <span>↗</span></button>`,
+        `<h2>Room ready</h2><p>Share this code or invite link with friends.</p><div class="room-code">${escape(welcome.code)}</div><button id="enter-room" class="primary-button">Enter game</button><button id="copy-invite" class="secondary-button">Copy invite link</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">Copy room code</button>`,
       );
       $("copy-invite").onclick = async () => {
         const field = $<HTMLInputElement>("invite-link");
@@ -1281,6 +1319,8 @@ class Game {
         $<HTMLButtonElement>("create-room").disabled = false;
         $<HTMLButtonElement>("join-room").disabled = false;
       }
+    } finally {
+      this.busy = false;
     }
   }
   applyResume(m: any) {
@@ -1378,7 +1418,7 @@ class Game {
       this.aiming = false;
       document.exitPointerLock();
       this.showDialog(
-        '<div class="modal-kicker">RECONNECTING</div><h2>Finding your way back…</h2><p>Your match is continuing. Reconnecting to your runner.</p><button id="reconnect-menu" class="secondary-button">RETURN TO SKETCHBOOK</button>',
+        '<div class="modal-kicker">RECONNECTING</div><h2>Finding your way back…</h2><p>Your match is continuing. Reconnecting to your runner.</p><button id="reconnect-menu" class="secondary-button">Main menu</button>',
       );
       $("reconnect-menu").onclick = () => this.mainMenu();
     }
@@ -1505,7 +1545,7 @@ class Game {
     localStorage.setItem("dc.best", JSON.stringify(best));
     const online = this.mode === "online";
     this.showDialog(
-      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : online ? "RESPAWN" : "TRY ANOTHER LINE"} <span>↗</span></button>`}<button id="finish-menu" class="secondary-button">RETURN TO SKETCHBOOK</button>`,
+      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : online ? "RESPAWN" : "TRY ANOTHER LINE"} <span>↗</span></button>`}<button id="finish-menu" class="secondary-button">Main menu</button>`,
     );
     if ($("retry")) {
       if (online) {
