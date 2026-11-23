@@ -4,7 +4,7 @@ import { type City, type Box, type V3, randomSeed } from "./world.ts";
 export const INK = "#222bc3",
   RED = "#d23c45",
   PAPER = "#f7f5e9",
-  SKY = "#87ceeb",
+  SKY = "#b89cff",
   GOLD = "#dfa52b";
 const vertex = `varying vec3 vNormal; varying vec3 vLocal; varying vec3 vLocalNormal; varying vec3 vWorld; varying float vDepth;
 void main(){vLocal=position;vLocalNormal=normal;vec4 p=vec4(position,1.);vec3 n=normal;
