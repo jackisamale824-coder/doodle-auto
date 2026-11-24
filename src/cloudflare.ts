@@ -10,6 +10,7 @@ import {
 
 const PORT = 4173;
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+const OCCUPANCY_CHECK_MS = 30_000;
 
 // Only the container's outbound intercept can invoke this entrypoint.
 export class PlayerDatabase extends WorkerEntrypoint<Env> {
@@ -68,11 +69,29 @@ export class GameContainer extends DurableObject<Env> {
     forwarded.headers.delete("host");
     try {
       const response = await this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
+      if (response.status === 101 && (await this.ctx.storage.getAlarm()) === null)
+        await this.ctx.storage.setAlarm(Date.now() + OCCUPANCY_CHECK_MS);
       if ([502, 503, 504].includes(response.status)) this.ready = false;
       return response;
     } catch (error) {
       this.ready = false;
       throw error;
+    }
+  }
+
+  // Forwarded WebSocket frames bypass the owning object's fetch handler.
+  // Renew its activity while the simulation has open transports, including pool.
+  async alarm() {
+    const container = this.ctx.container!;
+    if (!container.running) return;
+    const response = await container.getTcpPort(PORT).fetch("http://container/health", {
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) throw Error("Unable to check game server occupancy");
+    const {connections, rooms} = await response.json<{connections?: number; rooms: number}>();
+    if ((connections ?? rooms) > 0) {
+      await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
+      await this.ctx.storage.setAlarm(Date.now() + OCCUPANCY_CHECK_MS);
     }
   }
 

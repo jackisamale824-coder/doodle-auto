@@ -105,6 +105,7 @@ const server = http.createServer(async (req, res) => {
         game: "doodlesCreed",
         level: "rust",
         rooms: rooms.rooms.size,
+        connections: wss.clients.size + pool.clients.size,
       }),
     );
     return;
