@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A tire, a map dot and a duel rating · Doodle Auto</title>
+  <meta name="description" content="A field lesson on the November 24 Doodle Auto changes. Predict what your browser, your room and your account each remember.">
+  <link rel="icon" href="/favicon.svg">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #202e2b; background: #f8f5eb; font: 1.03rem/1.6 system-ui, sans-serif; }
+    main { max-width: 58rem; padding: 1.5rem clamp(1.2rem, 5vw, 3.5rem) 3rem; margin: auto; }
+    nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .5rem 1rem; padding-bottom: .8rem; border-bottom: 1px solid #202e2b; }
+    a, summary { color: #155c52; text-underline-offset: .2em; }
+    :focus-visible { outline: 3px solid #335777; outline-offset: 4px; }
+    time, nav, .source { font: 600 .83rem/1.5 ui-monospace, monospace; }
+    header { padding-top: 2.5rem; }
+    header time { color: #685126; }
+    h1, h2 { font: 500 clamp(1.7rem, 4vw, 2.2rem)/1.12 Georgia, serif; letter-spacing: -.03em; text-wrap: balance; }
+    h1 { font-size: clamp(2.6rem, 7vw, 4.4rem); margin: .35rem 0 1rem; }
+    h2 { margin: 0 0 .6rem; }
+    p { max-width: 67ch; margin: .6rem 0; }
+    header p { font-size: 1.16rem; }
+    section { border-top: 1px solid #a9b4a6; margin-top: 1.8rem; padding-top: 1.3rem; }
+    kbd { padding: .06rem .32rem; border: 1px solid #a9b4a6; border-bottom-width: 2px; border-radius: .22rem; background: #fffdf6; font: 650 .9em ui-monospace, monospace; }
+    aside { background: #e4efe7; border-left: 4px solid #155c52; padding: .75rem 1.1rem; margin: 1.4rem 0; }
+    details { max-width: 66ch; padding: .75rem 0; }
+    details + details { border-top: 1px solid #b6c8bf; }
+    summary { cursor: pointer; font-weight: 650; }
+  </style>
+</head>
+<body><main>
+  <nav aria-label="Site"><a href="system-map.html">← System map</a><a href="/">Open the game ↗</a></nav>
+  <header>
+    <time datetime="2026-11-24">November 24, 2026</time>
+    <h1>A tire, a map dot and a duel rating</h1>
+    <p>You join a County room where a car already has a flat tire. How does your browser know? Follow today’s changes through a match, and you can predict what another player will see and what you’ll keep tomorrow.</p>
+  </header>
+  <section>
+    <h2>Before spawning, make the game yours</h2>
+    <p>In Settings, choose light, dark or the system appearance. Reload the page and your choice returns. The browser saves this preference on your device.</p>
+    <p>The new loadout screen has slots for a primary weapon, a secondary and equipment. Pick a category and then an item with the number keys. At spawn, <kbd>B</kbd> reopens the loadout before you move away or fire. During play, hold <kbd>T</kbd>, point and release to equip an item, or press <kbd>X</kbd> to return to the previous weapon.</p>
+    <p>Notice the difference between choosing and equipping. Your browser remembers the kit you picked. In an online room, the server checks whether you’re still allowed to change it.</p>
+    <p class="source"><a href="https://github.com/jackisamale824-coder/doodle-auto/commit/0936938">See the loadout controls</a></p>
+  </section>
+  <section>
+    <h2>Join a room and read the street</h2>
+    <p>Switchback County gained a sunlit sky, revised streets and buildings, new first-person hands, a knife and ejected casings. Individual tires, windows and body panels can now take damage. One flat tire changes how the car steers and slows it down. The room records which tire went flat, so a player arriving later sees the same damage.</p>
+    <p>Press <kbd>M</kbd> to expand the floating map. Red marks you. Blue marks other living human players. A friend can move the blue dot on your map without touching your computer because the server periodically sends a <em>snapshot</em>, a description of the room at that moment.</p>
+    <p>Today’s networking change keeps human positions in those updates while sending nearby cars and NPCs more often than distant ones. Periodic full updates bring the whole view back into sync.</p>
+    <p>The room also tracks what its characters have seen. A civilian who witnesses aggression can call the police and flee. A completed call triggers dispatch. This gives the player a visible chain of events from the incident to the police response.</p>
+    <p class="source"><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/240ce86/tests/county-vehicle-damage.test.ts">Read the late-arrival tire test</a> · <a href="https://github.com/jackisamale824-coder/doodle-auto/commit/3fab562">See how snapshots changed</a> · <a href="https://github.com/jackisamale824-coder/doodle-auto/blob/3d38644/tests/county-citizens.test.ts">Trace a witness call</a></p>
+  </section>
+  <section>
+    <h2>Finish a duel and follow the result</h2>
+    <p>You can now enter with a guest nickname or sign in. Press <kbd>Tab</kbd> to see who is a guest, who is signed in and each signed-in player’s Elo rating. A guest nickname lasts for the tab session. An account keeps your online play history, including time, kills and deaths.</p>
+    <p>In a rated duel between two signed-in players, the first to 15 eliminations wins. Elo measures the result against the players’ rating difference, so beating a stronger opponent earns more points. The server writes the result to the persistent player database. Your rating is there the next time you sign in, even on another device.</p>
+    <p>Already have a password account? Use <strong>Link Google account</strong> from your profile to use Google sign-in with the same history and rating.</p>
+    <p class="source"><a href="https://github.com/jackisamale824-coder/doodle-auto/commit/1b89e10">See the scoreboard change</a> · <a href="https://github.com/jackisamale824-coder/doodle-auto/blob/1b89e10/server/player-store.ts">Read the rating calculation</a></p>
+  </section>
+  <section>
+    <h2>How we know the changes reached players</h2>
+    <p>Earlier releases today failed during deployment. We corrected the Cloudflare Worker and storage bindings and changed the release configuration to preserve the existing sully6.com domain setup. GitHub Actions now builds the client, deploys the Worker and game container, and checks both ends of a real connection.</p>
+    <p>One check asks sully6.com for its client bundle and compares it with the build. Another joins a County room over WebSocket and waits for a snapshot carrying vehicle updates. The first establishes which client players received. The second establishes that the server speaks the protocol that client expects.</p>
+    <p class="source"><a href="https://github.com/jackisamale824-coder/doodle-auto/actions/runs/45459347007">Inspect today’s successful system-map release</a> · <a href="system-map.html">Trace the production system</a></p>
+  </section>
+  <aside aria-labelledby="recall">
+    <h2 id="recall">Predict what carries over</h2>
+    <p>Make a prediction before opening each answer.</p>
+    <details><summary>You sign in on a new laptop. Which follows you, dark mode or Elo?</summary><p>Your Elo follows your account. The first laptop saved dark mode in its browser. The new laptop uses its own appearance setting.</p></details>
+    <details><summary>A friend joins your County room after a tire goes flat. What will they see?</summary><p>The same flat tire. A joining client receives the car’s current condition from the room, even though it missed the original impact. A fresh room starts with fresh cars.</p></details>
+    <details><summary>A new menu loads, but nobody can join a room. Which release check catches it?</summary><p>The WebSocket check. A browser can download the correct menu while the room connection fails. Waiting for an actual game snapshot exercises both the connection and the room.</p></details>
+  </aside>
+</main></body>
+</html>
