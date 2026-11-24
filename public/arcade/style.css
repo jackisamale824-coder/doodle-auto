@@ -7,8 +7,7 @@ header { background: var(--ink); color: white; border-bottom: 5px solid #aba3fe 
 .bar, main { width: min(1280px, calc(100% - 9vw)); margin: auto }
 .bar { min-height: 78px; display: flex; align-items: center; justify-content: space-between; gap: 20px }
 .brand { display: inline-flex; align-items: center; text-decoration: none; color: white; font-size: 27px; letter-spacing: -2px; font-weight: 700; font-style: italic }
-.six { color: var(--acid) }
-.mark { display: grid; place-items: center; width: 33px; height: 31px; margin-right: 10px; background: var(--acid); border-radius: 6px; transform: skew(-10deg); color: var(--ink); font: 900 28px/1 Arial,sans-serif; letter-spacing: -2px }
+.mark { display: grid; place-items: center; width: 33px; height: 31px; margin-left: 5px; background: var(--acid); border-radius: 6px; transform: skew(-10deg); color: var(--ink); font: 900 28px/1 Arial,sans-serif; letter-spacing: -2px }
 .search { display: flex; align-items: center; gap: 12px; background: #373555; border: 1px solid #77748d; border-radius: 24px; padding: 9px 16px; width: min(240px, 45vw) }
 .search span { width: 15px; height: 15px; border: 2px solid white; border-radius: 50%; position: relative; flex: none }
 .search span::after { content: ""; position: absolute; background: white; width: 7px; height: 2px; transform: rotate(45deg); right: -5px; bottom: -2px }
