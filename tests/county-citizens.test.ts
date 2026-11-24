@@ -47,64 +47,88 @@ test("both towns retain their parked fleet while deterministic citizens walk and
   });
 });
 
-test("reactions use the individual player's notoriety, sight line and opportunity", () => {
-  for (const [level, range, expected] of [
-    [30, 1, null],
-    [31, 1, "shove"],
-    [50, 1, "shove"],
-    [51, 1, "punch"],
-    [75, 9, null],
-    [76, 9, "shot"],
-  ] as const) {
-    const { ai } = setup(),
-      a = ai.actors[0];
-    ai.actors.splice(1);
-    const innocent = player("neighbor", [a.p[0], a.p[1], a.p[2] + 0.25], 0);
-    // Stay on the same open sidewalk for the distant shot.
-    const target = player(
-      "offender",
-      [
-        a.p[0] - Math.sin(a.yaw) * range,
-        a.p[1],
-        a.p[2] - Math.cos(a.yaw) * range,
-      ],
-      level,
-    );
-    const actions: CitizenAction[] = [],
-      shots: V3[] = [];
-    ai.update(
-      1 / 30,
-      1000,
-      [innocent, target],
-      (p, bot, damage, kind) => {
-        assert.equal(p.id, target.id);
-        assert.equal(bot, a);
-        assert.equal(damage > 0, kind !== "shove");
-        actions.push(kind);
-      },
-      (_bot, to) => shots.push(to),
-    );
-    assert.deepEqual(actions, expected ? [expected] : []);
-    assert.equal(shots.length, expected === "shot" ? 1 : 0);
-  }
-  const cars = countyCars(),
-    ai = new CountyCitizens(city, cars, {
-      ray: () => true,
-      clear: () => false,
-      movement: () => false,
-    });
-  const a = ai.actors[0],
-    origin = [...a.p];
+test("even a notorious player gets space, and only a witnessed incident triggers dispatch", () => {
+  let wall = false;
+  const ai = new CountyCitizens(city, [], {
+    ray: () => wall,
+    clear: () => true,
+    movement: () => true,
+  });
+  const witness = ai.actors[0];
   ai.actors.splice(1);
-  ai.update(
-    1 / 30,
-    1200,
-    [player("hidden", [a.p[0] + 1, a.p[1], a.p[2]], 100)],
-    () => assert.fail(),
-    () => assert.fail(),
+  const suspect = player(
+    "suspect",
+    [witness.p[0] + 1, witness.p[1], witness.p[2]],
+    100,
   );
-  assert.deepEqual(a.p, origin);
-  assert.equal(a.targetId, undefined);
+  const bystander = player("neighbor", [suspect.p[0], 0, suspect.p[2] + 5], 0);
+  const people = [suspect, bystander];
+  const tick = (now: number) =>
+    ai.update(
+      0.1,
+      now,
+      people,
+      (_target, bot) => assert.equal(bot.civilian, false),
+      noop,
+    );
+  tick(100);
+  assert.ok(distance(witness.p, suspect.p) > 1);
+  assert.equal(ai.wanted(suspect.id), undefined);
+  wall = true;
+  ai.alarm(suspect.id, suspect.p, 200, 2, 36);
+  assert.equal(ai.wanted(suspect.id), undefined);
+  wall = false;
+  ai.alarm(suspect.id, suspect.p, 300, 2, 36);
+  const before = distance(witness.p, suspect.p);
+  tick(400);
+  assert.ok(distance(witness.p, suspect.p) > before + 0.45);
+  assert.equal(witness.action, "calling");
+  assert.equal(ai.wanted(suspect.id)?.phase, "calling");
+  assert.equal(ai.actors.length, 1);
+  tick(1700);
+  const officer = ai.actors.find((a) => !a.civilian)!;
+  assert.equal(officer.targetId, suspect.id);
+  assert.equal(witness.action, "flee");
+  assert.equal(ai.wanted(suspect.id)?.stars, 1);
+  assert.equal(ai.wanted(bystander.id), undefined);
+  ai.alarm(suspect.id, suspect.p, 1800, 70, 36);
+  tick(5701);
+  tick(9702);
+  assert.equal(ai.wanted(suspect.id)?.stars, 3);
+  assert.equal(ai.actors.filter((a) => !a.civilian).length, 3);
+  officer.p = [suspect.p[0] + 6, suspect.p[1], suspect.p[2]];
+  let shots = 0;
+  ai.update(
+    0.1,
+    12000,
+    people,
+    (p, a, _d, kind) => {
+      assert.equal(p.id, suspect.id);
+      assert.equal(a.civilian, false);
+      assert.equal(kind, "shot");
+      shots++;
+    },
+    noop,
+  );
+  assert.ok(shots > 0);
+  wall = true;
+  tick(15000);
+  assert.equal(ai.wanted(suspect.id)?.phase, "search");
+  tick(33000);
+  assert.equal(ai.wanted(suspect.id), undefined);
+  assert.deepEqual(ai.actors, [witness]);
+});
+
+test("an interrupted call never dispatches police", () => {
+  const { ai } = setup();
+  const witness = ai.actors[0];
+  ai.actors.splice(1);
+  const p = player("attacker", [...witness.p], 0);
+  ai.alarm(p.id, p.p, 100, 10, 24, witness);
+  witness.hp = 0;
+  ai.update(0.1, 1501, [p], noop, noop);
+  assert.equal(ai.wanted(p.id), undefined);
+  assert.equal(ai.actors.length, 1);
 });
 
 test("drivers brake for calm pedestrians and active human car ownership survives civilian recovery", () => {
@@ -138,7 +162,8 @@ test("drivers brake for calm pedestrians and active human car ownership survives
     noop,
   );
   ai.update(1 / 30, 1200, [p], (_t, _b, _d, k) => hits.push(k), noop);
-  assert.deepEqual(hits, ["ram"]);
+  assert.deepEqual(hits, []);
+  assert.deepEqual(car.p, start);
   a.hp = 0;
   ai.update(1 / 30, 1300, [], noop, noop);
   assert.equal(car.driver, null);
@@ -174,7 +199,7 @@ test("a knocked-down citizen suspends activity, then walks and heals without cha
   assert.equal(ai.actors.length, count);
 });
 
-test("a driver cuts in front of a notorious motorist while ordinary traffic stays in its lane", () => {
+test("traffic stays in its lane around both calm and notorious motorists", () => {
   function trajectory(level: number) {
     const { cars, ai } = setup();
     const a = ai.actors.find((a) => a.car !== undefined)!;
@@ -204,7 +229,7 @@ test("a driver cuts in front of a notorious motorist while ordinary traffic stay
     return (c.p[0] - start[0]) * side[0] + (c.p[2] - start[2]) * side[1];
   }
   assert.ok(Math.abs(trajectory(30)) < 0.01);
-  assert.ok(trajectory(31) > 1);
+  assert.equal(trajectory(100), trajectory(30));
 });
 
 test("civilian motorists share a seated mesh, visible only in their occupied near-detail cars", async () => {

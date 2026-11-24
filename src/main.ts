@@ -32,13 +32,16 @@ import {
 } from "./fists.ts";
 import { buildFists, animateFists } from "./fist-view.ts";
 import { Spatial } from "../server/spatial.ts";
-import { CountyCitizens, type CountyCitizen } from "./county-citizens.ts";
+import {
+  CountyCitizens,
+  type CountyCitizen,
+  type Wanted,
+} from "./county-citizens.ts";
 import { CountyRagdolls } from "./county-ragdoll.ts";
 import {
   CountyImpacts,
   injuryPoints,
   notorietyAfter,
-  shovePosition,
 } from "./county-incidents.ts";
 import { actorHit, HIT_MULTIPLIER } from "./actor-hit.ts";
 import type { RemoteState } from "./network.ts";
@@ -147,6 +150,7 @@ class Game {
   citizens?: CountyCitizens;
   countySpatial?: Spatial;
   notoriety = 0;
+  private wanted?: Wanted;
   private citizenTick = 0;
   private selfReaction?: PunchImpact;
   private equippedAt = 0;
@@ -155,6 +159,13 @@ class Game {
   private lastFall = new WeakMap<Doodle, number>();
   private countyVandalism() {
     this.notoriety = notorietyAfter(this.notoriety, 5);
+    this.citizens?.alarm(
+      "local",
+      this.player.position.toArray(),
+      Date.now(),
+      5,
+      20,
+    );
   }
   private injureCitizen(
     actor: CountyCitizen,
@@ -163,11 +174,18 @@ class Game {
   ) {
     const before = actor.hp;
     actor.hp = Math.max(0, before - amount);
-    if (playerCaused)
-      this.notoriety = notorietyAfter(
-        this.notoriety,
-        injuryPoints(before, actor.hp),
+    if (playerCaused) {
+      const points = injuryPoints(before, actor.hp);
+      this.notoriety = notorietyAfter(this.notoriety, points);
+      this.citizens?.alarm(
+        "local",
+        this.player.position.toArray(),
+        Date.now(),
+        points,
+        32,
+        actor,
       );
+    }
     if (before > 0 && !actor.hp) {
       actor.deadAt = Date.now();
       actor.deaths++;
@@ -219,13 +237,6 @@ class Game {
       now,
       [me],
       (_target, bot, damage, kind) => {
-        if (kind === "shove" && this.vehicle < 0) {
-          const dest = shovePosition(me.p, bot.p);
-          if (q.movement(me.p, dest, p.height) && q.clear(dest, p.height)) {
-            p.position.fromArray(dest);
-            me.p = dest;
-          }
-        }
         if (damage > 0) {
           if (kind === "punch")
             this.selfReaction = punchImpact(
@@ -250,6 +261,7 @@ class Game {
         );
       },
     );
+    this.wanted = citizens.wanted("local");
   }
   vehicle = -1;
   carSpeed = 0;
@@ -677,6 +689,7 @@ class Game {
       };
     this.citizenTick = 0;
     this.notoriety = 0;
+    this.wanted = undefined;
     this.structures =
       seed === COUNTY
         ? new CountyStructures(
@@ -821,6 +834,13 @@ class Game {
         : this.player.eye.clone().addScaledVector(this.player.forward, 0.5);
     };
     this.combat.onPunch = () => {
+      this.citizens?.alarm(
+        "local",
+        this.player.position.toArray(),
+        Date.now(),
+        2,
+        2.5,
+      );
       this.armorySpawn = undefined;
       if (this.mode === "online") {
         this.sendState();
@@ -925,7 +945,16 @@ class Game {
         );
       }
       this.viewMotion.shot(WEAPONS[this.combat.weapon].model);
-      if (this.citizens) this.notoriety = notorietyAfter(this.notoriety, 2);
+      if (this.citizens) {
+        this.notoriety = notorietyAfter(this.notoriety, 2);
+        this.citizens.alarm(
+          "local",
+          this.player.position.toArray(),
+          Date.now(),
+          2,
+          this.combat.weapon === KNIFE ? 2.5 : 36,
+        );
+      }
       if (this.mode === "online") {
         this.sendState();
         this.network.send({ type: "fire" });
@@ -1208,13 +1237,15 @@ class Game {
       $("mission-title").textContent = "SWITCHBACK COUNTY";
       $("mission-title").style.display = "";
       $("mission").textContent =
-        this.notoriety > 75
-          ? "Armed citizens and hostile drivers"
-          : this.notoriety > 50
-            ? "Citizens will attack on sight"
-            : this.notoriety > 30
-              ? "Citizens may shove or cut you off"
-              : "Explore on foot or take a parked car";
+        this.wanted?.phase === "calling"
+          ? "Witness calling police"
+          : this.wanted?.phase === "responding"
+            ? "County police dispatched"
+            : this.wanted?.phase === "pursuit"
+              ? "Police pursuit · Break line of sight"
+              : this.wanted?.phase === "search"
+                ? "Police searching · Stay out of sight"
+                : "Explore on foot or take a parked car";
       $("mission-progress").style.display = "none";
       if (!online) $("mode-label").textContent = "OPEN WORLD";
     }
@@ -1684,7 +1715,7 @@ class Game {
       ["Tab / Esc", "Scoreboard / pause"],
     ];
     this.showDialog(
-      `<h2>Controls</h2><div class="help-grid">${controls.map(([key, action]) => `<kbd>${key}</kbd><span>${action}</span>`).join("")}</div>${county ? "<p>Notoriety starts at zero. Above 30% citizens may shove or cut you off, above 50% they fight, and above 75% they may shoot or ram.</p>" : ""}<button id="help-done" class="secondary-button">Back</button>`,
+      `<h2>Controls</h2><div class="help-grid">${controls.map(([key, action]) => `<kbd>${key}</kbd><span>${action}</span>`).join("")}</div>${county ? "<p>Civilians give you space. Threaten one in view and witnesses run and call the county police. More reported trouble brings backup. Break line of sight and stay hidden until the search ends.</p>" : ""}<button id="help-done" class="secondary-button">Back</button>`,
       back,
     );
     $("help-done").onclick = back;
@@ -1819,6 +1850,7 @@ class Game {
     this.player.pitch = player.pitch ?? this.player.pitch;
     this.combat.hp = player.hp;
     this.notoriety = player.notoriety ?? 0;
+    this.wanted = player.wanted;
     this.combat.kills = player.kills;
     this.combat.score = player.kills * 100;
     this.combat.mags = m.mags || player.mags;
@@ -1943,6 +1975,7 @@ class Game {
         if (me.hp <= 0 && this.state === "paused" && $("kit-form"))
           this.finish();
         this.notoriety = me.notoriety ?? 0;
+        this.wanted = me.wanted;
         this.combat.kills = me.kills;
         this.combat.score = me.kills * 100;
       }
@@ -2019,6 +2052,7 @@ class Game {
       this.combat.cancelPunch();
       this.player.reset(m.p);
       this.notoriety = 0;
+      this.wanted = undefined;
       this.combat.hp = 100;
       this.loadout = readLoadout(m.loadout) ?? this.loadout;
       Object.assign(
@@ -2544,6 +2578,7 @@ class Game {
     for (const state of states) {
       if (state.id === this.network.id && this.mode === "online") continue;
       const civil = state.id.startsWith("civilian-");
+      const police = state.id.startsWith("police-");
       let model = this.remotes.get(state.id);
       const nearby =
         !state.npc ||
@@ -2555,9 +2590,15 @@ class Game {
       }
       if (!model) {
         model = new Doodle(
-          civil ? "#446e95" : state.npc ? "#d23c45" : "#347a75",
-          state.npc ? undefined : state.name,
-          civil ? "civilian" : undefined,
+          police
+            ? "#17395c"
+            : civil
+              ? "#446e95"
+              : state.npc
+                ? "#d23c45"
+                : "#347a75",
+          police ? "POLICE" : state.npc ? undefined : state.name,
+          police ? "police" : civil ? "civilian" : undefined,
         );
         model.group.position.fromArray(state.p);
         this.render.scene.add(model.group);
@@ -2588,7 +2629,7 @@ class Game {
         dz = target.z - model.group.position.z;
       if (dist > 6) model.group.position.copy(target);
       else model.group.position.lerp(target, 1 - Math.exp(-dt * 35));
-      if (civil) {
+      if (civil || police) {
         model.setCivilianAction(state.action ?? "idle");
         if (state.fall && this.lastFall.get(model) !== state.fall.at) {
           const age = Math.max(0, (now - state.fall.at) / 1000);
@@ -2681,6 +2722,15 @@ class Game {
           ]);
         } else rope.visible = false;
       } else if (rope) rope.visible = false;
+    }
+    if (this.citizens) {
+      for (const [id, model] of this.remotes) {
+        if (id.startsWith("police-") && !states.some((a) => a.id === id)) {
+          this.ragdolls?.remove(model);
+          model.dispose();
+          this.remotes.delete(id);
+        }
+      }
     }
     this.ragdolls?.update(dt, cam.position);
     for (const [id, line] of this.remoteRopes)
@@ -2879,9 +2929,9 @@ class Game {
     $("notoriety").hidden =
       this.seed !== COUNTY || (this.mode === "online" && this.network.duel);
     if (this.seed === COUNTY) {
-      const n = Math.ceil(this.notoriety);
-      $("notoriety-number").textContent = n + "%";
-      $<HTMLProgressElement>("notoriety-bar").value = this.notoriety;
+      const stars = this.wanted?.stars ?? 0;
+      $("wanted-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
+      $("wanted-stars").setAttribute("aria-label", stars + " of 3 stars");
     }
     $("wave-status").textContent = wave
       ? wave.nextIn > 0

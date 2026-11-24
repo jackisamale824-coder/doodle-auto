@@ -25,7 +25,6 @@ import {
   CountyImpacts,
   injuryPoints,
   notorietyAfter,
-  shovePosition,
   type CountyFall,
 } from "../src/county-incidents.ts";
 import { initializeRapier } from "../src/rapier-init.ts";
@@ -221,7 +220,7 @@ export class Rooms {
         car,
       );
       if (impact) {
-        if (now >= driver.crashUntil) this.countyVandalism(p);
+        if (now >= driver.crashUntil) this.countyVandalism(r, p);
         driver.crashUntil = now + 400;
       }
       if (from !== pose.p)
@@ -543,7 +542,7 @@ export class Rooms {
       public: r.public,
       duel: r.duel,
       tickRate: 30,
-      player: { ...p },
+      player: { ...p, wanted: r.citizens?.wanted(p.id) },
       effects: r.effects,
       drive:
         this.drivers.has(p) && r.cars?.some((c) => c.driver === p.id)
@@ -674,17 +673,6 @@ export class Rooms {
           humans.filter((p) => p.ready !== false),
           (p, bot, damage, kind) => {
             if (p.hp <= 0 || now < p.shieldUntil) return;
-            if (kind === "shove" && !r.cars?.some((c) => c.driver === p.id)) {
-              const dest = shovePosition(p.p, bot.p);
-              if (
-                r.spatial.movement(p.p, dest, p.height) &&
-                r.spatial.clear(dest, p.height)
-              ) {
-                p.p = dest;
-                for (const [ws, target] of r.players)
-                  if (target === p) send(ws, { type: "correction", p: dest });
-              }
-            }
             if (damage > 0)
               this.hurt(
                 r,
@@ -849,6 +837,7 @@ export class Rooms {
           anchor: p.anchor,
           npc: !!p.npc,
           notoriety: p.notoriety,
+          wanted: p.npc ? undefined : r.citizens?.wanted(p.id),
           action: (p as CountyCitizen).action,
           fall: p.fall,
           reaction:
@@ -864,7 +853,8 @@ export class Rooms {
     if (this.tickTimes.length > 900) this.tickTimes.shift();
   }
 
-  private countyVandalism(p: PlayerState) {
+  private countyVandalism(r: Room, p: PlayerState) {
+    r.citizens?.alarm(p.id, p.p, Date.now(), 5, 20);
     p.notoriety = notorietyAfter(p.notoriety ?? 0, 5);
   }
   private countyCarContact(
@@ -900,11 +890,11 @@ export class Rooms {
     if (victim.hp <= 0 || Date.now() < victim.shieldUntil) return;
     const before = victim.hp;
     victim.hp = Math.max(0, victim.hp - damage);
-    if (r.citizens && attacker !== victim && !attacker.npc)
-      attacker.notoriety = notorietyAfter(
-        attacker.notoriety ?? 0,
-        injuryPoints(before, victim.hp),
-      );
+    if (r.citizens && attacker !== victim && !attacker.npc) {
+      const points = injuryPoints(before, victim.hp);
+      attacker.notoriety = notorietyAfter(attacker.notoriety ?? 0, points);
+      r.citizens.alarm(attacker.id, attacker.p, Date.now(), points, 32, victim);
+    }
     const yaw = victim.yaw + Math.PI;
     const localX =
       Math.cos(yaw) * (attacker.p[0] - victim.p[0]) -
@@ -1001,8 +991,9 @@ export class Rooms {
           ...(r.citizens || p.swing || p.reaction
             ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
             : []),
-          ...(p.swing || p.reaction ? [p.swing ?? null] : []),
-          ...(p.reaction ? [p.reaction] : []),
+          ...(p.swing || p.reaction || p.wanted ? [p.swing ?? null] : []),
+          ...(p.reaction || p.wanted ? [p.reaction ?? null] : []),
+          ...(p.wanted ? [p.wanted] : []),
         ]));
         const header = {
           type: "snapshot",
@@ -1529,6 +1520,7 @@ export class Rooms {
       const swing = nextPunch(p.swing, Math.max(now, ready));
       p.swing = swing;
       p.punchPending = true;
+      r.citizens?.alarm(p.id, p.p, now, 2, 2.5);
       p.punchReadyAt = swing.start + PUNCHES[swing.move].duration * 1000;
       return;
     }
@@ -1568,7 +1560,10 @@ export class Rooms {
       }
       p.armorySpawn = undefined;
       p.lastShot = now;
-      if (r.citizens) p.notoriety = notorietyAfter(p.notoriety ?? 0, 2);
+      if (r.citizens) {
+        p.notoriety = notorietyAfter(p.notoriety ?? 0, 2);
+        r.citizens.alarm(p.id, p.p, now, 2, p.weapon === KNIFE ? 2.5 : 36);
+      }
       const dir: V3 = [
           -Math.sin(p.yaw) * Math.cos(p.pitch),
           Math.sin(p.pitch),
