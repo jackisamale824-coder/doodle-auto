@@ -1,0 +1,125 @@
+#dialog:has(.range-rack) {
+  width: min(920px, 94vw);
+  max-width: none;
+  max-height: 92vh;
+  overflow: auto;
+  padding: clamp(16px, 2.4vw, 28px);
+  border: 1px solid #526672;
+  border-radius: 12px;
+  background: #192630;
+  color: #f3ecda;
+  box-shadow: 0 20px 80px #101a25aa;
+}
+#dialog:has(.range-rack)::backdrop {
+  background: #14202a99;
+}
+#dialog:has(.range-rack) > .close-button {
+  display: none;
+}
+.range-rack {
+  font:
+    500 14px "DM Sans",
+    sans-serif;
+  text-align: left;
+}
+.range-rack header,
+.range-rack footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.range-rack header {
+  justify-content: space-between;
+}
+.range-brand,
+.range-rack h3 {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #edbc75;
+}
+#dialog .range-rack h2 {
+  font:
+    700 clamp(25px, 4vw, 38px) "DM Sans",
+    sans-serif;
+  margin: 2px 0;
+  color: inherit;
+}
+.range-rack a {
+  color: #deebed;
+  font-size: 13px;
+}
+#dialog .range-rack p {
+  color: #c4d1d3;
+  margin: 5px 0 14px;
+}
+.range-rack h3 {
+  margin: 12px 0 6px;
+}
+.range-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 6px;
+}
+#dialog .range-grid button {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 3px;
+  background: #293b46;
+  color: #f4efe5;
+  border: 1px solid #415463;
+  border-radius: 6px;
+  font:
+    500 12px "DM Sans",
+    sans-serif;
+  text-transform: none;
+  letter-spacing: 0;
+}
+#dialog .range-grid button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  border-color: #edbc75;
+  background: #354750;
+}
+.range-grid img {
+  width: 100%;
+  height: clamp(34px, 7vh, 60px);
+  object-fit: contain;
+}
+.range-fist {
+  height: clamp(34px, 7vh, 60px);
+  display: grid;
+  align-items: center;
+  font-size: 28px;
+}
+.range-rack footer {
+  flex-wrap: wrap;
+  border-top: 1px solid #415463;
+  margin-top: 16px;
+  padding-top: 12px;
+  font-size: 12px;
+  color: #c4d1d3;
+}
+.range-rack kbd {
+  font: inherit;
+  color: #f3d59b;
+  font-weight: 700;
+}
+.weapon-test
+  #hud
+  :is(
+    .hud-top-right,
+    #city-map-panel,
+    #weapon-slots,
+    #grapple-status,
+    #hook-reticle,
+    .hud-bottom-center,
+    #armory-hint,
+    .district-label,
+    #mission-progress,
+    #compass
+  ) {
+  display: none;
+}

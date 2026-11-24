@@ -1,3 +1,4 @@
+import { drawRange, rangeWorld, weaponRack } from "./weapon-range.ts";
 import { shardForSeed } from "./game-shards.ts";
 import { QuickInventory } from "./quick-inventory.ts";
 import { bindLoadoutPreview, loadoutScreen } from "./loadout-screen.ts";
@@ -152,6 +153,7 @@ class Game {
   render = new Renderer(canvas);
   audio = new AudioEngine();
   private params = new URLSearchParams(location.search);
+  private readonly weaponTest = this.params.get("mode") === "weapon-test";
   private islandsSelected = ["islands", "city"].includes(this.params.get("level") ?? "");
   countySelected = !this.islandsSelected &&
     (this.params.get("mode") === "county" || (location.pathname === "/" && !this.params.has("mode") && !this.params.has("room")));
@@ -558,7 +560,8 @@ class Game {
       url.searchParams.set("level", "islands");
       history.replaceState(null, "", url);
     }
-    this.seed = this.selectedSeed || "rust";
+    if (this.weaponTest) this.mode = "roam";
+    this.seed = this.weaponTest ? "weapon-test" : this.selectedSeed || "rust";
     this.audio.volume = settings.volume;
     this.render.setQuality(settings.quality);
     $<HTMLInputElement>("seed").value = this.seed;
@@ -580,6 +583,17 @@ class Game {
     this.state = "menu";
     this.bind();
     $("loading").classList.add("hidden");
+    if (this.weaponTest) {
+      document.body.classList.add("weapon-test");
+      document.title = "Weapon test range · Doodle Auto";
+      $("menu").classList.add("hidden");
+      $("hud").classList.remove("hidden");
+      document.querySelector(".escape-tip")!.textContent = "B · WEAPON RACK　 SCROLL · SWITCH　 R · RELOAD / RESTOCK";
+      this.state = "paused";
+      this.showWeaponRack();
+      requestAnimationFrame((t) => this.loop(t));
+      return;
+    }
     await this.identity.enter(!this.selectedSeed);
     try {
       const restored = await this.network.bootstrap();
@@ -619,7 +633,7 @@ class Game {
   async build(seed: string, district: number, spawn?: V3) {
     if (this.mode !== "online" && this.islandsSelected) seed = ISLANDS;
     const version = ++this.buildVersion;
-    const city = generateLevel(seed, district),
+    const city = this.weaponTest ? rangeWorld() : generateLevel(seed, district),
       physics = await Physics.create(city.boxes);
     if (version !== this.buildVersion) {
       physics.dispose();
@@ -663,6 +677,7 @@ class Game {
     document.body.classList.toggle("daylight-world", seed === COUNTY || islands);
     this.district = district;
     await this.render.build(city);
+    if (this.weaponTest) drawRange(this.render.cityGroup);
     if (version !== this.buildVersion) return;
     this.casings =
       seed === COUNTY
@@ -729,7 +744,7 @@ class Game {
     this.armorySpawn = this.player.position.toArray();
     this.player.ladders =
       city.arena?.ladders ?? (seed === COUNTY ? countyLadders(city.boxes) : []);
-    this.player.grappleEnabled = !city.arena && seed !== COUNTY;
+    this.player.grappleEnabled = !this.weaponTest && !city.arena && seed !== COUNTY;
     this.player.jumpHeightScale = city.arena || seed === COUNTY ? 0.85 : 1;
     document.body.classList.toggle(
       "no-grapple",
@@ -793,8 +808,13 @@ class Game {
       this.combat.onBlastCitizen = (actor, damage) =>
         this.injureCitizen(actor as CountyCitizen, damage);
     }
-    this.combat.onSurfaceHit = (index, damage) =>
-      this.structures?.damage(index, damage);
+    this.combat.onSurfaceHit = (index, damage) => {
+      if (this.weaponTest) {
+        this.combat.hitTime = 0.18;
+        this.combat.hitRegion = "body";
+        this.audio.hit();
+      } else this.structures?.damage(index, damage);
+    };
     if (this.citizens)
       this.combat.civilianShot = (origin, dir, range, baseDamage) => {
         let victim: CountyCitizen | undefined;
@@ -873,6 +893,11 @@ class Game {
         return;
       const amount = this.seed === COUNTY ? KNIFE_DAMAGE : PUNCHES[move].damage,
         p = this.player;
+      if (this.weaponTest) {
+        const plate = this.physics.ray(p.eye, p.forward, PUNCHES[move].reach)?.box?.pieceId;
+        if (plate !== undefined) this.combat.onSurfaceHit(plate, amount);
+        return;
+      }
       const targets = [
         ...(this.citizens?.actors ?? [])
           .filter((a) => a.hp > 0)
@@ -989,7 +1014,10 @@ class Game {
     this.collected.clear();
     this.elapsed = 0;
     this.selfReaction = undefined;
-    Object.assign(this.combat, inventory(this.loadout, seed === COUNTY));
+    if (this.weaponTest) {
+      this.combat.owned = WEAPONS.map((_, id) => id);
+      this.combat.mags = WEAPONS.map(w => w.mag);
+    } else Object.assign(this.combat, inventory(this.loadout, seed === COUNTY));
     this.setWeapon(this.combat.weapon, true);
     $("district-number").textContent = String(district).padStart(2, "0");
     $("district-stamp")?.setAttribute("data-district", String(district));
@@ -1006,7 +1034,7 @@ class Game {
     if (!force && !this.combat.switchWeapon(i)) return;
     this.previousWeapon = force ? undefined : before;
     disposeGroup(this.weaponMesh);
-    const daylight = this.seed === COUNTY || this.city.seed === ISLANDS;
+    const daylight = this.weaponTest || this.seed === COUNTY || this.city.seed === ISLANDS;
     const look = characterLook(this.appearanceId);
     this.weaponMesh =
       i === FISTS
@@ -1041,6 +1069,21 @@ class Game {
         return item;
       }),
     );
+  }
+  private showWeaponRack() {
+    this.showDialog(weaponRack(this.combat.weapon), () => this.resume());
+    for (const button of document.querySelectorAll<HTMLButtonElement>("[data-range-weapon]")) {
+      button.onclick = () => {
+        const id = Number(button.dataset.rangeWeapon);
+        this.combat.mags[id] = WEAPONS[id].mag;
+        this.combat.burstLeft = 0;
+        this.combat.reloadTime = 0;
+        this.combat.cooldown = 0;
+        this.combat.cancelPunch();
+        this.setWeapon(id);
+        this.resume();
+      };
+    }
   }
   private pickLoadout(
     enter: () => void,
@@ -1177,6 +1220,7 @@ class Game {
     this.showPause();
   }
   showPause(title = "Paused", body = "") {
+    if (this.weaponTest) return this.showWeaponRack();
     this.showDialog(
       `<h2>${title}</h2>${body ? `<p>${body}</p>` : ""}${this.mode === "online" ? `<p>Room <b>${escape(this.network.code)}</b> · The match continues while you pause.</p>` : ""}<button id="resume" class="primary-button">Resume game</button><div class="pause-tools"><button id="pause-controls" class="secondary-button">Controls</button><button id="pause-settings" class="secondary-button">Settings</button></div><button id="main-menu" class="text-button">Leave for main menu</button>`,
     );
@@ -1236,6 +1280,11 @@ class Game {
     if (dialog.open) dialog.close();
   }
   updateMission() {
+    if (this.weaponTest) {
+      $("mission-title").textContent = "Weapon test range";
+      $("mission").textContent = "Left click · Use　 Right click · Aim";
+      return;
+    }
     const online = this.mode === "online",
       roam = this.mode === "roam",
       ready = this.combat.kills >= 6 && this.collected.size === 3;
@@ -1371,12 +1420,14 @@ class Game {
       if (this.state === "menu" || this.state === "paused")
         void this.checkRelease();
     });
-    void this.refreshLobbies();
-    setInterval(() => {
-      if (this.state === "menu" || this.state === "paused")
-        void this.checkRelease();
-      if (this.state === "menu") void this.refreshLobbies();
-    }, 3000);
+    if (!this.weaponTest) {
+      void this.refreshLobbies();
+      setInterval(() => {
+        if (this.state === "menu" || this.state === "paused")
+          void this.checkRelease();
+        if (this.state === "menu") void this.refreshLobbies();
+      }, 3000);
+    }
     $("reroll").onclick = () => {
       const words = ["paper", "rooftops", "sketch", "ink", "creed", "bluebird"];
       $<HTMLInputElement>("seed").value =
@@ -1484,6 +1535,7 @@ class Game {
         }
         if (this.quickInventory.open) return;
         if (e.code === "KeyB") {
+          if (this.weaponTest) return this.pause();
           if (!this.armorySpawn) {
             this.notice("Loadout changes are available at spawn");
             return;
@@ -1519,7 +1571,12 @@ class Game {
         else this.useCar();
         return;
       }
-      if (e.code === "KeyR") this.combat.reload();
+      if (e.code === "KeyR") {
+        if (this.weaponTest && isGrenade(this.combat.weapon)) {
+          this.combat.mags[this.combat.weapon] = WEAPONS[this.combat.weapon].mag;
+          this.notice("Restocked");
+        } else this.combat.reload();
+      }
       if (/^Digit[1-9]$/.test(e.code)) {
         const id = this.combat.owned[Number(e.code.slice(-1)) - 1];
         if (id !== undefined) this.setWeapon(id);
@@ -1612,6 +1669,7 @@ class Game {
   }
   private async checkRelease() {
     if (
+      this.weaponTest ||
       RELEASE_ID === "dev" ||
       document.hidden ||
       performance.now() - this.checkedReleaseAt < 15000
@@ -3024,7 +3082,7 @@ class Game {
       : NEIGHBORHOODS.find((n) => n.id === nearest.neighborhood)!.name;
   }
   updateHUD() {
-    this.drawCityMap();
+    if (!this.weaponTest) this.drawCityMap();
     const p = this.player,
       c = this.combat,
       gun = WEAPONS[c.weapon];
@@ -3113,7 +3171,7 @@ class Game {
     $("hitmarker").style.opacity = c.hitTime > 0 ? "1" : "0";
     $("hit-region").style.opacity = c.hitTime > 0 ? "1" : "0";
     $("hit-region").textContent =
-      c.hitRegion === "head"
+      this.weaponTest ? "TARGET" : c.hitRegion === "head"
         ? "HEADSHOT"
         : c.hitRegion === "body"
           ? "BODY"
