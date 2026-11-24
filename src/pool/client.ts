@@ -396,14 +396,16 @@ function choices(error = "") {
   el("waiting").hidden = true;
   el("error").textContent = error;
 }
-function enter(kind: "find" | "create" | "join", code = "") {
+function enter(kind: "find" | "create" | "join", code = "", attempt = 0) {
   disconnect();
   el("choices").hidden = true;
   el("waiting").hidden = false;
   el("copy").hidden = true;
   el("roomcode").textContent = "";
   el("error").textContent = "";
-  el("waittext").textContent = "Connecting to the table…";
+  el("waittext").textContent = attempt
+    ? "Reconnecting to the table…"
+    : "Connecting to the table…";
   const origin =
     location.hostname === "pool.sully6.com"
       ? "https://sully6.com"
@@ -415,8 +417,7 @@ function enter(kind: "find" | "create" | "join", code = "") {
   socket = ws;
   const timeout = window.setTimeout(() => {
     if (ws === socket && ws.readyState !== WebSocket.OPEN) {
-      disconnect();
-      choices("Connection timed out. Try again or play solo.");
+      ws.close();
     }
   }, 15000);
   ws.onopen = () => {
@@ -477,6 +478,20 @@ function enter(kind: "find" | "create" | "join", code = "") {
   ws.onclose = () => {
     clearTimeout(timeout);
     if (ws !== socket) return;
+    if (
+      mode === "solo" &&
+      lobby.open &&
+      !el("roomcode").textContent &&
+      attempt < 3
+    ) {
+      window.setTimeout(
+        () => {
+          if (socket === ws && lobby.open) enter(kind, code, attempt + 1);
+        },
+        800 * (attempt + 1),
+      );
+      return;
+    }
     socket = null;
     if (mode === "online") backToSolo("Connection closed · bot joined");
     else choices("Couldn’t reach the table. Try again or play solo.");
