@@ -165,33 +165,24 @@ test("late observers see a prone body; range, capacity and death retirement boun
   }
 });
 
-test("civilian locomotion, shove, punch and shooting change the arms and visible weapon", () => {
-  const a = new Doodle("#45818c", undefined, "civilian"),
-    camera = new PerspectiveCamera();
-  const animate = () => {
-    for (let i = 0; i < 12; i++) a.animate(i / 60, 0, camera, 0, 1 / 60);
-  };
+test("witnesses raise a hand to call and only police draw a weapon", () => {
+  const citizen = new Doodle("#45818c", undefined, "civilian");
+  const police = new Doodle("#17395c", undefined, "police");
+  const camera = new PerspectiveCamera();
   try {
-    animate();
-    assert.equal(a.aimRig.visible, false);
-    const rest = a.leftArm.quaternion.clone();
-    a.setCivilianAction("shove");
-    animate();
-    assert.ok(a.leftArm.quaternion.angleTo(rest) > 0.8 && !a.aimRig.visible);
-    a.setCivilianAction("melee");
-    animate();
-    assert.ok(
-      Math.abs(a.rightArm.rotation.x - a.leftArm.rotation.x) > 0.5 &&
-        !a.aimRig.visible,
-    );
-    a.setCivilianAction("shoot");
-    animate();
-    assert.equal(a.aimRig.visible, true);
-    a.setCivilianAction("idle");
-    animate();
-    assert.ok(!a.aimRig.visible && rest.angleTo(a.leftArm.quaternion) < 0.001);
+    citizen.setCivilianAction("calling");
+    citizen.animate(0, 4, camera, 0, 1 / 60);
+    assert.ok(citizen.rightElbow.rotation.x < -2);
+    citizen.setCivilianAction("shoot");
+    assert.equal(citizen.aimRig.visible, false);
+    assert.equal(police.aimRig.visible, false);
+    police.setCivilianAction("shoot");
+    assert.equal(police.aimRig.visible, true);
+    police.setCivilianAction("idle");
+    assert.equal(police.aimRig.visible, false);
   } finally {
-    a.dispose();
+    citizen.dispose();
+    police.dispose();
   }
 });
 

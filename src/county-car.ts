@@ -217,16 +217,63 @@ export async function loadFleet() {
       templates.set(kind, scene);
     }),
   );
-  return (kind: VehicleKind, finish: number) =>
-    new CountyCarModel(
+  const lettering = panel(256, 72, (ctx) => {
+    ctx.fillStyle = "#f1f2ed";
+    ctx.fillRect(0, 0, 256, 72);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#182d48";
+    ctx.font = "bold 49px sans-serif";
+    ctx.fillText("POLICE", 128, 47);
+    ctx.font = "bold 18px sans-serif";
+    ctx.fillText("SWITCHBACK COUNTY", 128, 67);
+  });
+  const markings = new T.Group();
+  for (const side of [-1, 1]) {
+    const sign = new T.Mesh(new T.PlaneGeometry(1.65, 0.46), lettering);
+    sign.rotation.y = (side * Math.PI) / 2;
+    sign.position.set(side * 1.057, 0.75, 0.1);
+    markings.add(sign);
+  }
+  const bar = new T.Mesh(
+    new T.BoxGeometry(1.18, 0.07, 0.26),
+    new T.MeshBasicMaterial({ color: 0x152237 }),
+  );
+  bar.position.y = 1.49;
+  markings.add(bar);
+  const lamps = [0xff253e, 0x269dff].map((color, i) => {
+    const lamp = new T.Mesh(
+      new T.BoxGeometry(0.5, 0.14, 0.22),
+      new T.MeshBasicMaterial({ color }),
+    );
+    lamp.name = i ? "blue-beacon" : "red-beacon";
+    lamp.position.set(i ? 0.32 : -0.32, 1.58, 0);
+    markings.add(lamp);
+    return lamp;
+  });
+  const policePaint = paints[0].clone();
+  policePaint.uniforms.coat.value.setHex(0x192a3b);
+  return (kind: VehicleKind, finish: number, cruiser = false) => {
+    const car = new CountyCarModel(
       templates.get(kind)!,
-      paints[finish % paints.length],
+      cruiser ? policePaint : paints[finish % paints.length],
       paints[0],
     );
+    if (cruiser) {
+      const kit = markings.clone();
+      car.add(kit);
+      car.beacons = lamps.map((lamp) => {
+        const light = kit.getObjectByName(lamp.name) as typeof lamp;
+        light.material = lamp.material.clone();
+        return light.material;
+      });
+    }
+    return car;
+  };
 }
 export class CountyCarModel extends T.Group {
   readonly seat: T.Vector3;
   readonly doorSide: number;
+  beacons?: T.MeshBasicMaterial[];
   private motorist: T.Mesh;
   private radius: number;
   private hinges: T.Object3D[];
@@ -483,7 +530,17 @@ export class CountyCarModel extends T.Group {
         : 1 - T.MathUtils.smoothstep(t, 0.55, 1);
     const level = distance < 10 ? 0 : distance < 35 ? 1 : 2;
     this.motorist.visible =
-      level === 0 && !!driver?.startsWith("civilian-driver-");
+      level === 0 &&
+      (!!driver?.startsWith("civilian-driver-") ||
+        !!driver?.startsWith("police-"));
+    this.beacons?.forEach((lamp, i) => {
+      const flashing =
+        driver?.startsWith("police-") || (!driver && this.elapsed < 12);
+      const lit = flashing && Math.floor(now * 5) % 2 === i;
+      lamp.color.setHex(
+        i ? (lit ? 0x59cfff : 0x19395d) : lit ? 0xff4841 : 0x681b28,
+      );
+    });
     this.levels.forEach((o, i) => {
       o.visible = i === level;
       this.hinges[i].rotation.y = this.doorSide * 1.12 * openness;

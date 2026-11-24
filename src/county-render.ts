@@ -5,7 +5,7 @@ import * as T from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { assetUrl } from "./release-info.ts";
 import { inkMaterial } from "./render.ts";
-import { elevation, countyCars } from "./county.ts";
+import { elevation, countyCars, type CountyCar } from "./county.ts";
 import { drawCountyRoads } from "./county-roads.ts";
 import { randomSeed, type City, type V3 } from "./world.ts";
 
@@ -85,16 +85,18 @@ export async function drawCounty(city: City, group: T.Group) {
     geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
     group.add(new T.Mesh(geo, terrainTint));
   }
-  const cars = countyCars().map((c, i) => {
+  const addCar = (c: CountyCar, i: number) => {
     const m = vehicle(
       c.kind,
       c.kind === "taxi" ? 1 : c.kind === "delivery" ? 3 : i,
+      c.cruiser,
     );
     m.rotation.y = c.yaw;
     m.position.fromArray(c.p);
     group.add(m);
     return m;
-  });
+  };
+  const cars = countyCars().map(addCar);
   const lightPositions = drawCountyRoads(group, city.plan.streets);
   const rng = randomSeed("county-landscape");
   const matrix = new T.Object3D();
@@ -183,5 +185,5 @@ export async function drawCounty(city: City, group: T.Group) {
     group.add(token);
     token.name = "county-mark";
   }
-  return cars;
+  return { cars, addCar };
 }

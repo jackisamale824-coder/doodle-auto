@@ -171,6 +171,7 @@ export interface CountyCar {
   yaw: number;
   kind: VehicleKind;
   driver: string | null;
+  cruiser?: boolean;
   damage?: number;
   wear?: number;
   dents?: import("./county-vehicle-damage.ts").PanelDent[];

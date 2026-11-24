@@ -9,8 +9,8 @@ import { VEHICLE_DIMENSIONS } from "./county-vehicle-dimensions.ts";
 import { distance, randomSeed, type City, type V3 } from "./world.ts";
 
 export interface CountyCitizen extends Npc {
-  civilian: true;
-  action: "idle" | "shove" | "melee" | "shoot";
+  civilian: boolean;
+  action: CountyAction;
   car?: number;
   downUntil?: number;
 }
@@ -28,7 +28,24 @@ interface Queries {
   clear(p: V3, height: number): boolean;
   movement(a: V3, b: V3, height: number): boolean;
 }
-export type CitizenAction = "shove" | "punch" | "shot" | "ram";
+export type CountyAction = "idle" | "calling" | "flee" | "melee" | "shoot";
+export type CitizenAction = "punch" | "shot";
+export const MAX_WANTED = 5;
+const STAR_POINTS = 25;
+export interface Wanted {
+  stars: number;
+  phase: "calling" | "responding" | "pursuit" | "search";
+}
+interface PoliceReport {
+  wanted: Wanted;
+  callers: Set<CountyCitizen>;
+  points: number;
+  dispatchAt: number;
+  lastSeen: number;
+  location: V3;
+  officers: CountyCitizen[];
+  reinforceAt: number;
+}
 interface Route {
   road: Street;
   dir: number;
@@ -37,6 +54,8 @@ interface Route {
   seat?: number;
   reverseUntil: number;
   poseUntil: number;
+  panicUntil: number;
+  danger?: V3;
   pace: number;
   random: () => number;
   checkAt: number;
@@ -130,13 +149,17 @@ export class CountyCitizens {
     now: number,
   ) => void;
   private routes = new Map<string, Route>();
+  private reports = new Map<string, PoliceReport>();
+  private unitSerial = 0;
+  private streets: Street[];
+  private owners = new WeakMap<CountyCar, string>();
   private junctions = new Map<string, Street[]>();
   constructor(
     city: City,
     private cars: CountyCar[],
     private queries: Queries,
   ) {
-    const streets = city.plan.streets;
+    const streets = (this.streets = city.plan.streets);
     for (const s of streets) {
       for (const point of [s.a, s.b]) {
         const key = point.join(",");
@@ -220,6 +243,7 @@ export class CountyCitizens {
       seat: car,
       reverseUntil: 0,
       poseUntil: 0,
+      panicUntil: 0,
       entering: false,
       pace: car === undefined ? 1.25 + random() * 0.65 : 7.5 + random() * 3,
       random,
@@ -238,6 +262,7 @@ export class CountyCitizens {
     );
     this.routes.set(id, route);
     this.actors.push(actor);
+    return actor;
   }
   private nextRoad(route: Route, driving: boolean) {
     if (route.entering) {
@@ -255,7 +280,11 @@ export class CountyCitizens {
       route.road.a === end || horizontal(route.road.a, end) < 0.01 ? 1 : -1;
     setGoal(route, driving, true);
   }
-  private visible(a: CountyCitizen, b: Person, now: number) {
+  private visible(
+    a: CountyCitizen,
+    b: Pick<Person, "p" | "height">,
+    now: number,
+  ) {
     const eye: V3 = [a.p[0], a.p[1] + 1.45, a.p[2]];
     const to: V3 = [b.p[0], b.p[1] + b.height * 0.58, b.p[2]];
     const len = distance(eye, to);
@@ -268,30 +297,187 @@ export class CountyCitizens {
       )
     );
   }
-  private target<T extends Person>(
-    a: CountyCitizen,
-    players: T[],
+  wanted(id: string) {
+    return this.reports.get(id)?.wanted;
+  }
+  takeCar(id: string, car: CountyCar, now: number) {
+    if (!car.driver && this.owners.get(car) === id) return;
+    this.owners.set(car, id);
+    const motorist = this.actors.find((a) => a.id === car.driver);
+    if (motorist) this.leaveCar(motorist, this.routes.get(motorist.id)!);
+    this.alarm(id, car.p, now, STAR_POINTS, 24, motorist, true);
+  }
+  // A surviving victim can identify the attacker. Bystanders need sight of the incident.
+  alarm(
+    id: string,
+    origin: V3,
     now: number,
+    points: number,
+    radius: number,
+    victim?: Person,
+    confirmed = victim?.hp === 0,
   ) {
-    let target: T | undefined,
-      best = Infinity;
-    for (const p of players) {
-      const level = p.notoriety ?? 0;
+    const callers = new Set<CountyCitizen>();
+    const scene = victim ?? { p: origin, height: 1.76 };
+    for (const actor of this.actors) {
+      if (actor.hp <= 0 || (actor.downUntil ?? 0) > now) continue;
       if (
-        level <= 30 ||
-        !p.hp ||
-        (p.shieldUntil ?? 0) > now ||
-        (p.downUntil ?? 0) > now
+        actor.id !== victim?.id &&
+        (distance(actor.p, scene.p) > radius ||
+          !this.visible(actor, scene, now))
       )
         continue;
-      const d = distance(a.p, p.p);
-      const radius =
-        level > 75 ? 31 : level > 50 ? 15 : a.car === undefined ? 5 : 17;
-      if (d >= radius || d >= best || !this.visible(a, p, now)) continue;
-      target = p;
-      best = d;
+      callers.add(actor);
+      if (actor.civilian) {
+        const route = this.routes.get(actor.id)!;
+        route.danger = [...origin];
+        route.panicUntil = now + 9000;
+      }
     }
-    return target;
+    if (!callers.size && !confirmed) return;
+    let report = this.reports.get(id);
+    if (!report) {
+      report = {
+        wanted: { stars: 0, phase: "calling" },
+        callers,
+        points: 0,
+        dispatchAt: now + 1400,
+        lastSeen: now,
+        location: [...origin],
+        officers: [],
+        reinforceAt: now,
+      };
+      this.reports.set(id, report);
+    }
+    if (report.wanted.phase === "calling") {
+      for (const actor of callers) {
+        report.callers.add(actor);
+        if (actor.civilian) {
+          actor.action = "calling";
+          this.routes.get(actor.id)!.poseUntil = report.dispatchAt;
+        }
+      }
+    }
+    if (confirmed && report.wanted.phase === "calling") {
+      report.wanted.phase = "responding";
+      report.dispatchAt = now;
+    }
+    report.points = Math.min(
+      STAR_POINTS * MAX_WANTED,
+      report.points + (victim?.hp === 0 ? STAR_POINTS : points),
+    );
+    if (report.wanted.phase !== "calling")
+      report.wanted.stars = Math.ceil(report.points / STAR_POINTS);
+    report.lastSeen = now;
+    report.location = [...origin];
+  }
+  private dispatch<T extends Person>(players: T[], now: number) {
+    for (const [id, report] of this.reports) {
+      const suspect = players.find((p) => p.id === id && p.hp > 0);
+      const calling = report.wanted.phase === "calling";
+      if (
+        !suspect ||
+        now - report.lastSeen > 20000 ||
+        (calling && ![...report.callers].some((a) => a.hp > 0))
+      ) {
+        for (const officer of report.officers) {
+          if (officer.car !== undefined)
+            this.leaveCar(officer, this.routes.get(officer.id)!);
+          this.routes.delete(officer.id);
+          this.actors.splice(this.actors.indexOf(officer), 1);
+        }
+        this.reports.delete(id);
+        continue;
+      }
+      if (now < report.dispatchAt) continue;
+      report.callers.clear();
+      const wanted = report.wanted;
+      wanted.stars = Math.max(1, Math.ceil(report.points / STAR_POINTS));
+      if (calling) wanted.phase = "responding";
+      if (
+        now - report.lastSeen > 2500 &&
+        report.officers.some((a) => a.hp > 0 && a.car === undefined)
+      )
+        wanted.phase = "search";
+      if (
+        now < report.reinforceAt ||
+        report.officers.filter((a) => a.hp > 0).length >= wanted.stars
+      )
+        continue;
+      report.reinforceAt = now + 4000;
+      for (const officer of report.officers.filter(
+        (a) => a.hp <= 0 && now - a.deadAt > 4000,
+      )) {
+        this.routes.delete(officer.id);
+        this.actors.splice(this.actors.indexOf(officer), 1);
+        report.officers.splice(report.officers.indexOf(officer), 1);
+      }
+      this.sendCruiser(id, report, players);
+    }
+  }
+  private sendCruiser(id: string, report: PoliceReport, players: Person[]) {
+    // Approach along a single street lane ending near the last reported position.
+    let best = Infinity;
+    let entry: { road: Street; dir: number; p: V3; stop: V3 } | undefined;
+    for (const road of this.streets) {
+      const length = horizontal(road.a, road.b);
+      if (length < 24) continue;
+      const dx = (road.b[0] - road.a[0]) / length,
+        dz = (road.b[2] - road.a[2]) / length;
+      const along =
+        (report.location[0] - road.a[0]) * dx +
+        (report.location[2] - road.a[2]) * dz;
+      for (const dir of [1, -1]) {
+        const near = Math.max(4, Math.min(length - 4, along - dir * 7));
+        const far = Math.max(3, Math.min(length - 3, near - dir * 30));
+        if ((near - far) * dir < 10) continue;
+        const p = alongStreet(road, far / length, dir * lane(road));
+        const stop = alongStreet(road, near / length, dir * lane(road));
+        p[1] = stop[1] = 0.08;
+        const score = horizontal(stop, report.location);
+        if (
+          score >= best ||
+          players.some((v) => v.hp > 0 && distance(v.p, p) < 16) ||
+          this.cars.some((c) => nearCar(p, c, 2) || nearCar(stop, c, 1)) ||
+          this.actors.some((a) => a.hp > 0 && distance(a.p, p) < 3) ||
+          !this.queries.clear(p, 1.76) ||
+          !this.queries.clear(stop, 1.76)
+        )
+          continue;
+        best = score;
+        entry = { road, dir, p, stop };
+      }
+    }
+    if (!entry) return;
+    const reusable = this.cars.findIndex(
+      (c, i) =>
+        c.cruiser &&
+        !c.driver &&
+        !players.some((p) => distance(p.p, c.p) < 40) &&
+        !this.actors.some(
+          (a) => !a.civilian && this.routes.get(a.id)?.seat === i,
+        ),
+    );
+    const slot = reusable < 0 ? this.cars.length : reusable;
+    const officer = this.add(
+      "police-" + ++this.unitSerial,
+      "County Police",
+      entry.road,
+      entry.dir,
+      [...entry.p],
+      slot,
+    );
+    this.cars[slot] = {
+      kind: "saloon",
+      cruiser: true,
+      driver: officer.id,
+      p: entry.p,
+      yaw: officer.yaw,
+    };
+    officer.civilian = false;
+    officer.targetId = id;
+    this.routes.get(officer.id)!.goal = entry.stop;
+    report.officers.push(officer);
   }
   update<T extends Person>(
     dt: number,
@@ -301,6 +487,7 @@ export class CountyCitizens {
     shot: (a: CountyCitizen, to: V3) => void,
   ) {
     dt = Math.min(dt, 0.12);
+    this.dispatch(players, now);
     for (const a of this.actors) {
       const route = this.routes.get(a.id)!;
       a.vx = 0;
@@ -309,7 +496,11 @@ export class CountyCitizens {
       if (a.hp <= 0) {
         a.action = "idle";
         a.engaged = false;
-        a.targetId = undefined;
+        if (!a.civilian) {
+          if (a.car !== undefined) this.leaveCar(a, route);
+          continue;
+        }
+        route.panicUntil = 0;
         if (!route.respawnAt)
           route.respawnAt = now + 18000 + route.random() * 8000;
         if (a.car !== undefined) this.leaveCar(a, route);
@@ -369,136 +560,210 @@ export class CountyCitizens {
       if ((a.downUntil ?? 0) > now) {
         a.action = "idle";
         a.engaged = false;
-        a.targetId = undefined;
         continue;
       }
-      const target = this.target(a, players, now);
-      a.targetId = target?.id;
-      a.engaged =
-        !!target && (target.notoriety ?? 0) > 75 && a.car === undefined;
-      if (a.car === undefined)
-        this.walk(a, route, target, players, dt, now, hurt, shot);
-      else this.drive(a, route, target, players, dt, now, hurt);
+      if (!a.civilian) {
+        const suspect = players.find((p) => p.id === a.targetId);
+        const report = this.reports.get(a.targetId!);
+        if (suspect && report)
+          this.police(a, route, suspect, report, players, dt, now, hurt, shot);
+        continue;
+      }
+      a.engaged = false;
+      const panic = now < route.panicUntil;
+      if (panic && a.action !== "calling") a.action = "flee";
+      if (a.car !== undefined) {
+        this.drive(a, route, players, dt, now, panic);
+        continue;
+      }
+      let danger = panic ? route.danger : undefined;
+      let nearest = 3.4;
+      for (const p of players) {
+        const d = distance(a.p, p.p);
+        if (p.hp > 0 && d < nearest && this.visible(a, p, now)) {
+          danger = p.p;
+          nearest = d;
+        }
+      }
+      if (danger) {
+        let dx = a.p[0] - danger[0],
+          dz = a.p[2] - danger[2];
+        if (Math.hypot(dx, dz) < 0.01) {
+          dx = -Math.sin(a.yaw);
+          dz = -Math.cos(a.yaw);
+        }
+        this.walk(
+          a,
+          route,
+          [a.p[0] + dx * 4, a.p[1], a.p[2] + dz * 4],
+          panic ? 5.4 : 2.4,
+          players,
+          dt,
+          now,
+          true,
+        );
+      } else if (horizontal(a.p, route.goal) < 0.5) this.nextRoad(route, false);
+      else this.walk(a, route, route.goal, route.pace, players, dt, now, false);
     }
   }
   private leaveCar(a: CountyCitizen, r: Route) {
     const car = this.cars[a.car!];
     if (car.driver === a.id) car.driver = null;
+    for (const side of [-1, 1]) {
+      const exit: V3 = [
+        car.p[0] + side * 1.65 * Math.cos(car.yaw),
+        0.16,
+        car.p[2] - side * 1.65 * Math.sin(car.yaw),
+      ];
+      if (
+        this.queries.clear(exit, a.height) &&
+        !this.cars.some((c) => c !== car && nearCar(exit, c, 0.32))
+      ) {
+        a.p = exit;
+        break;
+      }
+    }
     a.car = undefined;
     r.pace = 1.6;
 
     setGoal(r, false, false);
   }
-  private walk<T extends Person>(
+  private police<T extends Person>(
     a: CountyCitizen,
     r: Route,
-    target: T | undefined,
+    suspect: T,
+    report: PoliceReport,
     players: T[],
     dt: number,
     now: number,
     hurt: Hurt<T>,
     shot: (a: CountyCitizen, to: V3) => void,
   ) {
-    const d = target ? distance(a.p, target.p) : Infinity;
-    if (target && (d < 1.7 || ((target.notoriety ?? 0) > 75 && d < 30))) {
-      a.yaw = movementYaw(target.p[0] - a.p[0], target.p[2] - a.p[2], a.yaw);
-      if (now < r.actionAt) return;
-      if (d >= 1.7) {
-        const to: V3 = [
-          target.p[0],
-          target.p[1] + target.height * 0.58,
-          target.p[2],
-        ];
-        a.action = "shoot";
-        r.poseUntil = now + 500;
-        shot(a, to);
-        a.lastShot = now;
-        hurt(target, a, 9, "shot");
-        r.actionAt = now + 1500 + r.random() * 850;
-      } else {
-        const punch = (target.notoriety ?? 0) > 50;
-        a.action = punch ? "melee" : "shove";
-        r.poseUntil = now + 450;
-        hurt(target, a, punch ? 9 : 0, punch ? "punch" : "shove");
-        r.actionAt = now + (punch ? 1300 : 3400);
+    if (a.car !== undefined) {
+      const car = this.cars[a.car];
+      const remaining = horizontal(car.p, r.goal);
+      // Ease into the stop. A blocked cruiser unloads instead of ramming traffic.
+      const step = Math.min(remaining, dt * Math.min(12, 2 + remaining * 1.2));
+      const dx = -Math.sin(car.yaw),
+        dz = -Math.cos(car.yaw);
+      const next: V3 = [car.p[0] + dx * step, car.p[1], car.p[2] + dz * step];
+      const nose: V3 = [next[0] + dx * 2.5, next[1], next[2] + dz * 2.5];
+      const blocked =
+        this.cars.some((c) => c !== car && nearCar(nose, c, 0.8)) ||
+        [...players, ...this.actors].some(
+          (p) => p !== a && p.hp > 0 && distance(nose, p.p) < 1.7,
+        ) ||
+        !this.passable(a, r, next, dx, dz, now, true);
+      if (remaining > 0.25 && !blocked) {
+        car.p = next;
+        a.p = [...next];
+        a.lastMove = now;
+        r.blockedFor = 0;
+      } else if (remaining <= 0.25 || (r.blockedFor += dt) >= 0.8) {
+        this.leaveCar(a, r);
+        r.actionAt = now + 650;
       }
       return;
     }
-    const goal = target?.p ?? r.goal;
-    if (!target && horizontal(a.p, goal) < 0.5) {
-      this.nextRoad(r, false);
-      return;
+    const d = distance(a.p, suspect.p);
+    const seen = d <= 42 && this.visible(a, suspect, now);
+    a.engaged = seen;
+    if (seen) {
+      report.lastSeen = now;
+      report.location = [...suspect.p];
+      report.wanted.phase = "pursuit";
+      if (d <= 20) {
+        a.yaw = movementYaw(
+          suspect.p[0] - a.p[0],
+          suspect.p[2] - a.p[2],
+          a.yaw,
+        );
+        if (now >= r.actionAt && (suspect.shieldUntil ?? 0) <= now) {
+          a.action = "shoot";
+          r.poseUntil = now + 450;
+          r.actionAt = now + 1500;
+          shot(a, [
+            suspect.p[0],
+            suspect.p[1] + suspect.height * 0.58,
+            suspect.p[2],
+          ]);
+          hurt(suspect, a, 9, "shot");
+        }
+        return;
+      }
     }
+    if (horizontal(a.p, report.location) > 0.4)
+      this.walk(a, r, report.location, 4.8, players, dt, now, true);
+  }
+  private walk(
+    a: CountyCitizen,
+    r: Route,
+    goal: V3,
+    pace: number,
+    players: Person[],
+    dt: number,
+    now: number,
+    steer: boolean,
+  ) {
     const len = Math.max(0.001, horizontal(a.p, goal));
-    const dx = (goal[0] - a.p[0]) / len,
-      dz = (goal[2] - a.p[2]) / len;
-    const step = Math.min(len, (target ? 3.1 : r.pace) * dt);
+    const heading = Math.atan2(goal[2] - a.p[2], goal[0] - a.p[0]);
+    const step = Math.min(len, pace * dt);
     const from = a.p;
-    const next: V3 = [from[0] + dx * step, from[1], from[2] + dz * step];
-    const clearance = 0.48;
-    const obstruction =
-      this.cars.some(
-        (c) =>
-          nearCar(next, c, clearance) &&
-          (!nearCar(from, c, clearance) ||
-            horizontal(next, c.p) <= horizontal(from, c.p)),
-      ) ||
-      this.actors.some(
-        (b) =>
-          b !== a &&
-          b.hp > 0 &&
-          b.car === undefined &&
-          distance(b.p, next) < 0.7 &&
-          distance(b.p, next) < distance(b.p, from),
-      ) ||
-      players.some(
-        (p) =>
-          p !== target &&
-          p.hp > 0 &&
-          distance(p.p, next) < 0.77 &&
-          distance(p.p, next) < distance(p.p, from),
-      );
-    if (obstruction || !this.passable(a, r, next, dx, dz, now, false)) {
-      this.blocked(r, dt, now, false);
+    for (const angle of steer ? [0, 0.7, -0.7, 1.45, -1.45] : [0]) {
+      const dx = Math.cos(heading + angle),
+        dz = Math.sin(heading + angle);
+      const next: V3 = [from[0] + dx * step, from[1], from[2] + dz * step];
+      const clearance = 0.48;
+      const obstruction =
+        this.cars.some(
+          (c) =>
+            nearCar(next, c, clearance) &&
+            (!nearCar(from, c, clearance) ||
+              horizontal(next, c.p) <= horizontal(from, c.p)),
+        ) ||
+        this.actors.some(
+          (b) =>
+            b !== a &&
+            b.hp > 0 &&
+            b.car === undefined &&
+            distance(b.p, next) < 0.7 &&
+            distance(b.p, next) < distance(b.p, from),
+        ) ||
+        players.some(
+          (p) =>
+            p.hp > 0 &&
+            distance(p.p, next) < 0.77 &&
+            distance(p.p, next) < distance(p.p, from),
+        );
+      if (steer) r.checkAt = 0;
+      if (obstruction || !this.passable(a, r, next, dx, dz, now, false)) {
+        continue;
+      }
+      r.blockedFor = 0;
+      a.vx = (dx * step) / Math.max(0.001, dt);
+      a.vz = (dz * step) / Math.max(0.001, dt);
+      a.p = next;
+      a.lastMove = now;
+      a.yaw = movementYaw(dx, dz, a.yaw);
       return;
     }
-    r.blockedFor = 0;
-    a.vx = (dx * step) / Math.max(0.001, dt);
-    a.vz = (dz * step) / Math.max(0.001, dt);
-    a.p = next;
-    a.lastMove = now;
-    a.yaw = movementYaw(dx, dz, a.yaw);
+    this.blocked(r, dt, now, false);
   }
   private drive<T extends Person>(
     a: CountyCitizen,
     r: Route,
-    target: T | undefined,
     players: T[],
     dt: number,
     now: number,
-    hurt: Hurt<T>,
+    panic: boolean,
   ) {
     const car = this.cars[a.car!];
-    const otherCar = target && this.cars.find((c) => c.driver === target.id);
-    const ram =
-      !!target &&
-      (target.notoriety ?? 0) > 75 &&
-      Math.abs(target.p[1] - car.p[1]) < 2.5;
-    let goal = r.goal;
-    if (target && (ram || otherCar)) {
-      const lead = ram ? 0 : 5.5;
-      goal = [
-        target.p[0] - Math.sin(otherCar?.yaw ?? 0) * lead,
-        target.p[1],
-        target.p[2] - Math.cos(otherCar?.yaw ?? 0) * lead,
-      ];
-    }
+    const goal = r.goal;
     const len = horizontal(car.p, goal);
-    if (goal === r.goal && len < 1.4) {
+    if (len < 1.4) {
       this.nextRoad(r, true);
       return;
     }
-    if (goal !== r.goal && !ram && len < 1.8) return;
     const desired = movementYaw(
       goal[0] - car.p[0],
       goal[2] - car.p[2],
@@ -512,7 +777,7 @@ export class CountyCitizens {
     const reversing = now < r.reverseUntil;
     const gear = reversing ? -1 : 1;
     const pace =
-      (reversing ? 2.2 : ram ? 14 : r.pace) *
+      (reversing ? 2.2 : panic ? 12 : r.pace) *
       handling.speed *
       Math.max(0.31, 1 - Math.abs(turn) * 0.58);
     const step = Math.min(len, pace * dt);
@@ -526,17 +791,6 @@ export class CountyCitizens {
     const next: V3 = [car.p[0] + dx * step, 0.08, car.p[2] + dz * step];
     const [, length] = VEHICLE_DIMENSIONS[car.kind];
     const nose: V3 = [next[0] + dx * length, next[1], next[2] + dz * length];
-    if (
-      ram &&
-      target &&
-      now >= r.actionAt &&
-      (nearCar(target.p, car, 0.45) ||
-        horizontal(nose, target.p) < 1.35 ||
-        (otherCar && nearCar(nose, otherCar, 0.8)))
-    ) {
-      hurt(target, a, 22, "ram");
-      r.actionAt = now + 2600;
-    }
     const blocked =
       this.cars.some(
         (c) => c !== car && (nearCar(nose, c, 0.72) || nearCar(next, c, 0.72)),
@@ -545,7 +799,6 @@ export class CountyCitizens {
         (p) =>
           p !== a &&
           p.hp > 0 &&
-          !(ram && p === target) &&
           (!("car" in p) || p.car === undefined) &&
           distance(p.p, nose) < 1.65,
       );

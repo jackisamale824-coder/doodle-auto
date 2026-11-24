@@ -10,7 +10,8 @@ export interface RemoteState {
   swing?: import("./fists.ts").Punch;
   notoriety?: number;
   fall?: import("./county-incidents.ts").CountyFall;
-  action?: "idle" | "shove" | "melee" | "shoot";
+  action?: import("./county-citizens.ts").CountyAction;
+  wanted?: import("./county-citizens.ts").Wanted;
   id: string;
   name: string;
   rating?: number;
@@ -363,6 +364,7 @@ export class Network {
               fall: a[15],
               swing: a[16],
               reaction: a[17],
+              wanted: a[18],
             }));
           const now = performance.now();
           for (const p of m.players as RemoteState[]) {

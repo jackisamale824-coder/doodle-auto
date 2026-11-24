@@ -33,7 +33,7 @@ import {
   label,
   disposeGroup,
 } from "./render.ts";
-export type CivilianAction = "idle" | "shove" | "melee" | "shoot";
+import type { CountyAction } from "./county-citizens.ts";
 export class Doodle {
   group = new T.Group();
   pelvis = new T.Bone();
@@ -65,12 +65,12 @@ export class Doodle {
   private forwardWeight = 1;
   private sideWeight = 0;
   private ready = 0;
-  private civilianAction: CivilianAction = "idle";
+  private civilianAction: CountyAction = "idle";
   private gestureTime = 0;
   constructor(
     public color = RED,
     name?: string,
-    readonly role: "combatant" | "civilian" = "combatant",
+    readonly role: "combatant" | "civilian" | "police" = "combatant",
   ) {
     // Simple paper figures with a clear front silhouette and readable limbs.
     const paper = new T.MeshBasicMaterial({
@@ -106,7 +106,11 @@ export class Doodle {
       0,
     );
     torso.scale.z = 0.65;
-    if (role === "civilian") {
+    if (role === "police") {
+      torso.material = dark;
+      const badge = new T.MeshBasicMaterial({ color: "#f3bf4e" });
+      shape(new T.CircleGeometry(0.055, 5), badge, torso, 0.1, 0.12, 0.26);
+    } else if (role === "civilian") {
       torso.material = cloth;
       outlinedBox(
         [0.095, 0.08, 0.035],
@@ -144,6 +148,23 @@ export class Doodle {
     );
     outline.scale.setScalar(1.035);
     helmet.add(outline);
+    if (role === "police") {
+      shape(
+        new T.CylinderGeometry(0.258, 0.275, 0.12, 12),
+        dark,
+        this.head,
+        0,
+        0.19,
+        0,
+      );
+      outlinedBox(
+        [0.32, 0.035, 0.17],
+        [0, 0.135, 0.22],
+        dark,
+        this.head,
+        color,
+      );
+    }
     if (role === "civilian") {
       for (const x of [-0.095, 0.095])
         shape(
@@ -232,7 +253,7 @@ export class Doodle {
     muzzle.name = "muzzle";
     muzzle.position.set(0, 0.015, 0.525);
     this.aimRig.add(muzzle);
-    this.aimRig.visible = role !== "civilian";
+    this.aimRig.visible = role === "combatant";
     this.group.add(this.aimRig);
     // Pelvis -> spine -> head/shoulders, with independent leg chains.
     this.pelvis.name = "pelvis";
@@ -258,17 +279,18 @@ export class Doodle {
       this.group.add(this.nameLabel);
     }
   }
-  setCivilianAction(action: CivilianAction) {
-    if (this.role !== "civilian") return;
+  setCivilianAction(action: CountyAction) {
+    if (this.role === "combatant") return;
     if (action !== this.civilianAction) this.gestureTime = 0;
     this.civilianAction = action;
-    this.aimRig.visible = action === "shoot";
+    this.aimRig.visible = this.role === "police" && action === "shoot";
   }
   finishCarFall(dead: boolean) {
     this.fallTime = dead ? 1 : 0;
     if (dead) this.group.visible = false;
     this.aimRig.visible =
-      this.role !== "civilian" || this.civilianAction === "shoot";
+      this.role === "combatant" ||
+      (this.role === "police" && this.civilianAction === "shoot");
   }
   react(region: HitRegion = "body", side = 1, damage = 25) {
     this.impactRegion = region;
@@ -427,18 +449,21 @@ export class Doodle {
         );
         if (side === 1) this.spine.rotation.y += pose.twist;
       }
-    } else if (this.role === "civilian" && this.civilianAction !== "shoot") {
+    } else if (this.role !== "combatant" && !this.aimRig.visible) {
       this.gestureTime += step;
-      // A shove extends both hands together. A punch extends the lead hand while the rear hand guards the chest.
       const drive = Math.sin(Math.min(1, this.gestureTime / 0.46) * Math.PI);
-      const shoving = this.civilianAction === "shove",
-        punching = this.civilianAction === "melee";
+      const punching = this.civilianAction === "melee";
       for (const [arm, elbow, side] of [
         [this.leftArm, this.leftElbow, -1],
         [this.rightArm, this.rightElbow, 1],
       ] as const) {
-        const reach = shoving || (punching && side === 1) ? drive : 0;
-        const guard = shoving || punching ? 1 : 0;
+        if (this.civilianAction === "calling" && side === 1) {
+          arm.rotation.set(-0.8, 0, 0.28);
+          elbow.rotation.set(-2.1, 0, 0);
+          continue;
+        }
+        const reach = punching && side === 1 ? drive : 0;
+        const guard = punching ? 1 : 0;
         arm.rotation.set(
           -0.13 -
             guard * 0.65 -

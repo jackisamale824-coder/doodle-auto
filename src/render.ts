@@ -179,12 +179,14 @@ export class Renderer {
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
   }
+  addCountyCar?: Awaited<ReturnType<typeof import("./county-render.ts").drawCounty>>["addCar"];
   countyCars: import("./county-car.ts").CountyCarModel[] = [];
   private county = false;
   private frameCost = 0;
   private qualityHigh = true;
   async build(city: City) {
     this.countyCars = [];
+    this.addCountyCar = undefined;
     const county = city.seed === "switchback-county";
     const horizon = county ? "#b4dce7" : "#f4c79e";
     this.sky.material.uniforms.zenith.value.set(county ? "#408dcc" : "#5991b8");
@@ -393,9 +395,11 @@ export class Renderer {
     }
     unit.dispose();
     if (city.seed === "switchback-county") {
-      this.countyCars = await (
+      const fleet = await (
         await import("./county-render.ts")
       ).drawCounty(city, this.cityGroup);
+      this.countyCars = fleet.cars;
+      this.addCountyCar = fleet.addCar;
       return;
     }
     if (city.arena) {
