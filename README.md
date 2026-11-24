@@ -4,6 +4,12 @@
 
 An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and swing through procedurally generated cities with navigable interiors and rooftops.
 
+## Google sign-in
+
+Create a Web application OAuth client in Google Auth Platform. Add `https://sully6.com` to its authorized JavaScript origins. For local testing, also add `http://localhost:4173`. Set the public client ID in the GitHub repository Actions variable `GOOGLE_CLIENT_ID` before deploying, or in the server environment for local development. [Google web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
+
+Returning password players can open their stats and select **Link Google account** to keep their profile and Elo. Signing in with a new Google identity from the login screen creates a player with a generated racer name.
+
 ## Run
 
 Requires Node.js 20.19+ and npm.

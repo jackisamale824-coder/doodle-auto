@@ -12,6 +12,11 @@ const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
 // Only the container's outbound intercept can invoke this entrypoint.
 export class PlayerDatabase extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
+    if (
+      request.method === "GET" &&
+      new URL(request.url).pathname === "/google-keys"
+    )
+      return fetch("https://www.googleapis.com/oauth2/v3/certs");
     const command = await request.json<StoreCommand>();
     const result =
       await this.ctx.exports.GameContainer.getByName(
@@ -77,7 +82,10 @@ export class GameContainer extends DurableObject<Env> {
         image: container.images.base,
         instance: "lite",
         enableInternet: false,
-        env: { PLAYER_STORE_URL: "http://players.internal" },
+        env: {
+          PLAYER_STORE_URL: "http://players.internal",
+          GOOGLE_CLIENT_ID: this.env.GOOGLE_CLIENT_ID,
+        },
       });
     }
 

@@ -22,7 +22,10 @@ export default defineConfig({
     compatibilityDate: "2026-11-23",
     // The existing sully6.com and www bindings are managed in Cloudflare.
     workersDev: false,
-    env: { GAME: bindings.durableObject({ worker: workerName, exportName: "GameContainer" }) },
+    env: {
+      GAME: bindings.durableObject({ worker: workerName, exportName: "GameContainer" }),
+      GOOGLE_CLIENT_ID: bindings.text(process.env.GOOGLE_CLIENT_ID || ""),
+    },
     exports: {
       GameContainer: exports.durableObject({
         storage: "sqlite",

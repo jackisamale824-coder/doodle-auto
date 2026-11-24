@@ -865,6 +865,8 @@ dialog {
 #player-rating { font-size: 1.25rem; font-weight: 700; }
 #player-history { padding-left: 1.2em; font-size: .85rem; }
 #player-history li { margin: .4em 0; }
+#google-login, #google-link-button { margin-top: 12px; }
+#google-link[hidden] { display: none; }
 #player-dialog { max-height: 85vh; overflow: auto; }
 dialog::backdrop {
   background: var(--scrim);

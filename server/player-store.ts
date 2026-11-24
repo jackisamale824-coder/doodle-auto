@@ -28,6 +28,7 @@ export interface Totals {
   seconds: number;
 }
 export interface Profile {
+  googleLinked: boolean;
   name: string;
   rating: number;
   wins: number;
@@ -40,19 +41,29 @@ type Credential = Identity & { salt: string; hash: string };
 export type StoreCommand =
   | { op: "create"; account: Credential; token: string; expires: number }
   | { op: "credential"; name: string }
+  | {
+      op: "google";
+      subject: string;
+      nonce: string;
+      linkToken: string | null;
+      token: string;
+      expires: number;
+    }
   | { op: "login"; player: string; token: string; expires: number }
   | { op: "logout" | "identity"; token: string }
   | { op: "profile"; player: string }
   | { op: "metrics"; batch: MetricsBatch };
-export type StoreResult<C extends StoreCommand> = C["op"] extends "credential"
-  ? Credential | null
-  : C["op"] extends "identity"
-    ? Identity | null
-    : C["op"] extends "profile"
-      ? Profile
-      : C["op"] extends "create"
-        ? boolean
-        : null;
+export type StoreResult<C extends StoreCommand> = C["op"] extends "google"
+  ? "ok" | "conflict" | "expired"
+  : C["op"] extends "credential"
+    ? Credential | null
+    : C["op"] extends "identity"
+      ? Identity | null
+      : C["op"] extends "profile"
+        ? Profile
+        : C["op"] extends "create"
+          ? boolean
+          : null;
 export type PlayerStore = <C extends StoreCommand>(
   command: C,
 ) => Promise<StoreResult<C>>;
@@ -68,6 +79,9 @@ export const schema = [
     wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0)`,
   `CREATE TABLE IF NOT EXISTS logins (token TEXT PRIMARY KEY, player TEXT NOT NULL REFERENCES players(id), expires INTEGER NOT NULL)`,
   "CREATE INDEX IF NOT EXISTS login_expiry ON logins(expires)",
+  "CREATE TABLE IF NOT EXISTS google_identities (subject TEXT PRIMARY KEY, player TEXT UNIQUE NOT NULL REFERENCES players(id))",
+  "CREATE TABLE IF NOT EXISTS google_nonces (nonce TEXT PRIMARY KEY, expires INTEGER NOT NULL)",
+  "CREATE INDEX IF NOT EXISTS google_nonce_expiry ON google_nonces(expires)",
   `CREATE TABLE IF NOT EXISTS play_sessions (
     id TEXT PRIMARY KEY, player TEXT NOT NULL REFERENCES players(id), mode TEXT NOT NULL, map TEXT NOT NULL,
     started INTEGER NOT NULL, seen INTEGER NOT NULL, kills INTEGER NOT NULL, deaths INTEGER NOT NULL, delta INTEGER)`,
@@ -118,7 +132,7 @@ export function executePlayerCommand(db: PlayerSql, c: StoreCommand) {
       case "credential":
         return (
           db.rows<Credential>(
-            "SELECT id,name,salt,hash FROM players WHERE name=?",
+            "SELECT id,name,salt,hash FROM players WHERE name=? AND hash<>''",
             c.name,
           )[0] ?? null
         );
@@ -150,6 +164,67 @@ export function executePlayerCommand(db: PlayerSql, c: StoreCommand) {
         db.rows("INSERT INTO logins VALUES (?,?,?)", c.token, id, c.expires);
         return c.op === "create" ? true : null;
       }
+      case "google": {
+        const now = Date.now();
+        db.rows("DELETE FROM google_nonces WHERE expires<=?", now);
+        if (
+          !db.rows(
+            "INSERT INTO google_nonces VALUES (?,?) ON CONFLICT DO NOTHING RETURNING nonce",
+            c.nonce,
+            now + 600_000,
+          ).length
+        )
+          return "expired";
+        const existing = db.rows<{ player: string }>(
+          "SELECT player FROM google_identities WHERE subject=?",
+          c.subject,
+        )[0];
+        let player = existing?.player;
+        if (c.linkToken) {
+          const session = db.rows<{ player: string }>(
+            "SELECT player FROM logins WHERE token=? AND expires>?",
+            c.linkToken,
+            now,
+          )[0];
+          if (!session) return "expired";
+          if (
+            (existing && player !== session.player) ||
+            (!existing &&
+              db.rows(
+                "SELECT 1 FROM google_identities WHERE player=?",
+                session.player,
+              ).length)
+          )
+            return "conflict";
+          player = session.player;
+        }
+        if (!player) {
+          // The hyphen reserves these public aliases for Google-created profiles.
+          do {
+            player = crypto.randomUUID();
+          } while (
+            !db.rows(
+              "INSERT INTO players (id,name,salt,hash) VALUES (?,?,'','') ON CONFLICT DO NOTHING RETURNING id",
+              player,
+              "Racer-" + player.replaceAll("-", "").slice(0, 10),
+            ).length
+          );
+        }
+        if (!existing)
+          db.rows(
+            "INSERT INTO google_identities VALUES (?,?)",
+            c.subject,
+            player,
+          );
+        db.rows("DELETE FROM logins WHERE expires<=?", now);
+        db.rows(
+          "INSERT INTO logins VALUES (?,?,?)",
+          c.token,
+          player,
+          c.expires,
+        );
+        return "ok";
+      }
       case "logout":
         db.rows("DELETE FROM logins WHERE token=?", c.token);
         return null;
@@ -180,6 +255,10 @@ export function executePlayerCommand(db: PlayerSql, c: StoreCommand) {
         if (!player) throw Error("Unknown player");
         return {
           ...player,
+          googleLinked: !!db.rows(
+            "SELECT 1 FROM google_identities WHERE player=?",
+            c.player,
+          ).length,
           lifetime: db.rows<Totals>(totals + " WHERE player=?", c.player)[0],
           global: db.rows<Totals>(totals)[0],
           recent: db.rows<Profile["recent"][number]>(

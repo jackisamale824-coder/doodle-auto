@@ -9,6 +9,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
+import { GoogleAuth } from "./google-auth.ts";
 import {
   executePlayerCommand,
   schema,
@@ -78,7 +79,12 @@ function derive(password: string, salt: string) {
 export class PlayerAccounts {
   private attempts = new Map<string, { count: number; until: number }>();
   private hashing = 0;
-  constructor(private store: PlayerStore) {}
+  constructor(
+    private store: PlayerStore,
+    private google = process.env.GOOGLE_CLIENT_ID
+      ? new GoogleAuth(process.env.GOOGLE_CLIENT_ID)
+      : undefined,
+  ) {}
   async identity(req: IncomingMessage) {
     const token = tokenFrom(req);
     return token ? this.store({ op: "identity", token: digest(token) }) : null;
@@ -107,6 +113,7 @@ export class PlayerAccounts {
       if (req.method === "GET" && action === "/api/player/profile") {
         const player = await this.identity(req);
         return reply(200, {
+          googleEnabled: !!this.google,
           profile: player
             ? await this.store({ op: "profile", player: player.id })
             : null,
@@ -117,6 +124,8 @@ export class PlayerAccounts {
           "/api/player/login",
           "/api/player/register",
           "/api/player/logout",
+          "/api/player/google/challenge",
+          "/api/player/google",
         ].includes(action ?? "")
       )
         return fail(404, "Unknown player option.");
@@ -134,10 +143,12 @@ export class PlayerAccounts {
         return fail(403, "Open the game to manage your account.");
       if (req.headers["content-type"]?.split(";")[0] !== "application/json")
         return fail(415, "Send a JSON request.");
+      const secure =
+        cloud || process.env.NODE_ENV === "production" ? "; Secure" : "";
       const cookie = (token: string, age: number) =>
         res.setHeader(
           "Set-Cookie",
-          `doodle_session=${token}; Max-Age=${age}; Path=/; HttpOnly; SameSite=Lax${cloud || process.env.NODE_ENV === "production" ? "; Secure" : ""}`,
+          `doodle_session=${token}; Max-Age=${age}; Path=/; HttpOnly; SameSite=Lax${secure}`,
         );
       if (action === "/api/player/logout") {
         const token = tokenFrom(req);
@@ -150,11 +161,17 @@ export class PlayerAccounts {
           req.socket.remoteAddress ||
           "local",
       );
+      const googleRequest = action?.startsWith("/api/player/google");
+      if (googleRequest && !this.google)
+        return fail(503, "Google sign-in is unavailable.");
+      if (googleRequest && !origin)
+        return fail(403, "Open the game to use Google sign-in.");
       let size = 0;
       const parts: Buffer[] = [];
       for await (const chunk of req) {
         size += chunk.length;
-        if (size > 2048) return fail(413, "Account details are too long.");
+        if (size > (googleRequest ? 16384 : 2048))
+          return fail(413, "Account details are too long.");
         parts.push(chunk);
       }
       let data;
@@ -162,6 +179,70 @@ export class PlayerAccounts {
         data = JSON.parse(Buffer.concat(parts).toString("utf8"));
       } catch {
         return fail(400, "Invalid account details.");
+      }
+      if (googleRequest && this.google) {
+        const user = await this.identity(req);
+        const linking = data?.intent === "link";
+        if ((!linking && data?.intent !== "login") || linking !== !!user)
+          return fail(
+            409,
+            "Your login changed. Reopen Player account to continue.",
+          );
+        const expected = (secret: string) =>
+          digest(secret + ":" + (user?.id ?? "guest"));
+        if (action === "/api/player/google/challenge") {
+          const secret = randomBytes(32).toString("hex");
+          res.setHeader(
+            "Set-Cookie",
+            `doodle_google=${secret}; Max-Age=600; Path=/api/player/google; HttpOnly; SameSite=Strict${secure}`,
+          );
+          return reply(200, {
+            clientId: this.google.clientId,
+            nonce: expected(secret),
+          });
+        }
+        const secret = req.headers.cookie?.match(
+          /(?:^|;\s*)doodle_google=([a-f0-9]{64})(?:;|$)/,
+        )?.[1];
+        if (!secret || typeof data.credential !== "string")
+          return fail(401, "Restart Google sign-in and try again.");
+        if (!this.allow(ip))
+          return fail(429, "Too many attempts. Try again later.");
+        const nonce = expected(secret);
+        let subject: string;
+        try {
+          subject = await this.google.subject(data.credential, nonce);
+        } catch {
+          return fail(
+            401,
+            "Google sign-in could not be verified. Reopen Player account to try again.",
+          );
+        }
+        const token = randomBytes(32).toString("hex");
+        const outcome = await this.store({
+          op: "google",
+          subject,
+          nonce,
+          linkToken: user ? digest(tokenFrom(req)!) : null,
+          token: digest(token),
+          expires: Date.now() + lifetime * 1000,
+        });
+        if (outcome === "conflict")
+          return fail(
+            409,
+            "This Google account or player profile is already linked.",
+          );
+        if (outcome !== "ok")
+          return fail(
+            401,
+            "Google sign-in expired. Reopen Player account to try again.",
+          );
+        cookie(token, lifetime);
+        res.appendHeader(
+          "Set-Cookie",
+          `doodle_google=; Max-Age=0; Path=/api/player/google; HttpOnly; SameSite=Strict${secure}`,
+        );
+        return reply(200, { ok: true });
       }
       const name = typeof data?.name === "string" ? data.name.trim() : "",
         password = data?.password;

@@ -159,11 +159,15 @@
         <button type="submit" id="player-submit" class="primary-button">Log in</button>
         <button type="button" id="player-switch" class="secondary-button">Create an account</button>
       </form>
+      <div id="google-login" hidden></div>
       <section id="player-stats" hidden>
         <p id="player-rating"></p>
         <h3>Lifetime</h3><p id="player-lifetime"></p>
         <h3>All signed-in players</h3><p id="player-global"></p>
         <h3>Recent sessions</h3><ol id="player-history"></ol>
+        <button type="button" id="google-link" class="secondary-button" hidden>Link Google account</button>
+        <div id="google-link-button" hidden></div>
+        <p id="google-linked" hidden>Google account linked</p>
         <button type="button" id="player-logout" class="secondary-button">Log out</button>
       </section>
     </dialog>
