@@ -9,6 +9,13 @@
       content="Break a rack of arcade eight-ball against the house bot or a friend."
     />
     <title>Side Pocket · Sully Arcade</title>
+    <script>
+      if (location.hostname === "pool.sully6.com" && location.protocol === "http:") {
+        const secure = new URL(location.href);
+        secure.protocol = "https:";
+        location.replace(secure.href);
+      }
+    </script>
   </head>
   <body>
     <main>
