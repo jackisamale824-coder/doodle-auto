@@ -11,35 +11,28 @@ import {
 const icon = (id: number) =>
   `${import.meta.env.BASE_URL}loadout/weapon-${id}.webp`;
 
-export function loadoutScreen(kit: Loadout, respawning: boolean) {
+export function loadoutScreen(kit: Loadout, action: string) {
   const columns = loadoutSlots
     .map(
       ({ key, name, options }, slot) =>
-        `<fieldset class="armory-column"><legend><b>0${slot + 1}</b> ${name}</legend>
+        `<fieldset class="armory-column" data-category="${key}"><legend><b>0${slot + 1}</b> ${name}</legend>
       ${options
         .map(
-          (id) => `<label class="armory-card">
+          (id, row) => `<label class="armory-card">
         <input type="radio" name="${key}" value="${id}" ${kit[key] === id ? "checked" : ""}>
-        <span class="item-face"><span class="item-name">${WEAPONS[id].name}</span><i aria-hidden="true">✓</i>
+        <span class="item-face"><small class="item-key" aria-hidden="true">${row + 1}</small><span class="item-name">${WEAPONS[id].name}</span><i aria-hidden="true">✓</i>
           <img alt="" src="${icon(id)}" draggable="false"></span></label>`,
         )
         .join("")}
     </fieldset>`,
     )
     .join("");
-  const wheel = loadoutSlots
-    .map(
-      ({ key }, slot) =>
-        `<button type="button" class="wheel-slot" data-slot="${key}">
-      <img alt="" src="${icon(kit[key])}"><span>${slot + 1}</span>
-    </button>`,
-    )
-    .join("");
   return `<form id="kit-form" class="armory">
     <div class="armory-header"><h2>Loadout</h2></div>
     <div class="armory-body">
       <div class="armory-rack">${columns}
-        <div class="kit-wheel" role="group" aria-label="Inspect equipped slots">${wheel}<span class="wheel-hub" aria-hidden="true">＋</span></div>
+        <div class="kit-feedback"><output id="kit-choice" aria-live="polite">Choose equipment</output>
+        <span id="kit-hint">1–3 category · then item number</span></div>
       </div>
       <aside class="armory-inspect" aria-label="Equipment preview">
         <div class="inspect-info"><span id="inspect-kind"></span><h3 id="inspect-name"></h3>
@@ -48,15 +41,33 @@ export function loadoutScreen(kit: Loadout, respawning: boolean) {
       </aside>
     </div>
     <footer class="armory-footer"><button type="button" id="kit-back">Back</button>
-      <button type="submit" id="equip-kit" class="armory-equip">${respawning ? "Equip and respawn" : "Use this loadout"} <span aria-hidden="true">→</span></button></footer>
+      <button type="submit" id="equip-kit" class="armory-equip"><kbd>B</kbd> ${action} <span aria-hidden="true">→</span></button></footer>
   </form>`;
 }
 
-export function bindLoadoutPreview(form: HTMLFormElement, back: () => void) {
+export function bindLoadoutPreview(
+  form: HTMLFormElement,
+  back: () => void,
+  onChoose: (slot: keyof Loadout) => void,
+) {
   const radios = [
     ...form.querySelectorAll<HTMLInputElement>("input[type=radio]"),
   ];
-  const wheel = [...form.querySelectorAll<HTMLButtonElement>(".wheel-slot")];
+  let category: keyof Loadout | undefined;
+  const hint = form.querySelector<HTMLElement>("#kit-hint")!;
+  const choice = form.querySelector<HTMLOutputElement>("#kit-choice")!;
+  function setCategory(key?: keyof Loadout) {
+    category = key;
+    form
+      .querySelectorAll<HTMLElement>("[data-category]")
+      .forEach((col) =>
+        col.classList.toggle("key-active", col.dataset.category === key),
+      );
+    const selected = loadoutSlots.find((s) => s.key === key);
+    hint.textContent = selected
+      ? `${selected.name}: 1–${selected.options.length} to select · 0 back`
+      : "1–3 category · then item number";
+  }
   const title = form.querySelector<HTMLElement>("#inspect-name")!;
   const kind = form.querySelector<HTMLElement>("#inspect-kind")!;
   const stat = form.querySelector<HTMLElement>("#inspect-stat")!;
@@ -77,32 +88,49 @@ export function bindLoadoutPreview(form: HTMLFormElement, back: () => void) {
             ? "Blocks sightlines"
             : `${weapon.mag} ${weapon.mag === 1 ? "round" : "rounds"} per magazine`;
   }
-  function syncWheel() {
-    for (const button of wheel) {
-      const input = radios.find(
-        (r) => r.name === button.dataset.slot && r.checked,
-      )!;
-      const name = WEAPONS[Number(input.value)].name;
-      button.querySelector("img")!.src = icon(Number(input.value));
-      button.title = `Inspect ${name}`;
-      button.setAttribute(
-        "aria-label",
-        `Inspect equipped ${input.name}, ${name}`,
-      );
-    }
-  }
   for (const input of radios) {
     input.labels?.[0].addEventListener("pointerenter", () => inspect(input));
     input.onfocus = () => inspect(input);
-    input.onchange = () => {
+    input.onclick = () => {
       inspect(input);
-      syncWheel();
+      setCategory();
+      choice.value = WEAPONS[Number(input.value)].name + " selected";
+      onChoose(input.name as keyof Loadout);
     };
   }
-  for (const button of wheel)
-    button.onclick = () =>
-      radios.find((r) => r.checked && r.name === button.dataset.slot)?.focus();
+  form.onkeydown = (event) => {
+    if (event.altKey || event.metaKey || event.ctrlKey) return;
+    const digit = /^(?:Digit|Numpad)([0-9])$/.exec(event.code);
+    if (digit) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      const n = Number(digit[1]);
+      if (!n) {
+        setCategory();
+        return;
+      }
+      if (!category) {
+        const slot = loadoutSlots[n - 1];
+        if (slot) setCategory(slot.key);
+      } else {
+        const input = radios.filter((r) => r.name === category)[n - 1];
+        if (input) {
+          input.focus();
+          input.click();
+          setCategory();
+        }
+      }
+    } else if (
+      event.code === "KeyB" ||
+      (event.key === "Enter" && !(event.target instanceof HTMLButtonElement))
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!event.repeat)
+        form.querySelector<HTMLButtonElement>("#equip-kit")!.click();
+    }
+  };
   form.querySelector<HTMLButtonElement>("#kit-back")!.onclick = back;
   inspect(radios.find((r) => r.checked)!);
-  syncWheel();
 }

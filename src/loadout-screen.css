@@ -142,96 +142,6 @@
   outline: 2px solid #fff;
   outline-offset: 2px;
 }
-.kit-wheel {
-  --wheel-size: clamp(110px, 20vh, 180px);
-  width: var(--wheel-size);
-  aspect-ratio: 1;
-  position: absolute;
-  left: 66.5%;
-  bottom: 7%;
-  transform: translateX(-50%);
-  isolation: isolate;
-  border-radius: 50%;
-  border: 1px solid #727466;
-  box-shadow: 0 3px 15px #0004;
-  overflow: hidden;
-  background: #191c19;
-}
-.wheel-slot {
-  inset: 0;
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border: 0;
-  background: #343830;
-  color: var(--gold);
-  cursor: pointer;
-  padding: 0;
-}
-.wheel-slot:nth-child(1) {
-  clip-path: polygon(50% 49%, 0 19%, 0 0, 100% 0, 100% 19%);
-}
-.wheel-slot:nth-child(2) {
-  clip-path: polygon(51% 50%, 100% 21%, 100% 100%, 51% 100%);
-}
-.wheel-slot:nth-child(3) {
-  clip-path: polygon(49% 50%, 49% 100%, 0 100%, 0 21%);
-}
-.wheel-slot:hover,
-.wheel-slot:focus-visible {
-  background: #60563c;
-}
-.wheel-slot img {
-  position: absolute;
-  object-fit: contain;
-  width: 33%;
-  height: 23%;
-  transform: translate(-50%, -50%);
-}
-.wheel-slot span {
-  position: absolute;
-  font: bold 9px monospace;
-  transform: translateX(-50%);
-}
-.wheel-slot:nth-child(1) img {
-  left: 50%;
-  top: 22%;
-}
-.wheel-slot:nth-child(2) img {
-  left: 76%;
-  top: 62%;
-}
-.wheel-slot:nth-child(3) img {
-  left: 24%;
-  top: 62%;
-}
-.wheel-slot:nth-child(1) span {
-  left: 50%;
-  top: 31%;
-}
-.wheel-slot:nth-child(2) span {
-  left: 76%;
-  top: 75%;
-}
-.wheel-slot:nth-child(3) span {
-  left: 24%;
-  top: 75%;
-}
-.wheel-hub {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 23%;
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid #575d50;
-  background: #20231f;
-  color: #cbb788;
-  pointer-events: none;
-}
 .armory-inspect {
   min-height: 0;
   position: relative;
@@ -366,7 +276,104 @@
   .armory-footer {
     padding: 10px 14px;
   }
-  .kit-wheel {
-    --wheel-size: 110px;
+}
+.armory-column.key-active legend {
+  color: var(--gold);
+}
+.armory-column.key-active .item-face {
+  border-color: #b4a477;
+}
+.item-key {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  color: #eee5ce;
+  background: #20241f;
+  border-radius: 2px;
+  font: 10px monospace;
+}
+.kit-feedback {
+  position: absolute;
+  left: 35%;
+  right: 16px;
+  bottom: 20px;
+  display: grid;
+  gap: 6px;
+}
+#kit-choice {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+}
+#kit-hint {
+  color: #ced0c3;
+  font-size: 12px;
+}
+#equip-kit kbd {
+  background: #35362b;
+  color: #fff5d6;
+  padding: 2px 4px;
+  margin-right: 3px;
+}
+#quick-inventory:not([hidden]) {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(360px, 56vmin);
+  aspect-ratio: 1;
+  display: block;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle,
+      transparent 0 14%,
+      #101510b3 14.4% 15.5%,
+      transparent 16%
+    ),
+    conic-gradient(
+      from var(--heading, -60deg),
+      #947330ed 0 var(--arc, 0deg),
+      #101610df var(--arc, 0deg) 360deg
+    );
+  border: 1px solid #b4b3a0;
+  box-shadow: 0 8px 36px #0005;
+  pointer-events: none;
+}
+.quick-slot {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  text-align: center;
+  color: #c3c5bb;
+  font:
+    600 12px/1.1 "DM Sans",
+    sans-serif;
+  text-shadow: 0 1px 2px #000;
+}
+.quick-slot img {
+  width: 75px;
+  height: 30px;
+  object-fit: contain;
+}
+.quick-slot.equipped {
+  color: #f1dca4;
+}
+.quick-slot.pointed {
+  color: #fff;
+}
+@media (max-width: 740px) {
+  .armory-card .item-key {
+    width: 10px;
+    margin-right: 2px;
+  }
+  .kit-feedback {
+    right: 8px;
+    bottom: 14px;
   }
 }

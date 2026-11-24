@@ -216,7 +216,7 @@ test("multiplayer accepts outer-city movement and anchors, then enforces the gen
   }
 });
 
-test("multiplayer keeps the three equipped slots until an accepted respawn", async () => {
+test("multiplayer permits spawn loadout changes and locks the kit after an attack", async () => {
   const wss = new WebSocketServer({ port: 0 });
   await new Promise((resolve) => wss.on("listening", resolve));
   const rooms = new Rooms(wss);
@@ -241,6 +241,18 @@ test("multiplayer keeps the three equipped slots until an accepted respawn", asy
         height: 1.76,
         weapon,
       });
+    rooms.handle(socket, {
+      type: "equip-at-spawn",
+      loadout: second,
+      weapon: SMG,
+    });
+    assert.deepEqual(player.owned, [HEAVY_AR, SMG, FLASH]);
+    assert.equal(player.weapon, SMG);
+    rooms.handle(socket, {
+      type: "equip-at-spawn",
+      loadout: first,
+      weapon: BURST_AR,
+    });
     equip(SMG);
     assert.equal(player.weapon, BURST_AR);
     equip(SMOKE);
@@ -249,6 +261,13 @@ test("multiplayer keeps the three equipped slots until an accepted respawn", asy
     assert.equal((await thrown).effect.weapon, SMOKE);
     rooms.handle(socket, { type: "reload" });
     assert.equal(player.reloadUntil, 0);
+    assert.equal(player.mags[SMOKE], 0);
+    rooms.handle(socket, {
+      type: "equip-at-spawn",
+      loadout: second,
+      weapon: SMG,
+    });
+    assert.deepEqual(player.loadout, first);
     assert.equal(player.mags[SMOKE], 0);
     rooms.handle(socket, { type: "respawn", loadout: second });
     assert.deepEqual(player.loadout, first);

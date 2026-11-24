@@ -36,6 +36,7 @@ import { COUNTY, countyCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
 import {
+  ARMORY_RADIUS,
   BURST_AR,
   BURST_RECOVERY,
   KNIFE,
@@ -70,6 +71,7 @@ export interface PlayerState {
   deaths: number;
   weapon: number;
   loadout?: Loadout;
+  armorySpawn?: V3;
   owned?: number[];
   burstCount?: number;
   burstReadyAt?: number;
@@ -1258,6 +1260,7 @@ export class Rooms {
         reloadWeapon: 0,
         moveCredit: 3,
       };
+      if (loadout) p.armorySpawn = [...p.p];
       if (r.duel) r.duelEntrants = (r.duelEntrants ?? 0) + 1;
       this.metrics?.join(ws,p,r.duel ? "duel" : r.public ? "public" : "private",r.seed);
       void this.metrics?.flush();
@@ -1300,6 +1303,29 @@ export class Rooms {
       return;
     }
     const vehicle = r.cars?.find((c) => c.driver === p.id);
+    if (m.type === "equip-at-spawn") {
+      const kit = readLoadout(m.loadout);
+      if (
+        kit &&
+        p.armorySpawn &&
+        p.hp > 0 &&
+        !vehicle &&
+        distance(p.p, p.armorySpawn) <= ARMORY_RADIUS
+      ) {
+        p.loadout = kit;
+        Object.assign(p, inventory(kit, r.seed === COUNTY));
+        p.weapon = p.owned!.includes(m.weapon) ? m.weapon : kit.primary;
+        p.reloadUntil = 0;
+      } else {
+        send(ws, {
+          type: "armory-closed",
+          loadout: p.loadout,
+          weapon: p.weapon,
+          mags: p.mags,
+        });
+      }
+      return;
+    }
     if (m.type === "door" && r.structures) {
       if (
         !vehicle &&
@@ -1406,6 +1432,8 @@ export class Rooms {
       }
       p.moveCredit -= displacement;
       p.p = m.p;
+      if (p.armorySpawn && (vehicle || distance(p.p, p.armorySpawn) > ARMORY_RADIUS))
+        p.armorySpawn = undefined;
       if (vehicle) {
         vehicle.p = [...p.p];
         vehicle.yaw = m.yaw;
@@ -1467,6 +1495,7 @@ export class Rooms {
       if (r.citizens) p.notoriety = 0;
       p.loadout = readLoadout(m.loadout) ?? p.loadout;
       Object.assign(p, inventory(p.loadout, r.seed === COUNTY));
+      p.armorySpawn = p.loadout ? [...p.p] : undefined;
       p.burstReadyAt = p.burstCount = p.lastShot = 0;
       p.reloadUntil = 0;
       p.moveCredit = 3;
@@ -1487,6 +1516,7 @@ export class Rooms {
       // Allow small packet timing variations without shortening the server's attack cycle.
       const ready = p.punchReadyAt ?? 0;
       if (p.punchPending || now + 45 < ready || now - p.lastShot < 110) return;
+      p.armorySpawn = undefined;
       const swing = nextPunch(p.swing, Math.max(now, ready));
       p.swing = swing;
       p.punchPending = true;
@@ -1527,6 +1557,7 @@ export class Rooms {
           p.burstCount = 0;
         }
       }
+      p.armorySpawn = undefined;
       p.lastShot = now;
       if (r.citizens) p.notoriety = notorietyAfter(p.notoriety ?? 0, 2);
       const dir: V3 = [

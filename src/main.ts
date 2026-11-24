@@ -1,5 +1,8 @@
+import { QuickInventory } from "./quick-inventory.ts";
 import { bindLoadoutPreview, loadoutScreen } from "./loadout-screen.ts";
 import {
+  ARMORY_RADIUS,
+  type Loadout,
   defaultLoadout,
   readLoadout,
   inventory,
@@ -130,6 +133,9 @@ type Mode = "contract" | "roam" | "online";
 class Game {
   loadout = readLoadout(safeRead("dc.loadout", null)) ?? defaultLoadout;
   private respawnAt = 0;
+  private armorySpawn?: V3;
+  private previousWeapon?: number;
+  private quickInventory = new QuickInventory($("quick-inventory"));
   render = new Renderer(canvas);
   audio = new AudioEngine();
   countySelected =
@@ -685,6 +691,7 @@ class Game {
         : undefined;
     if (this.mode === "online") this.restoreStructures();
     this.player = new Controller(physics, spawn ?? city.spawns[0]);
+    this.armorySpawn = this.player.position.toArray();
     this.player.ladders =
       city.arena?.ladders ?? (seed === COUNTY ? countyLadders(city.boxes) : []);
     this.player.grappleEnabled = !city.arena && seed !== COUNTY;
@@ -808,6 +815,7 @@ class Game {
         : this.player.eye.clone().addScaledVector(this.player.forward, 0.5);
     };
     this.combat.onPunch = () => {
+      this.armorySpawn = undefined;
       if (this.mode === "online") {
         this.sendState();
         this.network.send({ type: "punch" });
@@ -898,6 +906,7 @@ class Game {
       if ((actor.citizen ?? actor.bot)!.hp <= 0) this.audio.npcEliminated();
     };
     this.combat.onFire = () => {
+      this.armorySpawn = undefined;
       if (this.casings && !isUtility(this.combat.weapon)) {
         const port = this.weaponMesh.localToWorld(
           new T.Vector3(0.07, 0.04, 0.13),
@@ -930,7 +939,9 @@ class Game {
     this.noticeUntil = this.time + duration;
   }
   setWeapon(i: number, force = false) {
+    const before = this.combat.weapon;
     if (!force && !this.combat.switchWeapon(i)) return;
+    this.previousWeapon = force ? undefined : before;
     disposeGroup(this.weaponMesh);
     this.weaponMesh =
       i === FISTS
@@ -966,9 +977,25 @@ class Game {
     enter: () => void,
     respawning = false,
     back = () => this.closeDialog(),
+    live = false,
   ) {
-    this.showDialog(loadoutScreen(this.loadout, respawning), back);
-    bindLoadoutPreview($<HTMLFormElement>("kit-form"), back);
+    let chosenSlot: keyof Loadout | undefined;
+    this.showDialog(
+      loadoutScreen(
+        this.loadout,
+        live
+          ? "Return to game"
+          : respawning
+            ? "Equip and respawn"
+            : "Use this loadout",
+      ),
+      back,
+    );
+    bindLoadoutPreview($<HTMLFormElement>("kit-form"), back, (slot) => {
+      chosenSlot = slot;
+      this.audio.init();
+      this.audio.tone(475, 0.045, "triangle", 0.09, 330);
+    });
     if (respawning) this.waitForRespawn($<HTMLButtonElement>("equip-kit"));
     $("kit-form").onsubmit = (event) => {
       event.preventDefault();
@@ -979,6 +1006,21 @@ class Game {
         ),
       );
       if (!kit) return;
+      if (live && chosenSlot) {
+        if (!this.armorySpawn || this.combat.hp <= 0) return;
+        const next = inventory(kit, this.seed === COUNTY);
+        const weapon =
+          next.owned[loadoutSlots.findIndex((slot) => slot.key === chosenSlot)];
+        if (
+          this.mode === "online" &&
+          !this.network.send({ type: "equip-at-spawn", loadout: kit, weapon })
+        )
+          return;
+        Object.assign(this.combat, next, { weapon });
+        this.combat.cancelPunch();
+        this.combat.reloadTime = 0;
+        this.setWeapon(weapon, true);
+      }
       this.loadout = kit;
       try {
         localStorage.setItem("dc.loadout", JSON.stringify(kit));
@@ -1038,6 +1080,7 @@ class Game {
     this.keys.clear();
     this.firing = false;
     this.audio.init();
+    canvas.focus({ preventScroll: true });
     const lock = canvas.requestPointerLock();
     if (lock instanceof Promise)
       lock.catch(() => {
@@ -1101,6 +1144,7 @@ class Game {
           this.mainMenu();
         else this.closeDialog();
       });
+    this.quickInventory.close();
     $("dialog-content").innerHTML = html;
     const heading = $("dialog-content").querySelector("h2");
     if (heading) heading.id = "dialog-title";
@@ -1259,9 +1303,13 @@ class Game {
       if (
         document.pointerLockElement !== canvas ||
         this.state !== "play" ||
-        performance.now() < this.lookReady
+        (!this.quickInventory.open && performance.now() < this.lookReady)
       )
         return;
+      if (this.quickInventory.open) {
+        this.quickInventory.move(e.movementX, e.movementY);
+        return;
+      }
       const sens =
         0.002 *
         settings.sensitivity *
@@ -1283,6 +1331,16 @@ class Game {
       );
     });
     document.addEventListener("keydown", (e) => {
+      if (
+        !e.repeat &&
+        e.code === "KeyB" &&
+        this.state === "dead" &&
+        $("change-kit")
+      ) {
+        e.preventDefault();
+        $("change-kit").click();
+        return;
+      }
       if (
         this.state !== "play" ||
         dialog.open ||
@@ -1309,6 +1367,43 @@ class Game {
       if (this.state !== "play") return;
       this.keys.add(e.code);
       if (e.repeat) return;
+      if (this.vehicle < 0 && !this.seatPending) {
+        if (e.code === "KeyT" && document.pointerLockElement === canvas) {
+          this.firing = this.aiming = false;
+          this.quickInventory.show(
+            this.combat.owned,
+            this.combat.weapon,
+            this.seed === COUNTY,
+          );
+          return;
+        }
+        if (this.quickInventory.open) return;
+        if (e.code === "KeyB") {
+          if (!this.armorySpawn) {
+            this.notice("Loadout changes are available at spawn");
+            return;
+          }
+          this.state = "paused";
+          this.keys.clear();
+          this.firing = this.aiming = false;
+          document.exitPointerLock();
+          this.pickLoadout(
+            () => this.resume(),
+            false,
+            () => this.resume(),
+            true,
+          );
+          return;
+        }
+        if (
+          e.code === "KeyX" ||
+          (e.code === "KeyQ" && !this.player.grappleEnabled)
+        ) {
+          if (this.previousWeapon !== undefined)
+            this.setWeapon(this.previousWeapon);
+          return;
+        }
+      }
       if (e.code === "KeyV" && this.vehicle >= 0) {
         this.cockpit = !this.cockpit;
         return;
@@ -1337,11 +1432,26 @@ class Game {
         );
     });
     document.addEventListener("keyup", (e) => {
+      if (e.code === "KeyT" && this.quickInventory.open) {
+        const id = this.quickInventory.close();
+        if (
+          this.state === "play" &&
+          document.pointerLockElement === canvas &&
+          this.vehicle < 0 &&
+          !this.seatPending &&
+          id !== undefined
+        )
+          this.setWeapon(id);
+      }
       this.keys.delete(e.code);
       if (e.code === "KeyE") this.carKeyHeld = false;
     });
     document.addEventListener("mousedown", (e) => {
-      if (this.state !== "play" || document.pointerLockElement !== canvas)
+      if (
+        this.state !== "play" ||
+        this.quickInventory.open ||
+        document.pointerLockElement !== canvas
+      )
         return;
       if (e.button === 0) {
         this.firing = true;
@@ -1363,7 +1473,7 @@ class Game {
     canvas.addEventListener(
       "wheel",
       (e) => {
-        if (this.state === "play") {
+        if (this.state === "play" && !this.quickInventory.open) {
           e.preventDefault();
           const owned = this.combat.owned;
           const next =
@@ -1542,6 +1652,15 @@ class Game {
         : []),
       ["LMB / RMB", "Fire / aim"],
       ["1 / 2 / 3", "Primary / secondary / equipment · scroll to cycle"],
+      [
+        "B at spawn",
+        "Open the loadout grid. Press a category number, then an item number. B confirms.",
+      ],
+      ["Hold T", "Point at a carried weapon and release to equip"],
+      [
+        this.player.grappleEnabled ? "X" : "Q / X",
+        "Switch to your last weapon",
+      ],
       ["R", "Reload"],
       ...(county
         ? [
@@ -1676,6 +1795,7 @@ class Game {
     const player = m.player || m;
     const stamina = this.player.stamina;
     this.player.reset(player.p || m.p);
+    this.armorySpawn = player.armorySpawn;
     if (m.drive) {
       this.driveAuthority = true;
       this.drivePending = [];
@@ -1809,6 +1929,8 @@ class Game {
         if (me.hp < this.combat.hp) this.combat.hurt = 0.8;
         if (me.reaction) this.selfReaction = me.reaction;
         this.combat.hp = me.hp;
+        if (me.hp <= 0 && this.state === "paused" && $("kit-form"))
+          this.finish();
         this.notoriety = me.notoriety ?? 0;
         this.combat.kills = me.kills;
         this.combat.score = me.kills * 100;
@@ -1864,7 +1986,24 @@ class Game {
       this.combat.mags = m.mags;
       this.combat.reloadTime = Math.max(0, m.reloadRemaining / 1000);
     }
+    if (m.type === "armory-closed") {
+      this.armorySpawn = undefined;
+      const kit = readLoadout(m.loadout);
+      if (kit) {
+        this.loadout = kit;
+        try {
+          localStorage.setItem("dc.loadout", JSON.stringify(kit));
+        } catch {}
+      }
+      Object.assign(this.combat, inventory(kit, this.seed === COUNTY), {
+        weapon: m.weapon,
+        mags: m.mags,
+      });
+      this.setWeapon(m.weapon, true);
+      this.notice("Loadout changes are available at spawn");
+    }
     if (m.type === "respawn") {
+      this.armorySpawn = m.p;
       this.clearDeathBody();
       this.combat.cancelPunch();
       this.player.reset(m.p);
@@ -2001,6 +2140,13 @@ class Game {
   }
   step(dt: number) {
     if (this.state !== "play") return;
+    if (
+      this.armorySpawn &&
+      (this.vehicle >= 0 ||
+        distance(this.armorySpawn, this.player.position.toArray()) >
+          ARMORY_RADIUS)
+    )
+      this.armorySpawn = undefined;
     this.elapsed += dt;
     const held = (...keys: string[]) => keys.some((k) => this.keys.has(k));
     const grapple = held("KeyQ") || (!this.carKeyHeld && held("KeyE"));
@@ -2762,6 +2908,7 @@ class Game {
         : c.hitRegion === "body"
           ? "BODY"
           : "LIMB";
+    $("armory-hint").hidden = !this.armorySpawn || this.vehicle >= 0;
     $("notice").style.opacity = this.time < this.noticeUntil ? "1" : "0";
     $("feed").style.opacity = this.time < this.feedUntil ? "1" : "0";
     const hit = p.grappleHit();

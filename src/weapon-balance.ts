@@ -63,6 +63,7 @@ export const loadoutSlots = [
   { key: "utility", name: "Equipment", options: [KNIFE, FLASH, SMOKE] },
 ] as const;
 export type Loadout = Record<(typeof loadoutSlots)[number]["key"], number>;
+export const ARMORY_RADIUS = 6;
 export const defaultLoadout: Loadout = {
   primary: 0,
   secondary: 2,

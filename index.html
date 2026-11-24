@@ -12,7 +12,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
-    <canvas id="world" aria-label="First-person 3D game world"></canvas>
+    <canvas tabindex="-1" id="world" aria-label="First-person 3D game world"></canvas>
     <div id="hurt"></div>
     <div id="loading">
       <div class="loading-pencil">✎</div>
@@ -98,6 +98,7 @@
       <div id="sniper-scope" aria-hidden="true">
         <div class="scope-glass"><i></i><b></b><span>LONGSHOT · 4×</span></div>
       </div>
+      <div id="quick-inventory" hidden aria-label="Quick inventory"></div>
       <div id="crosshair"><i></i><i></i><i></i><i></i><span></span></div>
       <div id="hook-reticle"></div>
       <div id="hitmarker">×</div>
@@ -143,9 +144,10 @@
         </div>
         <div id="reload-label">FULL AUTO · R TO RELOAD</div>
         <div id="weapon-slots"></div>
+        <small id="armory-hint" hidden>B · LOADOUT</small>
       </div>
       <div id="board" class="hidden"></div>
-      <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE</div>
+      <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE <span>·</span> HOLD T INVENTORY</div>
     </section>
     <dialog id="player-dialog" aria-labelledby="player-title">
       <button type="button" id="player-close" class="close-button" aria-label="Close player account">×</button>

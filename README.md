@@ -30,7 +30,7 @@ npm start
 
 ## Play
 
-Choose a primary, secondary and equipment before entering a game. Use **1**, **2** and **3** or the mouse wheel to switch slots. Each grenade can be thrown once per life. After a death, choose **Respawn** to keep your kit or **Change loadout** to equip another one.
+Choose a primary, secondary and equipment before entering a game. Use **1**, **2** and **3** or the mouse wheel to switch slots. Press **B** at spawn to reopen the grid before firing or leaving the spawn area. Select by clicking, or press a category number followed by the item number. Press **B** to equip and close. During play, hold **T**, move the mouse toward a weapon and release to equip it. **X** switches to the previous weapon. **Q** also quick-switches on maps without grappling. Each grenade can be thrown once per life. After a death, choose **Respawn** to keep your kit or **Change loadout** to equip another one.
 
 - **District run:** erase six NPC rivals, collect three gold rooftop marks, then return to the starting plaza. Completing a district generates the next seeded city with tougher, faster rivals.
 - **Free roam:** practice parkour without enemies.
