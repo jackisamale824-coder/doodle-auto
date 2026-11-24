@@ -118,6 +118,10 @@ export class GameContainer extends DurableObject<Env> {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const oldGame = /^\/(pool|drive-mad)(?:\/index\.html|\/)?$/.exec(url.pathname);
+    if (oldGame) {
+      return Response.redirect(`https://${oldGame[1]}.sully6.com/${url.search}`, 302);
+    }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       if (["room", "mode", "level"].some(key => url.searchParams.has(key))) {
         return Response.redirect("https://gta.sully6.com/" + url.search, 302);

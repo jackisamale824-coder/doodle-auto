@@ -22,7 +22,13 @@ export default defineConfig({
     compatibilityDate: "2026-11-23",
     // The existing sully6.com and www bindings are managed in Cloudflare.
     workersDev: false,
-    assets: { runWorkerFirst: ["/", "/index.html", "/play/*"] },
+    assets: {
+      runWorkerFirst: [
+        "/", "/index.html", "/play/*",
+        "/pool", "/pool/", "/pool/index.html",
+        "/drive-mad", "/drive-mad/", "/drive-mad/index.html",
+      ],
+    },
     env: {
       ASSETS: bindings.assets(),
       GAME: bindings.durableObject({ worker: workerName, exportName: "GameContainer" }),
