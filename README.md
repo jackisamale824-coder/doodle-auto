@@ -1,6 +1,16 @@
-> **Production releases:** use `scripts/deploy-release.mjs` to build, validate and promote immutable versions. Do not restart the disabled legacy `doodlescreed.service` to publish changes. See [release operations](docs/deployments.md).
+# Sully6 Arcade
 
-# doodlesCreed
+[sully6.com](https://sully6.com/) is the game directory. Its tiles launch [Doodle Auto](https://gta.sully6.com/), [Drive Mad](https://drive-mad.sully6.com/) and [Side Pocket](https://pool.sully6.com/). Preview the directory at `/arcade/index.html` on the local dev server.
+
+Pushing to `main` runs **Deploy sully6.com**. The production `doodle-auto` Worker serves the directory and all three clients from its static assets. Doodle Auto and Side Pocket share the existing multiplayer container. Each game hostname is a DNS-only CNAME to `sully6-games.pages.dev` and a custom domain on that Pages project. Its small forwarding function in `deploy/game-host/_worker.js` sends requests to the apex Worker's `/play/<game>/` route, including WebSocket upgrades. New game releases only require the normal push.
+
+To add a game, include its client in the build, map its slug in `src/cloudflare.ts`, register its Pages custom domain and CNAME, and add its tile and release check in `public/arcade/index.html` and `scripts/verify-arcade.mjs`. If the forwarding function itself changes, publish it from the repository root with the Pages project's account selected:
+
+```sh
+cf pages deployments create sully6-games --branch main --manifest '{}' --worker-js '@deploy/game-host/_worker.js'
+```
+
+## Doodle Auto
 
 The [Doodle Auto system map](https://sully6.com/system-map.html) traces a match through the browser, multiplayer server and player database, and shows how releases reach sully6.com.
 
@@ -8,7 +18,7 @@ An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and
 
 ## Google sign-in
 
-Create a Web application OAuth client in Google Auth Platform. Add `https://sully6.com` to its authorized JavaScript origins. For local testing, also add `http://localhost:4173`. Set the public client ID in the GitHub repository Actions variable `GOOGLE_CLIENT_ID` before deploying, or in the server environment for local development. [Google web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
+Create a Web application OAuth client in Google Auth Platform. Include `https://gta.sully6.com` and `https://sully6.com` in its authorized JavaScript origins. For local testing, also add `http://localhost:4173`. Set the public client ID in the GitHub repository Actions variable `GOOGLE_CLIENT_ID` before deploying, or in the server environment for local development. [Google web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
 
 Returning password players can open their stats and select **Link Google account** to keep their profile and Elo. Signing in with a new Google identity from the login screen creates a player with a generated racer name.
 

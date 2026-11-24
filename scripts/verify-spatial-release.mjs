@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { WebSocket } from "ws";
 
-const origin = "https://sully6.com";
+const origin = "https://gta.sully6.com";
 const local = await readFile("dist/index.html", "utf8");
 const asset = local.match(/src="([^"]*\/assets\/index-[^"]+\.js)"/)?.[1];
 assert.ok(asset, "Expected a built game client in dist/index.html");
@@ -14,7 +14,7 @@ assert.ok(
   "Production is still serving a different client bundle",
 );
 
-const ws = new WebSocket("wss://sully6.com/ws", { origin });
+const ws = new WebSocket(new URL("/ws", origin.replace("https:", "wss:")), { origin });
 try {
   await new Promise((resolve, reject) => {
     const timeout = setTimeout(

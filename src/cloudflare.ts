@@ -116,7 +116,34 @@ export class GameContainer extends DurableObject<Env> {
 }
 
 export default {
-  fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      if (["room", "mode", "level"].some(key => url.searchParams.has(key))) {
+        return Response.redirect("https://gta.sully6.com/" + url.search, 302);
+      }
+      url.pathname = "/arcade/";
+      return env.ASSETS.fetch(new Request(url, request));
+    }
+
+    // The Pages game host forwards to this prefix. Restore the public origin
+    // before handing account requests or WebSocket upgrades to the game.
+    if (url.pathname.startsWith("/play/")) {
+      const gamePath = /^\/play\/(gta|pool|drive-mad)(\/.*)$/.exec(url.pathname);
+      if (!gamePath) return new Response("Unknown game", { status: 404 });
+      const [, game, path] = gamePath;
+      url.hostname = game + ".sully6.com";
+      url.pathname = path;
+      if (game === "drive-mad") {
+        url.pathname = "/drive-mad" + path;
+        return env.ASSETS.fetch(new Request(url, request));
+      }
+      if (game === "pool" && path === "/") url.pathname = "/pool/";
+      request = new Request(url, request);
+      const dynamic = path.startsWith("/api/") ||
+        ["/ws", "/pool/ws", "/lobbies", "/health"].includes(path);
+      if (!dynamic) return env.ASSETS.fetch(request);
+    }
     return ctx.exports.GameContainer.getByName("shared-game-server").fetch(
       request,
     );

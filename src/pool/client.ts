@@ -406,11 +406,7 @@ function enter(kind: "find" | "create" | "join", code = "", attempt = 0) {
   el("waittext").textContent = attempt
     ? "Reconnecting to the table…"
     : "Connecting to the table…";
-  const origin =
-    location.hostname === "pool.sully6.com"
-      ? "https://sully6.com"
-      : location.origin;
-  const url = new URL("/pool/ws", origin);
+  const url = new URL("/pool/ws", location.origin);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   const ws = new WebSocket(url);
   let assignedSeat: Seat = 0;
