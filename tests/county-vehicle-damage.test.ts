@@ -5,9 +5,11 @@ import test from "node:test";
 import { WebSocket, WebSocketServer } from "ws";
 import { loadCountyFleet } from "../server/county-fleet.ts";
 import { Rooms } from "../server/rooms.ts";
-import { COUNTY, type CountyCar } from "../src/county.ts";
+import { VEHICLE_DIMENSIONS } from "../src/county-vehicle-dimensions.ts";
+import { COUNTY, VEHICLES, type CountyCar } from "../src/county.ts";
 import {
   damageVehicle,
+  MAX_ENGINE_HITS,
   nearestVehicleSurface,
   vehicleHandling,
 } from "../src/county-vehicle-damage.ts";
@@ -36,6 +38,41 @@ test("the fleet mesh resolves a single tire, individual panes and bounded panel 
   assert.equal(car.wear, 18);
   assert.equal(car.dentVersion, 30);
   assert.ok(vehicleHandling(car).speed < 0.85);
+});
+
+test("repeated bonnet hits on every rotated fleet model increase engine damage and reduce speed", async () => {
+  const model = await loadCountyFleet("public");
+  for (const kind of VEHICLES) {
+    const car: CountyCar = { kind, driver: null, yaw: 1.17, p: [12, 1.4, -7] };
+    const length = VEHICLE_DIMENSIONS[kind][1];
+    function strike(z: number) {
+      const hit = nearestVehicleSurface(
+        [car],
+        [
+          car.p[0] + Math.sin(car.yaw) * z,
+          car.p[1] + 3,
+          car.p[2] + Math.cos(car.yaw) * z,
+        ],
+        [0, -1, 0],
+        4,
+        model,
+      )!.hit;
+      damageVehicle(car, hit);
+      return hit;
+    }
+    assert.equal(strike(length * 0.72).engine, false);
+    assert.equal(car.engineHits, undefined);
+    let previous = vehicleHandling(car).speed;
+    for (let n = 1; n <= MAX_ENGINE_HITS; n++) {
+      assert.equal(strike(-length * 0.78).engine, true, kind);
+      assert.equal(car.engineHits, n);
+      const speed = vehicleHandling(car).speed;
+      assert.ok(speed < previous);
+      previous = speed;
+    }
+    strike(-length * 0.78);
+    assert.equal(car.engineHits, MAX_ENGINE_HITS);
+  }
 });
 
 test("County broadcasts the struck part, restores damage to a joining player and resolves a close knife swing", async () => {

@@ -1,35 +1,30 @@
 import * as T from "three";
+import { type CharacterLook } from "./character-art.ts";
 import { handMesh } from "./hand-model.ts";
 import type { reloadPose } from "./weapon-motion.ts";
 
-export function countyHand(side: number) {
+export function countyHand(side: number, look: CharacterLook) {
   const hand = handMesh(
     side,
-    new T.MeshBasicMaterial({ vertexColors: true }),
+    new T.MeshLambertMaterial({ color: look.skin }),
     true,
   );
-  const pos = hand.geometry.getAttribute("position");
-  const normals = hand.geometry.getAttribute("normal");
-  const colors: number[] = [],
-    color = new T.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const fingertip = pos.getY(i) < -0.021 && pos.getZ(i) < 0.032;
-    color
-      .set(fingertip ? 0xcf9876 : 0x354a55)
-      .multiplyScalar(0.79 + 0.21 * Math.max(0, normals.getY(i)));
-    colors.push(color.r, color.g, color.b);
-  }
-  hand.geometry.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
   for (const fold of hand.children)
-    ((fold as T.Mesh).material as T.MeshBasicMaterial).color.setHex(0x344651);
+    ((fold as T.Mesh).material as T.MeshBasicMaterial).color
+      .setHex(look.skin)
+      .multiplyScalar(0.7);
   return hand;
 }
 
-export function addCountyArms(gun: T.Group, weapon: number) {
-  const cloth = new T.MeshBasicMaterial({ color: 0x386673 });
+export function addCountyArms(
+  gun: T.Group,
+  weapon: number,
+  look: CharacterLook,
+) {
+  const cloth = new T.MeshLambertMaterial({ color: look.shirt });
   const sleeveShape = new T.CylinderGeometry(0.062, 0.086, 1, 12);
   const arms = [-1, 1].map((side) => {
-    const hand = countyHand(side);
+    const hand = countyHand(side, look);
     const support = side < 0;
     const z = support ? [-0.39, -0.41, -0.025, -0.4][weapon] : 0.018;
     hand.position.set(

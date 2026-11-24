@@ -11,6 +11,13 @@ import {
 } from "./weapon-balance.ts";
 import { buildKnife, knifePose } from "./county-knife.ts";
 import { mountWeaponModel } from "./weapon-models.ts";
+import {
+  characterLook,
+  headGeometry,
+  torsoGeometry,
+  profile,
+  type CharacterRole,
+} from "./character-art.ts";
 import { handMesh } from "./hand-model.ts";
 import {
   FISTS,
@@ -78,135 +85,23 @@ export class Doodle {
   constructor(
     public color = RED,
     name?: string,
-    readonly role: "combatant" | "civilian" | "police" = "combatant",
+    readonly role: CharacterRole = "combatant",
+    appearanceId = name ?? color,
   ) {
-    // Simple paper figures with a clear front silhouette and readable limbs.
-    const paper = new T.MeshBasicMaterial({
-      color: new T.Color("#f7f5e9").lerp(new T.Color(color), 0.07),
-    });
-    const cloth = inkMaterial(color, 0.16, true);
-    const dark = inkMaterial(color, 0.72, true);
-    const shape = (
-      geometry: T.BufferGeometry,
-      material: T.Material,
-      parent: T.Object3D,
-      x: number,
-      y: number,
-      z: number,
-    ) => {
-      const mesh = new T.Mesh(geometry, material);
-      mesh.position.set(x, y, z);
-      mesh.add(
-        new T.LineSegments(
-          new T.EdgesGeometry(geometry, 35),
-          new T.LineBasicMaterial({ color }),
-        ),
-      );
-      parent.add(mesh);
-      return mesh;
-    };
-    const torso = shape(
-      new T.CylinderGeometry(0.27, 0.2, 0.59, 6),
-      paper,
-      this.group,
-      0,
-      1.02,
-      0,
-    );
-    torso.scale.z = 0.65;
-    if (role === "police") {
-      torso.material = dark;
-      const badge = new T.MeshBasicMaterial({ color: "#f3bf4e" });
-      shape(new T.CircleGeometry(0.055, 5), badge, torso, 0.1, 0.12, 0.26);
-    } else if (role === "civilian") {
-      torso.material = cloth;
-      outlinedBox(
-        [0.095, 0.08, 0.035],
-        [-0.12, 1.12, 0.16],
-        paper,
-        this.group,
-        color,
-      );
-    } else
-      outlinedBox(
-        [0.31, 0.25, 0.055],
-        [0, 1.1, 0.155],
-        cloth,
-        this.group,
-        color,
-      );
-    outlinedBox([0.39, 0.065, 0.28], [0, 0.74, 0], dark, this.group, color);
-    for (const x of role === "civilian" ? [] : [-0.13, 0.13])
-      outlinedBox(
-        [0.075, 0.12, 0.07],
-        [x, 0.84, 0.15],
-        cloth,
-        this.group,
-        color,
-      );
+    const look = characterLook(appearanceId, role);
+    const dyed = (color: number) => new T.MeshLambertMaterial({ color });
+    const skin = dyed(look.skin),
+      cloth = dyed(look.shirt),
+      denim = dyed(look.pants);
+    const leather = dyed(look.shoes),
+      trim = dyed(look.tee);
+    const metal = dyed(0x364047),
+      dark = dyed(0x242b30);
+    const colors = new T.MeshLambertMaterial({ vertexColors: true });
+    this.group.add(new T.Mesh(torsoGeometry(look), colors));
     this.head.position.y = 1.55;
+    this.head.add(new T.Mesh(headGeometry(look), colors));
     this.group.add(this.head);
-    // Clean rounded head and a single visor make the forward direction legible.
-    const helmet = new T.Mesh(new T.SphereGeometry(0.26, 20, 14), paper);
-    helmet.scale.set(1, 1.08, 0.9);
-    this.head.add(helmet);
-    const outline = new T.Mesh(
-      helmet.geometry,
-      new T.MeshBasicMaterial({ color, side: T.BackSide }),
-    );
-    outline.scale.setScalar(1.035);
-    helmet.add(outline);
-    if (role === "police") {
-      shape(
-        new T.CylinderGeometry(0.258, 0.275, 0.12, 12),
-        dark,
-        this.head,
-        0,
-        0.19,
-        0,
-      );
-      outlinedBox(
-        [0.32, 0.035, 0.17],
-        [0, 0.135, 0.22],
-        dark,
-        this.head,
-        color,
-      );
-    }
-    if (role === "civilian") {
-      for (const x of [-0.095, 0.095])
-        shape(
-          new T.SphereGeometry(0.026, 6, 5),
-          dark,
-          this.head,
-          x,
-          0.026,
-          0.214,
-        );
-      const hair = shape(
-        new T.SphereGeometry(0.263, 14, 8, 0, Math.PI * 2, 0, 0.93),
-        cloth,
-        this.head,
-        0,
-        0.012,
-        0,
-      );
-      hair.scale.copy(helmet.scale);
-    } else
-      outlinedBox(
-        [0.32, 0.085, 0.045],
-        [0, 0.025, 0.217],
-        dark,
-        this.head,
-        color,
-      );
-    outlinedBox(
-      [0.19, role === "civilian" ? 0.018 : 0.055, 0.025],
-      [0, -0.11, 0.216],
-      cloth,
-      this.head,
-      color,
-    );
     for (const [part, joint, end, x, y, arm] of [
       [this.leftArm, this.leftElbow, this.leftHand, -0.28, 1.24, true],
       [this.rightArm, this.rightElbow, this.rightHand, 0.28, 1.24, true],
@@ -214,48 +109,143 @@ export class Doodle {
       [this.rightLeg, this.rightKnee, this.rightFoot, 0.12, 0.7, false],
     ] as const) {
       const upper = arm ? 0.28 : 0.29,
-        lower = arm ? 0.27 : 0.29,
-        radius = arm ? 0.072 : 0.085;
+        lower = arm ? 0.27 : 0.29;
       part.position.set(x, y, 0);
       joint.position.y = -upper;
       end.position.y = -lower;
       part.add(joint);
       joint.add(end);
-      shape(
-        new T.CylinderGeometry(radius, radius * 0.85, upper, 8),
-        paper,
-        part,
-        0,
-        -upper / 2,
-        0,
-      );
-      shape(new T.SphereGeometry(radius * 0.95, 10, 8), cloth, joint, 0, 0, 0);
-      shape(
-        new T.CylinderGeometry(radius * 0.85, radius * 0.7, lower, 8),
-        paper,
-        joint,
-        0,
-        -lower / 2,
-        0,
-      );
       if (arm) {
-        const hand = handMesh(x < 0 ? 1 : -1, paper);
+        const hem = look.longSleeves ? -upper : -0.16;
+        part.add(
+          new T.Mesh(
+            profile(
+              [
+                [hem, 0.074],
+                [hem + 0.017, 0.082],
+                [-0.07, 0.09],
+                [0.012, 0.09],
+                [0.059, 0.063],
+                [0.078, 0],
+              ],
+              1.06,
+            ),
+            cloth,
+          ),
+        );
+        if (!look.longSleeves)
+          part.add(
+            new T.Mesh(
+              profile(
+                [
+                  [-upper - 0.022, 0.06],
+                  [-0.22, 0.068],
+                  [hem + 0.012, 0.07],
+                ],
+                1,
+              ),
+              skin,
+            ),
+          );
+        const wrist = look.longSleeves ? 0.052 : 0.044;
+        joint.add(
+          new T.Mesh(
+            profile(
+              [
+                [-lower, wrist],
+                [-0.18, wrist + 0.008],
+                [-0.085, 0.069],
+                [-0.022, 0.07],
+                [0.027, 0.058],
+                [0.04, 0],
+              ],
+              1.06,
+            ),
+            look.longSleeves ? cloth : skin,
+          ),
+        );
+        if (look.longSleeves)
+          joint.add(
+            new T.Mesh(
+              profile(
+                [
+                  [-lower - 0.006, 0.052],
+                  [-lower + 0.035, 0.056],
+                ],
+                1.08,
+              ),
+              trim,
+            ),
+          );
+        const hand = handMesh(x < 0 ? 1 : -1, skin);
         hand.rotation.x = -Math.PI / 2;
         hand.position.y = -0.045;
         end.add(hand);
-      } else outlinedBox([0.15, 0.13, 0.24], [0, 0, 0.065], dark, end, color);
+      } else {
+        part.add(
+          new T.Mesh(
+            profile(
+              [
+                [-upper - 0.017, 0.065],
+                [-upper + 0.04, 0.081],
+                [-0.13, 0.108],
+                [-0.023, 0.116],
+                [0.033, 0.094],
+                [0.043, 0],
+              ],
+              1.11,
+            ),
+            denim,
+          ),
+        );
+        joint.add(
+          new T.Mesh(
+            profile(
+              [
+                [-lower, 0.072],
+                [-lower + 0.025, 0.078],
+                [-0.13, 0.081],
+                [-0.074, 0.089],
+                [-0.012, 0.077],
+                [0.035, 0.065],
+                [0.046, 0],
+              ],
+              1.12,
+            ),
+            denim,
+          ),
+        );
+        const shoe = new T.Mesh(
+          new T.SphereGeometry(1, 14, 10).scale(0.089, 0.081, 0.149),
+          leather,
+        );
+        shoe.position.set(0, -0.029, 0.054);
+        end.add(shoe);
+        const sole = new T.Mesh(
+          new T.SphereGeometry(1, 14, 8).scale(0.09, 0.024, 0.15),
+          dark,
+        );
+        sole.position.set(0, -0.085, 0.055);
+        end.add(sole);
+      }
       this.group.add(part);
     }
     // A dedicated aiming pivot keeps the barrel aligned with the head rather
     // than rotating it through the locomotion arm swing.
     this.aimRig.position.set(0.12, 1.16, 0.12);
-    outlinedBox([0.085, 0.11, 0.34], [0, 0, 0.13], cloth, this.aimRig, color);
+    outlinedBox(
+      [0.085, 0.11, 0.34],
+      [0, 0, 0.13],
+      metal,
+      this.aimRig,
+      "#30383b",
+    );
     outlinedBox(
       [0.04, 0.045, 0.23],
       [0, 0.015, 0.41],
       dark,
       this.aimRig,
-      color,
+      "#30383b",
     );
     const muzzle = new T.Object3D();
     muzzle.name = "muzzle";

@@ -3,33 +3,29 @@ import { buildKnife, knifePose } from "./county-knife.ts";
 import { mountWeaponModel } from "./weapon-models.ts";
 import { KNIFE } from "./weapon-balance.ts";
 import * as T from "three";
-import { handMesh } from "./hand-model.ts";
+import { characterLook } from "./character-art.ts";
 import { guardRaise, punchPose } from "./fists.ts";
-import { inkMaterial, INK } from "./render.ts";
 
-export function buildFists(knifeEquipped = false) {
+export function buildFists(
+  knifeEquipped = false,
+  look = characterLook("local"),
+) {
   const group = new T.Group();
   group.name = knifeEquipped ? "knife-view" : "fists";
-  const paper = inkMaterial(INK, 0.05, true),
-    blue = inkMaterial(INK, 0.45, true);
+  const cloth = new T.MeshLambertMaterial({ color: look.shirt });
+  const edging = new T.MeshLambertMaterial({ color: look.tee });
   const sphere = new T.SphereGeometry(1, 16, 12);
   for (const side of [-1, 1]) {
     const hand = new T.Group();
-    hand.add(knifeEquipped ? countyHand(side) : handMesh(side, paper, true));
+    hand.add(countyHand(side, look));
     if (knifeEquipped && side === 1) {
       const knife = buildKnife();
       mountWeaponModel(knife, KNIFE, "hand");
       knife.rotation.set(-0.92, 0.35, 0.65);
       hand.add(knife);
     }
-    const sleeve = new T.Mesh(
-      sphere,
-      knifeEquipped ? new T.MeshBasicMaterial({ color: 0x386673 }) : blue,
-    );
-    const cuff = new T.Mesh(
-      sphere,
-      knifeEquipped ? new T.MeshBasicMaterial({ color: 0x334851 }) : paper,
-    );
+    const sleeve = new T.Mesh(sphere, cloth);
+    const cuff = new T.Mesh(sphere, edging);
     group.add(sleeve, cuff);
     hand.name = side === -1 ? "left-fist" : "right-fist";
     group.add(hand);

@@ -217,6 +217,13 @@ export class Renderer {
     disposeGroup(this.cityGroup);
     this.cityGroup = new T.Group();
     this.scene.add(this.cityGroup);
+    if (!islands) {
+      const sun = new T.DirectionalLight(0xffead6, 2.1);
+      sun.position.set(-4, 7, 4);
+      const daylight = new T.Group();
+      daylight.add(sun, new T.HemisphereLight(0xfff4df, 0xc0cbd6, 1.65));
+      this.cityGroup.add(daylight);
+    }
     this.beaconMeshes = [];
     this.blimpMeshes = [];
     this.decor = [];

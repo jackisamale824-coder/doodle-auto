@@ -2,6 +2,10 @@ import * as T from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { engineFire } from "./engine-fire.ts";
+import { bonnet, MAX_ENGINE_HITS } from "./county-vehicle-damage.ts";
+import { VEHICLE_DIMENSIONS } from "./county-vehicle-dimensions.ts";
+import { characterLook, torsoGeometry, headGeometry } from "./character-art.ts";
 import { assetUrl } from "./release-info.ts";
 import { VEHICLES, type CountyCar, type VehicleKind } from "./county.ts";
 
@@ -18,58 +22,22 @@ function panel(
   texture.colorSpace = T.SRGBColorSpace;
   return new T.MeshBasicMaterial({ map: texture });
 }
-// The GLB seat marker is the driver's eye position. Bake the jacket, head and
-// visor into one colored mesh so an occupied near-detail car adds one draw.
-function seatedMotorist() {
-  const parts = [
-    [
-      new T.CylinderGeometry(0.19, 0.15, 0.32, 7)
-        .scale(1, 1, 0.72)
-        .translate(0, -0.31, 0.025),
-      0x39867e,
-    ],
-    [
-      new T.SphereGeometry(1, 9, 6)
-        .scale(0.145, 0.172, 0.14)
-        .translate(0, -0.012, 0.01),
-      0xf5efdf,
-    ],
-    [
-      new T.BoxGeometry(0.22, 0.045, 0.045).translate(0, 0.012, -0.109),
-      0x28364c,
-    ],
-  ] as const;
-  const light = new T.Vector3(-0.55, 1, -0.4).normalize(),
-    n = new T.Vector3();
-  const baked = parts.map(([shape, tint]) => {
-    const geo = shape.toNonIndexed();
-    // Face normals keep the two paper-shading bands crisp.
-    geo.computeVertexNormals();
-    const normals = geo.getAttribute("normal"),
-      colors: number[] = [];
-    const base = new T.Color(tint),
-      shade = new T.Color();
-    for (let i = 0; i < normals.count; i++) {
-      const brightness = n.fromBufferAttribute(normals, i).dot(light);
-      shade
-        .copy(base)
-        .multiplyScalar(
-          brightness > 0.35 ? 1 : brightness > -0.35 ? 0.79 : 0.58,
-        );
-      colors.push(shade.r, shade.g, shade.b);
-    }
-    geo.setAttribute("color", new T.Float32BufferAttribute(colors, 3));
-    return geo;
-  });
-  const body = new T.Mesh(
-    mergeGeometries(baked)!,
-    new T.MeshBasicMaterial({ vertexColors: true }),
+// The seat marker is at eye level. The car faces -Z, the walking rig faces +Z.
+function seatedGeometry(id: string) {
+  const look = characterLook(
+    id,
+    id.startsWith("police-") ? "police" : "civilian",
   );
-  body.name = "civilian-driver";
-  body.visible = false;
-  return body;
+  const head = headGeometry(look).translate(0, -0.024, 0);
+  const torso = torsoGeometry(look).translate(0, -1.574, 0);
+  return mergeGeometries([head, torso])!.rotateY(Math.PI);
 }
-const driverFigure = seatedMotorist();
+const driverFigure = new T.Mesh(
+  new T.BufferGeometry(),
+  new T.MeshLambertMaterial({ vertexColors: true }),
+);
+driverFigure.name = "civilian-driver";
+driverFigure.visible = false;
 export async function loadFleet() {
   const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   const paint = new T.ShaderMaterial({
@@ -275,6 +243,7 @@ export class CountyCarModel extends T.Group {
   readonly doorSide: number;
   beacons?: T.MeshBasicMaterial[];
   private motorist: T.Mesh;
+  private seatedId?: string;
   private radius: number;
   private hinges: T.Object3D[];
   private levels: T.Object3D[];
@@ -296,6 +265,8 @@ export class CountyCarModel extends T.Group {
   private panelMaterials = new Map<T.Mesh, T.ShaderMaterial>();
   private smoke?: T.Group;
   private smokeStrength = 0;
+  private fire?: ReturnType<typeof engineFire>;
+  private heat = 0;
   private sparksAt = 0;
   private fragments: {
     mesh: T.Mesh;
@@ -342,6 +313,16 @@ export class CountyCarModel extends T.Group {
     return this.levels[0];
   }
   setDamage(car: CountyCar) {
+    this.heat = (car.engineHits ?? 0) / MAX_ENGINE_HITS;
+    if (this.heat && !this.fire) {
+      this.fire = engineFire();
+      this.fire.position.set(
+        0,
+        bonnet[car.kind].height - 0.035,
+        -0.78 * VEHICLE_DIMENSIONS[car.kind][1],
+      );
+      this.add(this.fire);
+    }
     const mask = car.damage ?? 0;
     if (mask !== this.damage) {
       for (const [i, wheel] of this.wheels.entries()) {
@@ -533,6 +514,11 @@ export class CountyCarModel extends T.Group {
       level === 0 &&
       (!!driver?.startsWith("civilian-driver-") ||
         !!driver?.startsWith("police-"));
+    if (this.motorist.visible && driver && driver !== this.seatedId) {
+      if (this.seatedId) this.motorist.geometry.dispose();
+      this.motorist.geometry = seatedGeometry(driver);
+      this.seatedId = driver;
+    }
     this.beacons?.forEach((lamp, i) => {
       const flashing =
         driver?.startsWith("police-") || (!driver && this.elapsed < 12);
@@ -562,6 +548,11 @@ export class CountyCarModel extends T.Group {
             1,
           );
         }
+    }
+    if (this.fire) {
+      this.fire.visible = this.heat > 0 && distance < 100;
+      this.fire.material.uniforms.heat.value = this.heat;
+      this.fire.material.uniforms.time.value = now + this.id * 0.37;
     }
     if (this.smoke) {
       this.smoke.visible = this.smokeStrength > 0 && distance < 65;

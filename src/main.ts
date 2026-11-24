@@ -15,6 +15,7 @@ import {
 } from "./weapon-balance.ts";
 import { SMOKE_RADIUS } from "./grenades.ts";
 import { bindPlayerAccount } from "./player-account.ts";
+import { characterLook } from "./character-art.ts";
 import { addCountyArms } from "./county-hands.ts";
 import { CountyCasings } from "./county-casings.ts";
 import { KNIFE_DAMAGE } from "./county-knife.ts";
@@ -986,19 +987,23 @@ class Game {
     $("notice").textContent = text;
     this.noticeUntil = this.time + duration;
   }
+  private get appearanceId() {
+    return this.mode === "online" ? this.network.id : this.identity.name || "local";
+  }
   setWeapon(i: number, force = false) {
     const before = this.combat.weapon;
     if (!force && !this.combat.switchWeapon(i)) return;
     this.previousWeapon = force ? undefined : before;
     disposeGroup(this.weaponMesh);
     const daylight = this.seed === COUNTY || this.city.seed === ISLANDS;
+    const look = characterLook(this.appearanceId);
     this.weaponMesh =
       i === FISTS
-        ? buildFists(this.seed === COUNTY)
+        ? buildFists(this.seed === COUNTY, look)
         : buildWeapon(i, daylight);
     this.animateArms =
       daylight && i !== FISTS
-        ? addCountyArms(this.weaponMesh, WEAPONS[i].model)
+        ? addCountyArms(this.weaponMesh, WEAPONS[i].model, look)
         : undefined;
     $("ammo-row").classList.toggle("hidden", i === FISTS || i === KNIFE);
     if (isUtility(i)) this.aiming = false;
@@ -2198,7 +2203,7 @@ class Game {
   finish(win = false, winner = "") {
     if (win) this.clearDeathBody();
     else if (this.seed === COUNTY && !this.deathBody) {
-      this.deathBody = new Doodle("#347a75");
+      this.deathBody = new Doodle("#347a75", undefined, "combatant", this.appearanceId);
       this.render.scene.add(this.deathBody.group);
       this.placeDeathBody(
         this.deathBody,
@@ -2663,6 +2668,7 @@ class Game {
                 : "#347a75",
           police ? "POLICE" : state.npc ? undefined : state.name,
           police ? "police" : civil ? "civilian" : undefined,
+          state.id,
         );
         model.group.position.fromArray(state.p);
         this.render.scene.add(model.group);

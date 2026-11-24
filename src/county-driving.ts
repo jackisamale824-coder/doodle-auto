@@ -1,4 +1,4 @@
-import { vehicleHandling } from "./county-vehicle-damage.ts";
+import { enginePower, vehicleHandling } from "./county-vehicle-damage.ts";
 import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { elevation, LIMIT } from "./county-plan.ts";
@@ -196,7 +196,10 @@ export class CountyDriveWorld {
     const handling = vehicleHandling(own);
     const drag = brake ? 6 : throttle ? 0.12 : 0.72;
     let speed = clamp(
-      (state.speed + throttle * (state.speed * throttle < 0 ? 29 : 17) * dt) *
+      (state.speed +
+        throttle *
+          (state.speed * throttle < 0 ? 29 : 17 * enginePower(own)) *
+          dt) *
         Math.exp(-drag * dt),
       -12 * handling.speed,
       40 * handling.speed,

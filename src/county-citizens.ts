@@ -643,7 +643,7 @@ export class CountyCitizens {
       const car = this.cars[a.car];
       const remaining = horizontal(car.p, r.goal);
       // Ease into the stop. A blocked cruiser unloads instead of ramming traffic.
-      const step = Math.min(remaining, dt * Math.min(12, 2 + remaining * 1.2));
+      const step = Math.min(remaining, dt * Math.min(12, 2 + remaining * 1.2) * vehicleHandling(car).speed);
       const dx = -Math.sin(car.yaw),
         dz = -Math.cos(car.yaw);
       const next: V3 = [car.p[0] + dx * step, car.p[1], car.p[2] + dz * step];

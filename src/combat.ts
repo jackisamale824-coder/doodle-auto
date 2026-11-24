@@ -190,7 +190,7 @@ export class Combat {
     );
     if (node === null) return false;
     const p = this.city.nodes[node];
-    const model = new Doodle(RED);
+    const model = new Doodle(RED, undefined, "combatant", "bot-" + id);
     model.group.position.set(...p);
     this.scene.add(model.group);
     this.bots.push({
