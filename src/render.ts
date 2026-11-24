@@ -230,6 +230,19 @@ export class Renderer {
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
         Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 44, bottom: -44, near: 25, far: 160 });
+        if (dust) {
+          sun.target.position.set(-35, 0, 22);
+          sun.position.set(-100, 110, 64);
+          daylight.add(sun.target);
+          Object.assign(sun.shadow.camera, {
+            left: -85,
+            right: 85,
+            top: 85,
+            bottom: -85,
+            near: 30,
+            far: 240,
+          });
+        }
         sun.shadow.camera.updateProjectionMatrix();
         sun.shadow.normalBias = 0.035;
         sun.shadow.bias = -0.00015;

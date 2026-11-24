@@ -70,6 +70,7 @@ import { WeaponClearance } from "./weapon-clearance.ts";
 import { ISLANDS, SEA_LEVEL } from "./islands.ts";
 import { drawIslandMap, islandMapScale } from "./island-view.ts";
 import { DUST_A } from "./dust-a.ts";
+import { dustBounds } from "./dust-layout.ts";
 import { publicMapSeed, generateLevel } from "./levels.ts";
 import "./style.css";
 import * as T from "three";
@@ -581,7 +582,7 @@ class Game {
     $("seed-options").hidden = !!this.selectedSeed;
     $("model-credits").hidden = false;
     if (this.islandsSelected || this.dustSelected) this.menuMode = "roam";
-    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : this.dustSelected ? "Dust II · A Site" : "Rust · Oil Yard");
+    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : this.dustSelected ? "Dust II" : "Rust · Oil Yard");
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
@@ -658,7 +659,7 @@ class Game {
     this.remoteRopes.clear();
     this.city = city;
     const islands = city.seed === ISLANDS;
-    document.querySelector("#city-map-panel small")!.textContent = islands ? "Gold lines mark bridges" : city.seed === DUST_A ? "Teal: crates · red: A site" : "solid: streets · gold: roof routes";
+    document.querySelector("#city-map-panel small")!.textContent = islands ? "Gold lines mark bridges" : city.seed === DUST_A ? "A / B: sites · M: expand" : "solid: streets · gold: roof routes";
     $("city-map").setAttribute("aria-label", islands ? "Five islands, bridges and player positions" : "Map with your position in red and other living players in blue");
     this.cars = seed === COUNTY ? countyCars() : [];
     this.vehicle = -1;
@@ -1176,7 +1177,7 @@ class Game {
       this.resume();
       this.notice(
         mode === "roam"
-          ? this.city.seed === DUST_A ? "DUST II · A SITE" : this.city.seed === ISLANDS ? "COMPASS CAY" : this.city.arena
+          ? this.city.seed === DUST_A ? "DUST II" : this.city.seed === ISLANDS ? "COMPASS CAY" : this.city.arena
             ? "THE YARD IS YOURS"
             : "THE CITY IS YOURS"
           : mode === "online"
@@ -1324,8 +1325,8 @@ class Game {
           : "Erase 6 rivals · Find 3 rooftop marks";
     $("mission-progress").style.display = online || roam ? "none" : "flex";
     if (this.seed === DUST_A && roam) {
-      $("mission-title").textContent = "DUST II · A SITE";
-      $("mission").textContent = "Explore Long A, the raised site and the lower passage.";
+      $("mission-title").textContent = "DUST II";
+      $("mission").textContent = "Follow Mid to B Doors, take Catwalk to A, or enter B through the tunnels.";
     }
     $("kill-objective").textContent =
       `${this.combat.kills >= 6 ? "✓" : "○"} ${Math.min(6, this.combat.kills)} / 6 RIVALS`;
@@ -1752,8 +1753,8 @@ class Game {
       text.contract = "Eliminate six rivals, collect three island marks, then return to Compass Cay.";
     }
     if (this.dustSelected) {
-      text.public = "Join a public match at Dust II’s A site.";
-      text.roam = "Explore the site, Long A and the short approach.";
+      text.public = "Join a public match across Dust II.";
+      text.roam = "Explore A, Mid, B and the tunnels between the two spawns.";
     }
     const lobby =
       (mode === "duel" || mode === "public") &&
@@ -1806,7 +1807,7 @@ class Game {
           ? "DUEL · REAL PLAYERS ONLY"
           : this.seed === COUNTY
             ? "SWITCHBACK COUNTY · E TO ENTER A CAR"
-            : this.seed === DUST_A ? "DUST II · A SITE" : "WELCOME TO RUST",
+            : this.seed === DUST_A ? "DUST II" : "WELCOME TO RUST",
         2,
       );
     } catch (error) {
@@ -3029,14 +3030,45 @@ class Game {
       return;
     }
     if (this.seed === DUST_A) {
-      const scale = 90 / this.city.bounds;
+      const [west, north, east, south] = dustBounds;
+      const cx = (west + east) / 2,
+        cz = (north + south) / 2;
+      const scale = 182 / Math.max(east - west, south - north);
+      const mx = (x: number) => 95 + (x - cx) * scale,
+        mz = (z: number) => 95 + (z - cz) * scale;
       c.clearRect(0, 0, 190, 190);
       for (const b of this.city.boxes) {
-        if (b.kind === "boundary") continue;
-        c.fillStyle = b.kind === "crate" ? "#528883" : b.kind === "platform" ? "#d18a72" : ["hotel","stucco","ochre"].includes(b.kind) ? "#ac947d" : "#d3c8b3";
-        c.fillRect(95 + (b.p[0] - b.s[0]/2) * scale, 95 + (b.p[2] - b.s[2]/2) * scale, b.s[0]*scale, b.s[2]*scale);
+        if (["boundary", "vault", "lintel"].includes(b.kind)) continue;
+        c.fillStyle =
+          b.kind === "crate"
+            ? "#528883"
+            : b.kind === "platform"
+              ? "#c0a58c"
+              : ["hotel", "stucco", "ochre", "cityblock"].includes(b.kind)
+                ? "#7f7169"
+                : "#e4d7c0";
+        c.fillRect(
+          mx(b.p[0] - b.s[0] / 2),
+          mz(b.p[2] - b.s[2] / 2),
+          b.s[0] * scale,
+          b.s[2] * scale,
+        );
       }
-      this.drawMapPlayers(c, 0, 0, scale);
+      c.save();
+      c.textAlign = "center";
+      c.font = "bold 10px sans-serif";
+      c.fillStyle = "#6b332b";
+      for (const [text, x, z] of [
+        ["A", -2, -4],
+        ["B", -82, -9],
+        ["MID", -48, 27],
+        ["T", -39, 65],
+        ["CT", -36, -12],
+      ] as const) {
+        c.fillText(text, mx(x), mz(z));
+      }
+      c.restore();
+      this.drawMapPlayers(c, cx, cz, scale);
       const { x, z } = this.player.position;
       $("neighborhood-label").textContent = this.city.buildings.reduce((a, b) =>
         Math.hypot(x-a.x, z-a.z) < Math.hypot(x-b.x, z-b.z) ? a : b

@@ -127,6 +127,75 @@ export function drawDustSite(city: City, group: T.Group) {
         );
       continue;
     }
+    if (b.kind === "wreck") {
+      block(x, y - 0.13, z, w, 0.54, d, teal);
+      block(x, y + 0.31, z - 0.1, w * 0.87, 0.62, d * 0.52, shade);
+      block(x, y + 0.65, z - 0.1, w * 0.88, 0.1, d * 0.55, teal);
+      for (const side of [-1, 1])
+        for (const end of [-1, 1]) {
+          put(
+            new T.CylinderGeometry(0.39, 0.39, 0.19, 12)
+              .rotateZ(Math.PI / 2)
+              .translate(x + side * w * 0.48, 0.42, z + end * 1.35),
+            shade,
+          );
+          block(
+            x + side * 0.72,
+            0.62,
+            z + end * 2.16,
+            0.38,
+            0.18,
+            0.05,
+            end < 0 ? chalk : red,
+          );
+        }
+      continue;
+    }
+    if (b.kind === "cityblock") {
+      const facade = Math.floor(Math.abs(x + z)) % 3 === 0 ? sand : plaster;
+      block(x, y, z, w, h, d, facade);
+      block(x, y + h / 2, z, w + 0.12, 0.18, d + 0.12, chalk);
+      for (const sign of [-1, 1]) {
+        for (let dx = -w / 2 + 2; dx < w / 2 - 1; dx += 4.7) {
+          block(
+            x + dx,
+            h * 0.65,
+            z + sign * (d / 2 + 0.035),
+            1.05,
+            1.45,
+            0.09,
+            shade,
+          );
+          block(
+            x + dx,
+            h * 0.65 - 0.76,
+            z + sign * (d / 2 + 0.1),
+            1.31,
+            0.14,
+            0.26,
+            stone,
+          );
+        }
+        for (let dz = -d / 2 + 2; dz < d / 2 - 1; dz += 5.2) {
+          block(
+            x + sign * (w / 2 + 0.035),
+            h * 0.66,
+            z + dz,
+            0.09,
+            1.35,
+            0.86,
+            shade,
+          );
+        }
+      }
+      continue;
+    }
+    if (b.kind === "gate") {
+      block(x, y, z, w, h, d, wood);
+      for (const height of [0.75, 2.8])
+        block(x, height, z, w + 0.08, 0.13, d + 0.08, iron);
+      continue;
+    }
     const m =
       b.kind === "crate"
         ? wood
@@ -196,6 +265,49 @@ export function drawDustSite(city: City, group: T.Group) {
     block(x, 6.68, -15.26, 1.85, 0.2, 0.45, chalk);
   }
   placard("A  →", -24.0, 3.6, 7, 2.8, 1.25, Math.PI / 2, "#b0523e");
+  placard("B", -83, 3.4, -23.93, 3.2, 3, 0, "#af432e");
+  placard("B  ←", -42.07, 2.35, 4, 2.4, 1.15, -Math.PI / 2, "#ad4533");
+  placard("A  →", -36, 2.7, 12.07, 2.6, 1.2, 0, "#ad4533");
+  placard("MID", -60, 2.6, 19.94, 2.25, 1.05, Math.PI);
+  placard("TUNNELS", -84, 4.3, 42.82, 4, 0.9);
+  // Beams and hanging lamps distinguish the roofed tunnel routes from Mid.
+  for (const z of [7, 13, 21, 27, 35, 40]) {
+    const ceiling = z < 18 ? 5.68 : z < 31 ? 6.68 : 6.48;
+    block(-84, ceiling - 0.12, z, 11.9, 0.24, 0.25, wood);
+    for (const x of [-89.7, -78.3])
+      block(x, ceiling / 2, z, 0.32, ceiling, 0.38, wood);
+    block(-84, ceiling - 0.42, z, 1.15, 0.16, 0.4, iron);
+    block(-84, ceiling - 0.52, z, 0.96, 0.08, 0.28, chalk);
+  }
+  for (const x of [-75, -69, -63, -57]) {
+    block(x, 4.87, 16, 0.25, 0.25, 8, wood);
+    block(x, 4.64, 16, 0.3, 0.14, 1.1, chalk);
+  }
+  // A faded ground stencil locates the second site from its three entrances.
+  const siteMark = document.createElement("canvas");
+  siteMark.width = siteMark.height = 160;
+  const paint = siteMark.getContext("2d")!;
+  paint.strokeStyle = paint.fillStyle = "#ae5038";
+  paint.lineWidth = 5;
+  paint.beginPath();
+  paint.arc(80, 80, 69, 0, Math.PI * 2);
+  paint.stroke();
+  paint.font = "bold 108px sans-serif";
+  paint.textAlign = "center";
+  paint.fillText("B", 80, 118);
+  const markTexture = new T.CanvasTexture(siteMark);
+  markTexture.colorSpace = T.SRGBColorSpace;
+  const mark = new T.Mesh(
+    new T.PlaneGeometry(5.4, 5.4),
+    new T.MeshBasicMaterial({
+      map: markTexture,
+      transparent: true,
+      depthWrite: false,
+    }),
+  );
+  mark.rotation.x = -Math.PI / 2;
+  mark.position.set(-80, 0.025, -13);
+  group.add(mark);
   const arch = new T.Shape();
   arch.moveTo(-1.05, 0);
   arch.lineTo(1.05, 0);
@@ -215,9 +327,12 @@ export function drawDustSite(city: City, group: T.Group) {
       block(x + dx, 7.77, -15.15, 0.035, 0.55, 0.04, iron);
   }
   for (let z = -12; z < 23; z += 4.4) {
-    block(21.96, 6.5, z, 0.12, 1.45, 1.04, shade);
-    block(21.85, 5.7, z, 0.32, 0.13, 1.4, chalk);
-    block(-23.97, 5.1, z, 0.08, 0.85, 0.6, shade);
+    if (z < 8 || z > 14) {
+      block(21.96, 6.5, z, 0.12, 1.45, 1.04, shade);
+      block(21.85, 5.7, z, 0.32, 0.13, 1.4, chalk);
+    }
+    if (z > -9 && (z < 12 || z > 21))
+      block(-23.97, 5.1, z, 0.08, 0.85, 0.6, shade);
   }
   for (let x = -18; x < 10; x += 4.1) {
     block(x, 7.15, 23.94, 1.15, 1.5, 0.1, shade);

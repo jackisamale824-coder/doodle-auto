@@ -1,4 +1,5 @@
 import type { Box, Building, City, V3 } from "./world.ts";
+import { dustAreas, dustBounds, expandDust } from "./dust-layout.ts";
 
 export const DUST_A = "dust-a";
 const deck = 3.6;
@@ -15,7 +16,7 @@ export function dustSite(district = 1): City {
   ) {
     boxes.push({ kind, p: [x, y, z], s: [w, h, d], solid: true });
   }
-  box("paving", 0, -0.4, 0, 56, 0.8, 58);
+  expandDust(boxes);
   box("platform", -2, deck / 2, -5, 20, deck, 20);
   // The bridge spans the lower lane. Its underside stays open.
   box("bridge", -15, deck - 0.27, -8, 6, 0.54, 7);
@@ -44,10 +45,6 @@ export function dustSite(district = 1): City {
     box("step", 20.25, h / 2, -8.5 + i, 3.5, h, 1);
   }
   box("platform", 20.25, 3.4, 10.5, 3.5, 6.8, 7);
-  for (const side of [-1, 1]) {
-    box("boundary", side * 28, 15, 0, 0.3, 30, 58);
-    box("boundary", 0, 15, side * 29, 56, 30, 0.3);
-  }
   // Short A links the lower lane to the bridge by a flight of traversable steps.
   for (let i = 0; i < 16; i++) {
     const h = (deck * (i + 1)) / 16;
@@ -62,7 +59,9 @@ export function dustSite(district = 1): City {
   box("stucco", -22, 5.3, -20.8, 12, 10.6, 9);
   box("stucco", 25, 4.8, -9, 6, 9.6, 36);
   box("stucco", 25, 4.4, 20.5, 6, 8.8, 14);
-  box("ochre", -26, 4, 5, 4, 8, 43);
+  // Keep the existing A wall between the CT passage and the Catwalk entrance.
+  box("ochre", -26, 4, 1.5, 4, 8, 23);
+  box("ochre", -26, 4, 24, 4, 8, 8);
   box("stucco", -7, 4.8, 26, 34, 9.6, 4);
   box("stucco", 16, 5.4, -25, 12, 10.8, 6);
   for (const [x, z] of [
@@ -97,8 +96,9 @@ export function dustSite(district = 1): City {
     "slope",
   ]);
   const columns = new Map<string, number[]>();
-  for (let z = -23; z <= 23; z += 2)
-    for (let x = -23; x <= 21; x += 2) {
+  const [west, north, east, south] = dustBounds;
+  for (let z = north + 1; z < south; z += 2)
+    for (let x = west + 1; x < east; x += 2) {
       const overlaps = boxes.filter(
         (b) =>
           Math.abs(x - b.p[0]) < b.s[0] / 2 + 0.32 &&
@@ -137,6 +137,7 @@ export function dustSite(district = 1): City {
     ["SHORT A", -21, 2, 6, 23],
     ["LOWER PASSAGE", -15, 0, 6, 24],
     ["LONG CORNER", 8, 20, 22, 6],
+    ...dustAreas,
   ];
   const buildings: Building[] = areas.map(([name, x, z, w, d], id) => ({
     id,
@@ -162,9 +163,14 @@ export function dustSite(district = 1): City {
     buildings,
     nodes,
     links,
-    bounds: 32,
+    bounds: 100,
     spawns: [
       [20.25, 6.88, 11],
+      [-81, 0.08, -8],
+      [-47, 0.08, 27],
+      [-38, 2.48, 65],
+      [-36, 0.08, -12],
+      [-84, 2.08, 26],
       [-9, deck + 0.1, -11],
       [-21, deck + 0.1, -8],
       [-16, 0.1, 12],
@@ -173,8 +179,8 @@ export function dustSite(district = 1): City {
     ],
     beacons: [
       [-5.9, deck + 5.2, -7],
-      [16, deck + 0.8, -16],
-      [-21, deck + 0.8, -8],
+      [-92, 2, -18],
+      [-47, 0.8, 32],
     ],
     bridges: [],
     blimps: [],
