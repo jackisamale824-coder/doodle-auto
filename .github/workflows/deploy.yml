@@ -39,6 +39,7 @@ jobs:
       - run: npm ci
       - run: npm run check && npm run check:cloudflare
       - run: npx --no-install tsx --test tests/spatial-snapshots.test.ts tests/session-resume.test.ts tests/player-accounts.test.ts tests/google-login.test.ts
+      - run: npx --no-install tsx --test tests/pool.test.ts
       - run: npm run build:app
       - name: Deploy game container and Worker
         env:
@@ -51,3 +52,12 @@ jobs:
             sleep 10
           done
           exit 1
+      - name: Attach pool hostname to the game Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          if curl -fsS --max-time 15 https://pool.sully6.com/ | grep -Fq '<title>Side Pocket'; then exit 0; fi
+          curl --fail-with-body --silent --show-error -X PUT \
+            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/domains" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" \
+            --data '{"hostname":"pool.sully6.com","service":"doodle-auto","zone_id":"8f226a21ea38287b02ae38fce9c10de2","enabled":true}'

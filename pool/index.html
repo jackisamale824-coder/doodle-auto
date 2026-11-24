@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#10241f" />
+    <meta
+      name="description"
+      content="Break a rack of arcade eight-ball against the house bot or a friend."
+    />
+    <title>Side Pocket · Sully Arcade</title>
+  </head>
+  <body>
+    <main>
+      <header class="mast">
+        <div class="identity">
+          <span class="eight emblem" aria-hidden="true"><i>8</i></span>
+          <div>
+            <span class="eyebrow gold">Sully Arcade</span>
+            <h1>Side Pocket</h1>
+          </div>
+        </div>
+        <nav aria-label="Table options">
+          <button id="rules" class="quiet">How to play</button
+          ><button id="online" class="outlined">Play online</button>
+        </nav>
+      </header>
+      <section class="match" aria-label="Match scoreboard">
+        <div class="player" id="p0">
+          <span class="seat">01</span>
+          <div>
+            <strong id="name0">You</strong><small id="group0">Open table</small>
+          </div>
+        </div>
+        <div class="match-type">
+          <span class="eyebrow">Arcade eight-ball</span
+          ><span id="mode">Solo vs. bot</span>
+        </div>
+        <div class="player away" id="p1">
+          <span class="seat">02</span>
+          <div>
+            <strong id="name1">House Bot</strong
+            ><small id="group1">Open table</small>
+          </div>
+        </div>
+      </section>
+      <section class="arena" aria-label="Pool table">
+        <canvas
+          id="table"
+          tabindex="0"
+          aria-label="Aim on the pool table by tapping or dragging, or use left and right arrow keys. Press Space to shoot."
+        ></canvas>
+        <div class="result" id="result" hidden>
+          <div>
+            <span class="eyebrow gold">Rack complete</span>
+            <h2 id="victory"></h2>
+            <p id="finish"></p>
+            <button id="again" class="primary">Play again</button>
+          </div>
+        </div>
+      </section>
+      <section class="console" aria-label="Shot controls">
+        <div class="turn" role="status">
+          <span class="eyebrow gold" id="turn">Your turn</span>
+          <h2 id="announcement">Opening break</h2>
+        </div>
+        <div class="power">
+          <label for="power"
+            >Shot power <output id="strength" for="power">85%</output></label
+          ><input id="power" type="range" min="3" max="100" value="85" />
+        </div>
+        <button class="primary" id="shoot">Take shot</button>
+      </section>
+      <div class="under">
+        <span id="tip">Tap or drag on the felt to aim.</span
+        ><button id="place" class="outlined" hidden>Place cue ball</button
+        ><button id="guide" aria-pressed="true">Aim guide <b>On</b></button
+        ><button id="sound" aria-pressed="false">Sound <b>Off</b></button>
+      </div>
+      <dialog id="help">
+        <form method="dialog">
+          <button class="close" aria-label="Close rules">×</button>
+        </form>
+        <span class="eyebrow gold">House rules</span>
+        <h2>How to play</h2>
+        <p>
+          Tap or drag on the felt to aim. Set the power, then take your shot.
+          The guide marks the cue ball’s path to first contact and the direction
+          each ball will travel.
+        </p>
+        <p>
+          Break the rack. The table stays open until a legal shot after the
+          break pockets a solid or stripe. Clear your seven, then sink the eight
+          in any pocket to win.
+        </p>
+        <p>
+          Hit your group first, then pocket a ball or reach a cushion. A foul
+          gives your opponent ball in hand. The eight goes back on its spot on
+          the break. Sinking it early or fouling on the final shot loses the
+          rack.
+        </p>
+        <p>
+          Use ← and → for fine aim, and Space to shoot while the table is
+          focused. Choose Play online to find an opponent or invite a friend.
+        </p>
+      </dialog>
+      <dialog id="lobby">
+        <form method="dialog">
+          <button class="close" aria-label="Close online menu">×</button>
+        </form>
+        <span class="eyebrow gold">Multiplayer</span>
+        <h2>Play online</h2>
+        <div id="choices">
+          <button class="primary" id="find">Find an opponent</button
+          ><button class="outlined" id="create">Create private table</button>
+          <form id="joinform">
+            <label for="code">Join with a table code</label>
+            <div>
+              <input
+                id="code"
+                maxlength="6"
+                minlength="6"
+                pattern="[0-9A-Fa-f]{6}"
+                placeholder="Table code"
+                autocomplete="off"
+                required
+              /><button class="outlined">Join</button>
+            </div>
+          </form>
+        </div>
+        <div id="waiting" hidden>
+          <p id="waittext"></p>
+          <strong id="roomcode"></strong
+          ><button class="outlined" id="copy" hidden>Copy invite link</button
+          ><button id="cancel" class="quiet">Back to solo</button>
+        </div>
+        <p id="error" role="status"></p>
+      </dialog>
+    </main>
+    <script type="module" src="/src/pool/client.ts"></script>
+  </body>
+</html>

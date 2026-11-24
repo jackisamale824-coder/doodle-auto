@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { loadCountyFleet } from "./county-fleet.ts";
 import { Rooms } from "./rooms.ts";
+import { createPoolServer } from "./pool.ts";
 import { openPlayerStore, PlayerAccounts } from "./player-accounts.ts";
 import { PlayMetrics } from "./play-metrics.ts";
 const playerStore = await openPlayerStore();
@@ -107,6 +108,12 @@ const server = http.createServer(async (req, res) => {
     );
     return;
   }
+  const publicHost = req.headers["x-doodle-public-host"] ?? req.headers.host;
+  const pathname = req.url?.split("?", 1)[0];
+  if (pathname === "/pool" || pathname === "/pool/" ||
+      (publicHost === "pool.sully6.com" && pathname === "/")) {
+    req.url = "/pool/index.html";
+  }
   if (vite) {
     vite.middlewares(req, res);
     return;
@@ -151,6 +158,7 @@ const wss = new WebSocketServer({
   maxPayload: 2048,
   perMessageDeflate: false,
 });
+const pool = createPoolServer();
 let admissionCredit = 24,
   admissionAt = Date.now();
 const rooms = new Rooms(
@@ -169,7 +177,8 @@ rooms.vehicleModel = await loadCountyFleet(
   production ? distRoot : path.join(root, "public"),
 );
 server.on("upgrade", async (req, socket, head) => {
-  if (req.url === "/ws") {
+  if (req.url === "/ws" || req.url === "/pool/ws") {
+    const isPool = req.url === "/pool/ws";
     const now = Date.now();
     admissionCredit = Math.min(
       24,
@@ -189,13 +198,18 @@ server.on("upgrade", async (req, socket, head) => {
         validOrigin = false;
       }
     }
-    if (!validOrigin || wss.clients.size >= 256 || admissionCredit < 1) {
+    if (!validOrigin || (isPool ? pool : wss).clients.size >= 256 || admissionCredit < 1) {
       socket.end(
         "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
       );
       return;
     }
     admissionCredit--; // ws sets TCP_NODELAY on upgraded sockets.
+
+    if (isPool) {
+      pool.handleUpgrade(req, socket, head, ws => pool.emit("connection", ws));
+      return;
+    }
 
     try {
       const user = await accounts.identity(req);
@@ -221,6 +235,8 @@ for (const signal of ["SIGINT", "SIGTERM"] as const)
     void metrics.flush();
     wss.clients.forEach((ws) => ws.close());
     wss.close();
+    pool.clients.forEach(ws => ws.close());
+    pool.close();
     server.close();
     vite?.close();
   });
