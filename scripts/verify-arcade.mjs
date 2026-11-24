@@ -26,6 +26,10 @@ await Promise.all(hosts.map(async host => {
     assert.equal(response.headers.get("location"), "https://quenq.com/apps/vice-city/");
     return;
   }
-  assert.ok((await html(host + now)).includes("<title>" + titles.get(host)), `Wrong game at ${host}`);
+  const page = await html(host + now);
+  assert.ok(page.includes("<title>" + titles.get(host)), `Wrong game at ${host}`);
+  if (host === "https://drive-mad.sully6.com/") {
+    assert.match(page, /<iframe\b[^>]*\bsrc="https:\/\/drive-mad-game-theta\.vercel\.app\/"/);
+  }
 }));
 console.log("Verified the arcade and", hosts.length, "public game hosts.");
