@@ -20,7 +20,8 @@ export default defineConfig({
     name: workerName,
     entrypoint,
     compatibilityDate: "2026-11-23",
-    domains: ["sully6.com", "www.sully6.com"],
+    // The existing sully6.com and www bindings are managed in Cloudflare.
+    workersDev: false,
     env: { GAME: bindings.durableObject({ worker: workerName, exportName: "GameContainer" }) },
     exports: {
       GameContainer: exports.durableObject({
