@@ -1,3 +1,5 @@
+/// <reference types="node" />
+import process from "node:process";
 import { defineConfig, defineContainer, exports } from "cf/config";
 
 import * as entrypoint from "./src/cloudflare.ts" with { type: "cf-worker" };
@@ -10,9 +12,10 @@ const gameContainer = defineContainer({
 });
 
 export default defineConfig({
-  accountId: "a667cabeb7494676d4f8e412b2f6ca30",
+  accountId:
+    process.env.CLOUDFLARE_ACCOUNT_ID || "a667cabeb7494676d4f8e412b2f6ca30",
   worker: {
-    name: "doodle-auto",
+    name: process.env.GAME_WORKER_NAME || "doodle-auto",
     entrypoint,
     compatibilityDate: "2026-11-23",
     domains: ["sully6.com"],
