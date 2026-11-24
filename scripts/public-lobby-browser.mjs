@@ -31,6 +31,7 @@ async function player(name) {
     "true",
   );
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   console.log("Joining", name);
   await page.waitForSelector("#hud:not(.hidden)", { timeout: 60000 });
   await page.waitForFunction(

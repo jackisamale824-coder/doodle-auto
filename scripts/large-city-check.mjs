@@ -18,6 +18,7 @@ try {
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => !!document.pointerLockElement);
   const dimensions = await page.evaluate(() => {
     const g = window.__doodles;

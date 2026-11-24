@@ -1,3 +1,11 @@
+import {
+  BURST_AR,
+  MAMMOTH,
+  SMOKE,
+  HEAVY_AR,
+  SMG,
+  FLASH,
+} from "../src/weapon-balance.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { WebSocket, WebSocketServer } from "ws";
@@ -203,6 +211,63 @@ test("multiplayer accepts outer-city movement and anchors, then enforces the gen
     assert.equal(p.p[0], room.city.bounds - 0.5);
   } finally {
     a.close();
+    rooms.dispose();
+    wss.close();
+  }
+});
+
+test("multiplayer keeps the three equipped slots until an accepted respawn", async () => {
+  const wss = new WebSocketServer({ port: 0 });
+  await new Promise((resolve) => wss.on("listening", resolve));
+  const rooms = new Rooms(wss);
+  const ws = await client((wss.address() as { port: number }).port);
+  const first = { primary: BURST_AR, secondary: MAMMOTH, utility: SMOKE };
+  const second = { primary: HEAVY_AR, secondary: SMG, utility: FLASH };
+  try {
+    const ready = next(ws, "welcome");
+    ws.send(JSON.stringify({ type: "create", seed: "paper", loadout: first }));
+    const { code, loadout } = await ready;
+    assert.deepEqual(loadout, first);
+    const room = rooms.rooms.get(code)!;
+    const [[socket, player]] = room.players;
+    assert.deepEqual(player.owned, [BURST_AR, MAMMOTH, SMOKE]);
+    assert.equal(player.weapon, BURST_AR);
+    const equip = (weapon: number) =>
+      rooms.handle(socket, {
+        type: "state",
+        p: player.p,
+        yaw: 0,
+        pitch: 0,
+        height: 1.76,
+        weapon,
+      });
+    equip(SMG);
+    assert.equal(player.weapon, BURST_AR);
+    equip(SMOKE);
+    const thrown = next(ws, "grenade");
+    rooms.handle(socket, { type: "fire" });
+    assert.equal((await thrown).effect.weapon, SMOKE);
+    rooms.handle(socket, { type: "reload" });
+    assert.equal(player.reloadUntil, 0);
+    assert.equal(player.mags[SMOKE], 0);
+    rooms.handle(socket, { type: "respawn", loadout: second });
+    assert.deepEqual(player.loadout, first);
+    for (const kit of [undefined, second]) {
+      player.hp = 0;
+      player.deadAt = Date.now() - 3000;
+      rooms.handle(socket, { type: "respawn", loadout: kit });
+      const expected = kit ?? first;
+      assert.deepEqual(player.loadout, expected);
+      assert.equal(player.weapon, expected.primary);
+      assert.equal(player.mags[expected.utility], 1);
+      assert.deepEqual(player.owned, [
+        expected.primary,
+        expected.secondary,
+        expected.utility,
+      ]);
+    }
+  } finally {
+    ws.close();
     rooms.dispose();
     wss.close();
   }

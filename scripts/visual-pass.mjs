@@ -19,6 +19,7 @@ try {
   await page.screenshot({ path: `output/playwright/style-${pass}-menu.png` });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => !!document.pointerLockElement);
   await page.evaluate(() => {
     const g = window.__doodles;
@@ -30,6 +31,7 @@ try {
   await page.keyboard.press("Escape");
   await page.locator("#main-menu").click();
   await page.locator("#online").click();
+  await page.locator("#equip-kit").click();
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
   await page.screenshot({ path: `output/playwright/style-${pass}-online.png` });
@@ -38,6 +40,7 @@ try {
     viewport: { width: 1000, height: 800 },
   });
   await other.goto(invite);
+  await other.locator("#equip-kit").click();
   await other.waitForSelector("#join-room", { timeout: 60000 });
   assert.equal(
     await other.locator("#room-input").inputValue(),

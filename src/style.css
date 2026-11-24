@@ -1686,3 +1686,66 @@ body.county-death dialog p {
     padding: 3px;
   }
 }
+
+#vision-effect {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: #e9e7df;
+  opacity: 0;
+}
+#weapon-slots {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: min(510px, 48vw);
+  gap: 3px;
+}
+.kit-group {
+  margin: 0 0 16px;
+  border: 0;
+  padding: 0;
+}
+.kit-group legend {
+  margin-bottom: 7px;
+  font-weight: 700;
+}
+.kit-group kbd {
+  margin-right: 4px;
+}
+.kit-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+dialog label.kit-option {
+  position: relative;
+  margin: 0;
+  font:
+    600 14px/1.3 "DM Sans",
+    sans-serif;
+  letter-spacing: 0;
+}
+dialog .kit-option input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  opacity: 0;
+}
+.kit-option span {
+  display: block;
+  text-align: center;
+  cursor: pointer;
+  border: 1px solid #8a897e;
+  border-radius: 4px;
+  padding: 8px 5px;
+}
+.kit-option input:checked + span {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.kit-option input:focus-visible + span {
+  outline: 3px solid #a75b24;
+  outline-offset: 2px;
+}

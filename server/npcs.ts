@@ -1,3 +1,4 @@
+import { obscured, type GrenadeEffect } from "../src/grenades.ts";
 import { combatStep, shotDelay } from "../src/enemy-movement.ts";
 import { actorHit, movementYaw, type HitRegion } from "../src/actor-hit.ts";
 import { distance, type City, type V3 } from "../src/world.ts";
@@ -26,6 +27,7 @@ export interface Npc extends PlayerState {
   vz?: number;
 }
 export class Npcs {
+  effects: GrenadeEffect[] = [];
   actors: Npc[] = [];
   private graph: number[][];
   waves = new Waves();
@@ -170,6 +172,7 @@ export class Npcs {
         const len = distance(eye, aim);
         return (
           len < 45 &&
+          !obscured(this.effects, eye, aim, now) &&
           !this.spatial.ray(
             eye,
             aim.map((v, i) => (v - eye[i]) / Math.max(0.001, len)) as V3,

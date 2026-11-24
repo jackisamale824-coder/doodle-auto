@@ -18,6 +18,7 @@ try {
   await page.screenshot({ path: "output/playwright/rust-menu.png" });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   if (await page.locator("#resume").isVisible())
     await page.locator("#resume").click();
   await page.waitForFunction(() => !!document.pointerLockElement);

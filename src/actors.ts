@@ -1,3 +1,14 @@
+import {
+  WEAPONS,
+  KNIFE,
+  FLASH,
+  SMOKE,
+  SMG,
+  MAMMOTH,
+  HEAVY_AR,
+  CARBINE,
+  BURST_AR,
+} from "./weapon-balance.ts";
 import { buildKnife, knifePose } from "./county-knife.ts";
 import { handMesh } from "./hand-model.ts";
 import {
@@ -515,7 +526,8 @@ export class Doodle {
     disposeGroup(this.group);
   }
 }
-export function buildWeapon(index: number, county = false) {
+export function buildWeapon(id: number, county = false) {
+  const index = WEAPONS[id].model;
   const g = new T.Group();
   g.name = "weapon-no-hands";
   const paper = inkMaterial(INK, 0, true),
@@ -552,7 +564,22 @@ export function buildWeapon(index: number, county = false) {
     );
     g.add(mesh);
   };
-  if (index === 0) {
+  if (id === KNIFE) {
+    box([0.055, 0.07, 0.2], [0, 0, 0], dark);
+    box([0.12, 0.05, 0.035], [0, 0, -0.105]);
+    const blade = new T.Mesh(new T.ConeGeometry(0.065, 0.33, 3), paper);
+    blade.rotation.x = -Math.PI / 2;
+    blade.position.z = -0.29;
+    g.add(blade);
+  } else if (id === FLASH || id === SMOKE) {
+    const body = new T.Mesh(
+      new T.CylinderGeometry(0.078, 0.078, 0.19, 12),
+      inkMaterial(id === SMOKE ? "#789080" : "#d3ad58", 0.08),
+    );
+    g.add(body);
+    box([0.09, 0.045, 0.09], [0, 0.11, 0], dark);
+    box([0.035, 0.13, 0.04], [0.064, 0.075, 0]);
+  } else if (index === 0) {
     // Slender receiver, separate handguard and barrel, angled magazine, open optic.
     box([0.075, 0.105, 0.34], [0, 0, -0.12]);
     box([0.065, 0.075, 0.34], [0, 0.006, -0.43]);
@@ -617,6 +644,17 @@ export function buildWeapon(index: number, county = false) {
     for (let i = 0; i < 4; i++)
       box([0.063, 0.035, 0.006], [0, 0.018, -0.055 - i * 0.016], dark);
   }
+  if (id === MAMMOTH) {
+    tube(0.041, 0.19, 0, 0.012, -0.31);
+    tube(0.048, 0.095, 0, -0.038, -0.14);
+  }
+  if (id === SMG) {
+    box([0.062, 0.07, 0.25], [0, -0.015, 0.12]);
+    box([0.045, 0.15, 0.06], [0, -0.09, -0.19], dark);
+  }
+  if (id === HEAVY_AR) tube(0.041, 0.22, 0, 0.018, -0.72);
+  if (id === BURST_AR) box([0.085, 0.07, 0.16], [0, 0.073, -0.13], dark);
+  if (id === CARBINE) box([0.085, 0.045, 0.11], [0, -0.07, -0.39], dark);
   const muzzle = new T.Object3D();
   muzzle.name = "muzzle";
   muzzle.position.set(

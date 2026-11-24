@@ -47,6 +47,7 @@ try {
     () => !document.querySelector("#mode-detail").textContent.includes("1/8"),
   );
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(
     () => window.__doodles.network.duel && window.__doodles.mode === "online",
   );

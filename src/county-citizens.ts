@@ -1,3 +1,4 @@
+import { obscured, type GrenadeEffect } from "./grenades.ts";
 import { vehicleHandling } from "./county-vehicle-damage.ts";
 import type { Npc } from "../server/npcs.ts";
 import { movementYaw } from "./actor-hit.ts";
@@ -119,6 +120,7 @@ function nearCar(p: V3, car: CountyCar, margin: number) {
 }
 
 export class CountyCitizens {
+  effects: GrenadeEffect[] = [];
   readonly actors: CountyCitizen[] = [];
   onTrafficMove?: (
     driver: CountyCitizen,
@@ -253,14 +255,17 @@ export class CountyCitizens {
       route.road.a === end || horizontal(route.road.a, end) < 0.01 ? 1 : -1;
     setGoal(route, driving, true);
   }
-  private visible(a: CountyCitizen, b: Person) {
+  private visible(a: CountyCitizen, b: Person, now: number) {
     const eye: V3 = [a.p[0], a.p[1] + 1.45, a.p[2]];
     const to: V3 = [b.p[0], b.p[1] + b.height * 0.58, b.p[2]];
     const len = distance(eye, to);
-    return !this.queries.ray(
-      eye,
-      to.map((v, i) => (v - eye[i]) / Math.max(len, 0.01)) as V3,
-      Math.max(0, len - 0.12),
+    return (
+      !obscured(this.effects, eye, to, now) &&
+      !this.queries.ray(
+        eye,
+        to.map((v, i) => (v - eye[i]) / Math.max(len, 0.01)) as V3,
+        Math.max(0, len - 0.12),
+      )
     );
   }
   private target<T extends Person>(
@@ -282,7 +287,7 @@ export class CountyCitizens {
       const d = distance(a.p, p.p);
       const radius =
         level > 75 ? 31 : level > 50 ? 15 : a.car === undefined ? 5 : 17;
-      if (d >= radius || d >= best || !this.visible(a, p)) continue;
+      if (d >= radius || d >= best || !this.visible(a, p, now)) continue;
       target = p;
       best = d;
     }

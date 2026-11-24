@@ -19,11 +19,13 @@ try {
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => !!document.pointerLockElement);
   for (let weapon = 0; weapon < 4; weapon++) {
     await page.evaluate((weapon) => {
       const g = window.__doodles;
       g.state = "play";
+      g.combat.owned = [0, 1, 2, 3];
       g.setWeapon(weapon);
       g.combat.mags[weapon] = 1;
       g.player.yaw = 0;

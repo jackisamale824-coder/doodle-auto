@@ -1,6 +1,21 @@
+import {
+  throwGrenade,
+  obscured,
+  SMOKE_RADIUS,
+  type GrenadeEffect,
+} from "./grenades.ts";
 import { FISTS, PUNCHES, nextPunch, type Punch } from "./fists.ts";
 import { combatStep, shotDelay } from "./enemy-movement.ts";
-import { RELOAD_SECONDS } from "./weapon-balance.ts";
+import {
+  BURST_AR,
+  BURST_RECOVERY,
+  KNIFE,
+  FLASH,
+  isGrenade,
+  isUtility,
+  WEAPONS,
+  inventory,
+} from "./weapon-balance.ts";
 import { actorHit, HIT_MULTIPLIER, type HitRegion } from "./actor-hit.ts";
 import * as T from "three";
 import { type City, type V3, worldRay, distance } from "./world.ts";
@@ -11,58 +26,7 @@ import { chooseNpcSpawn, NPC_RADIUS } from "./npc-presence.ts";
 import { Waves } from "./waves.ts";
 import { AudioEngine } from "./audio.ts";
 import { ShotTrails } from "./shot-trails.ts";
-export const WEAPONS = [
-  {
-    name: "INKRIFLE",
-    tag: "01 / AUTOMATIC",
-    mag: 30,
-    interval: 0.11,
-    damage: 25,
-    pellets: 1,
-    reload: RELOAD_SECONDS[0],
-    spread: 0.008,
-  },
-  {
-    name: "SCATTERPEN",
-    tag: "02 / SHOTGUN",
-    mag: 8,
-    interval: 0.72,
-    damage: 15,
-    pellets: 8,
-    reload: RELOAD_SECONDS[1],
-    spread: 0.085,
-  },
-  {
-    name: "SIDE NOTE",
-    tag: "03 / PISTOL",
-    mag: 14,
-    interval: 0.25,
-    damage: 38,
-    pellets: 1,
-    reload: RELOAD_SECONDS[2],
-    spread: 0.004,
-  },
-  {
-    name: "LONGSHOT",
-    tag: "04 / SNIPER",
-    mag: 5,
-    interval: 1.25,
-    damage: 90,
-    pellets: 1,
-    reload: RELOAD_SECONDS[3],
-    spread: 0,
-  },
-  {
-    name: "FISTS",
-    tag: "05 / MELEE",
-    mag: 0,
-    interval: PUNCHES[0].duration,
-    damage: PUNCHES[0].damage,
-    pellets: 0,
-    reload: 0,
-    spread: 0,
-  },
-];
+export { WEAPONS };
 interface Bot {
   id: number;
   model: Doodle;
@@ -99,6 +63,7 @@ export class Combat {
   hp = 100;
   kills = 0;
   score = 0;
+  owned = inventory().owned;
   weapon = 0;
   mags = WEAPONS.map((g) => g.mag);
   punch?: Punch;
@@ -109,7 +74,29 @@ export class Combat {
   }
   onPunch = () => {};
   onPunchContact = (_move: number) => {};
+  burstLeft = 0;
+  effects: GrenadeEffect[] = [];
+  addGrenade(effect: GrenadeEffect, now = Date.now()) {
+    if (effect.expires <= now) return;
+    this.effects.push(effect);
+    const smoke = effect.weapon !== FLASH;
+    const mesh = new T.Mesh(
+      new T.IcosahedronGeometry(smoke ? SMOKE_RADIUS : 0.65, 2),
+      new T.MeshBasicMaterial({
+        color: smoke ? "#92958f" : "#fff7d3",
+        transparent: true,
+        opacity: smoke ? 0.94 : 0.85,
+        side: T.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    mesh.position.fromArray(effect.p);
+    this.scene.add(mesh);
+    const life = (effect.expires - now) / 1000;
+    this.flashes.push({ mesh, life, max: life });
+  }
   cancelPunch() {
+    this.burstLeft = 0;
     this.punchPending = false;
     this.punch = undefined;
   }
@@ -233,7 +220,7 @@ export class Combat {
     if (
       !Number.isInteger(i) ||
       i < 0 ||
-      i >= WEAPONS.length ||
+      !this.owned.includes(i) ||
       i === this.weapon
     )
       return false;
@@ -244,12 +231,13 @@ export class Combat {
     return true;
   }
   reload() {
-    if (this.weapon === FISTS) return;
+    if (this.weapon === FISTS || isUtility(this.weapon)) return;
     if (
       this.reloadTime > 0 ||
       this.mags[this.weapon] === WEAPONS[this.weapon].mag
     )
       return;
+    this.burstLeft = 0;
     this.reloadTime = WEAPONS[this.weapon].reload;
     this.onReload();
     this.audio.noise(0.14, 0.2);
@@ -301,18 +289,45 @@ export class Combat {
       return true;
     }
     const gun = WEAPONS[this.weapon];
-    if (this.mags[this.weapon] <= 0) {
+    if (this.weapon !== KNIFE && this.mags[this.weapon] <= 0) {
+      this.burstLeft = 0;
       this.reload();
       return false;
     }
-    this.mags[this.weapon]--;
+    if (this.weapon !== KNIFE) this.mags[this.weapon]--;
     this.cooldown = gun.interval;
+    if (this.weapon === BURST_AR) {
+      this.burstLeft = this.burstLeft ? this.burstLeft - 1 : 2;
+      if (!this.burstLeft || !this.mags[this.weapon]) {
+        this.burstLeft = 0;
+        this.cooldown = BURST_RECOVERY;
+      }
+    }
     this.recoil = 1;
     this.shots++;
-    this.audio.shoot(this.weapon);
+    if (isUtility(this.weapon)) this.audio.noise(0.09, 0.15);
+    else this.audio.shoot(gun.model);
     const origin = this.shotOrigin(),
       forward = this.player.forward;
     this.onFire(origin.toArray() as V3, forward.toArray() as V3);
+    if (isGrenade(this.weapon)) {
+      if (!this.online)
+        this.addGrenade(
+          throwGrenade(
+            this.weapon,
+            origin.toArray(),
+            forward.toArray(),
+            (o, d, n) =>
+              this.player.physics.ray(
+                new T.Vector3(...o),
+                new T.Vector3(...d),
+                n,
+              ),
+            Date.now(),
+          ),
+        );
+      return true;
+    }
     for (let pellet = 0; pellet < gun.pellets; pellet++) {
       const dir = forward
         .clone()
@@ -324,7 +339,7 @@ export class Combat {
           ),
         )
         .normalize();
-      const maxRange = this.weapon === 3 ? 220 : 95;
+      const maxRange = this.weapon === KNIFE ? 2 : this.weapon === 3 ? 220 : 95;
       const surface = this.player.physics.ray(
         origin,
         dir,
@@ -368,7 +383,7 @@ export class Combat {
         : null;
       if (civil) range = civil.distance;
       const point = origin.clone().addScaledVector(dir, range);
-      this.shotTrails.queue(point);
+      if (this.weapon !== KNIFE) this.shotTrails.queue(point);
       if (civil) {
         this.hitRegion = civil.region;
         this.hitTime = 0.15;
@@ -410,7 +425,8 @@ export class Combat {
         this.burst(point, INK, 3);
       }
     }
-    if (this.mags[this.weapon] === 0) this.onNotice("R TO RELOAD");
+    if (this.weapon !== KNIFE && this.mags[this.weapon] === 0)
+      this.onNotice("R TO RELOAD");
     return true;
   }
   renderShots(dt: number) {
@@ -489,6 +505,9 @@ export class Combat {
     return [];
   }
   update(dt: number, time: number, camera: T.Camera) {
+    const effectTime = Date.now();
+    for (let i = this.effects.length - 1; i >= 0; i--)
+      if (this.effects[i].expires <= effectTime) this.effects.splice(i, 1);
     this.punchClock += dt * 1000;
     if (
       this.punchPending &&
@@ -546,7 +565,10 @@ export class Combat {
         d = delta.length(),
         dir = delta.clone().normalize(),
         occlusion = this.player.physics.ray(eye, dir, d);
-      const sees = !occlusion && d < 60;
+      const sees =
+        !occlusion &&
+        d < 60 &&
+        !obscured(this.effects, eye.toArray(), target.toArray(), effectTime);
       bot.cooldown -= dt;
       bot.repath -= dt;
       let movement = new T.Vector3();

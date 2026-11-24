@@ -17,6 +17,7 @@ try {
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => !!document.pointerLockElement);
   await page.screenshot({ path: "output/playwright/rust-shading.png" });
   await page.evaluate(() => {

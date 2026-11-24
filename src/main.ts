@@ -1,3 +1,14 @@
+import {
+  defaultLoadout,
+  readLoadout,
+  inventory,
+  loadoutSlots,
+  KNIFE,
+  FLASH,
+  isUtility,
+  isGrenade,
+} from "./weapon-balance.ts";
+import { SMOKE_RADIUS } from "./grenades.ts";
 import { addCountyArms } from "./county-hands.ts";
 import { CountyCasings } from "./county-casings.ts";
 import { KNIFE_DAMAGE } from "./county-knife.ts";
@@ -43,7 +54,7 @@ import { WeaponClearance } from "./weapon-clearance.ts";
 import { generateLevel } from "./levels.ts";
 import "./style.css";
 import * as T from "three";
-import { type City, type V3 } from "./world.ts";
+import { distance, type City, type V3 } from "./world.ts";
 import { Controller, Physics, idleInput } from "./physics.ts";
 import { Renderer, INK, GOLD, stroke, disposeGroup } from "./render.ts";
 import { buildWeapon, Doodle } from "./actors.ts";
@@ -115,6 +126,8 @@ const timeLabel = (s: number) =>
     .padStart(2, "0")}`;
 type Mode = "contract" | "roam" | "online";
 class Game {
+  loadout = readLoadout(safeRead("dc.loadout", null)) ?? defaultLoadout;
+  private respawnAt = 0;
   render = new Renderer(canvas);
   audio = new AudioEngine();
   countySelected =
@@ -531,6 +544,7 @@ class Game {
       if (restored) {
         this.mode = "online";
         this.state = "loading";
+        this.loadout = readLoadout(restored.loadout) ?? this.loadout;
         await this.build(restored.seed, 1, restored.p || restored.spawn);
         $("menu").classList.add("hidden");
         $("hud").classList.remove("hidden");
@@ -553,8 +567,10 @@ class Game {
     $("menu").classList.toggle("hidden", this.state !== "menu");
     const invite = new URLSearchParams(location.search).get("room");
     if (this.mode !== "online" && invite && /^[A-Z0-9]{5}$/i.test(invite)) {
-      this.showOnline();
-      $<HTMLInputElement>("room-input").value = invite.toUpperCase();
+      this.pickLoadout(() => {
+        this.showOnline();
+        $<HTMLInputElement>("room-input").value = invite.toUpperCase();
+      });
     }
     requestAnimationFrame((t) => this.loop(t));
   }
@@ -724,6 +740,10 @@ class Game {
         };
       };
     this.combat.online = this.mode === "online";
+    if (this.combat.online)
+      for (const effect of this.network.effects)
+        this.showNetworkGrenade(effect);
+    if (this.citizens) this.citizens.effects = this.combat.effects;
     this.combat.onSurfaceHit = (index, damage) =>
       this.structures?.damage(index, damage);
     if (this.citizens)
@@ -876,18 +896,18 @@ class Game {
       if ((actor.citizen ?? actor.bot)!.hp <= 0) this.audio.npcEliminated();
     };
     this.combat.onFire = () => {
-      if (this.casings) {
+      if (this.casings && !isUtility(this.combat.weapon)) {
         const port = this.weaponMesh.localToWorld(
           new T.Vector3(0.07, 0.04, 0.13),
         );
         this.casings.eject(
-          this.combat.weapon,
+          WEAPONS[this.combat.weapon].model,
           port,
           this.player.yaw,
           this.player.velocity,
         );
       }
-      this.viewMotion.shot(this.combat.weapon);
+      this.viewMotion.shot(WEAPONS[this.combat.weapon].model);
       if (this.citizens) this.notoriety = notorietyAfter(this.notoriety, 2);
       if (this.mode === "online") {
         this.sendState();
@@ -898,7 +918,8 @@ class Game {
     this.collected.clear();
     this.elapsed = 0;
     this.selfReaction = undefined;
-    this.setWeapon(0, true);
+    Object.assign(this.combat, inventory(this.loadout, seed === COUNTY));
+    this.setWeapon(this.combat.weapon, true);
     $("district-number").textContent = String(district).padStart(2, "0");
     $("district-stamp")?.setAttribute("data-district", String(district));
   }
@@ -915,9 +936,10 @@ class Game {
         : buildWeapon(i, this.seed === COUNTY);
     this.animateArms =
       this.seed === COUNTY && i !== FISTS
-        ? addCountyArms(this.weaponMesh, i)
+        ? addCountyArms(this.weaponMesh, WEAPONS[i].model)
         : undefined;
-    $("ammo-row").classList.toggle("hidden", i === FISTS);
+    $("ammo-row").classList.toggle("hidden", i === FISTS || i === KNIFE);
+    if (isUtility(i)) this.aiming = false;
     if (i === FISTS) {
       this.aiming = false;
       this.equippedAt = this.time;
@@ -925,11 +947,64 @@ class Game {
     this.render.camera.add(this.weaponMesh);
     $("weapon-name").textContent =
       i === FISTS && this.seed === COUNTY ? "KNIFE" : WEAPONS[i].name;
-    $("weapon-slots").children[FISTS].textContent =
-      this.seed === COUNTY ? "5 KNIFE" : "5 FISTS";
-    [...$("weapon-slots").children].forEach((el, n) =>
-      el.classList.toggle("active", n === i),
+    $("weapon-slots").replaceChildren(
+      ...this.combat.owned.map((id, slot) => {
+        const item = document.createElement("span");
+        item.textContent =
+          slot +
+          1 +
+          " " +
+          (id === FISTS && this.seed === COUNTY ? "Knife" : WEAPONS[id].name);
+        item.classList.toggle("active", id === i);
+        return item;
+      }),
     );
+  }
+  private pickLoadout(
+    enter: () => void,
+    respawning = false,
+    back = () => this.closeDialog(),
+  ) {
+    const groups = loadoutSlots
+      .map(
+        ({ key, name, options }, index) =>
+          `<fieldset class="kit-group"><legend><kbd>${index + 1}</kbd> ${name}</legend><div class="kit-options">${options
+            .map(
+              (id) =>
+                `<label class="kit-option"><input type="radio" name="${key}" value="${id}" ${id === this.loadout[key] ? "checked" : ""}><span>${WEAPONS[id].name}</span></label>`,
+            )
+            .join("")}</div></fieldset>`,
+      )
+      .join("");
+    this.showDialog(
+      `<h2>Choose your loadout</h2><form id="kit-form">${groups}<button id="equip-kit" class="primary-button">${respawning ? "Equip and respawn" : "Use this loadout"}</button></form>`,
+      back,
+    );
+    if (respawning) this.waitForRespawn($<HTMLButtonElement>("equip-kit"));
+    $("kit-form").onsubmit = (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget as HTMLFormElement);
+      const kit = readLoadout(
+        Object.fromEntries(
+          loadoutSlots.map(({ key }) => [key, Number(form.get(key))]),
+        ),
+      );
+      if (!kit) return;
+      this.loadout = kit;
+      try {
+        localStorage.setItem("dc.loadout", JSON.stringify(kit));
+      } catch {}
+      if (!respawning) this.closeDialog();
+      enter();
+    };
+  }
+  private waitForRespawn(button: HTMLButtonElement) {
+    const delay = this.respawnAt - Date.now();
+    if (delay <= 0) return;
+    button.disabled = true;
+    setTimeout(() => {
+      button.disabled = false;
+    }, delay);
   }
   async start(mode: Mode, spawn?: V3) {
     if (this.busy) return;
@@ -1131,12 +1206,14 @@ class Game {
       if (this.busy) return;
       this.district = 1;
       const mode = this.menuMode;
-      if (mode === "public" || mode === "duel") {
-        const lobby = this.lobbies.find(
-          (r) => r.mode === (mode === "public" ? "play" : "duel"),
-        );
-        void this.joinPublic(mode, lobby?.code);
-      } else void this.start(mode);
+      this.pickLoadout(() => {
+        if (mode === "public" || mode === "duel") {
+          const lobby = this.lobbies.find(
+            (r) => r.mode === (mode === "public" ? "play" : "duel"),
+          );
+          void this.joinPublic(mode, lobby?.code);
+        } else void this.start(mode);
+      });
     };
     for (const [id, mode] of [
       ["public-mode", "public"],
@@ -1176,7 +1253,7 @@ class Game {
       );
     $("help").onclick = () => this.showHelp();
     $("settings").onclick = () => this.showSettings();
-    $("online").onclick = () => this.showOnline();
+    $("online").onclick = () => this.pickLoadout(() => this.showOnline());
     $("close-dialog").onclick = () => {
       if (!this.busy) this.dismissDialog();
     };
@@ -1253,8 +1330,10 @@ class Game {
         return;
       }
       if (e.code === "KeyR") this.combat.reload();
-      if (/^Digit[12345]$/.test(e.code))
-        this.setWeapon(Number(e.code.slice(-1)) - 1);
+      if (/^Digit[1-9]$/.test(e.code)) {
+        const id = this.combat.owned[Number(e.code.slice(-1)) - 1];
+        if (id !== undefined) this.setWeapon(id);
+      }
       if (e.code === "KeyM") {
         this.audio.enabled = !this.audio.enabled;
         this.notice(this.audio.enabled ? "SOUND ON" : "SOUND OFF");
@@ -1276,15 +1355,15 @@ class Game {
         return;
       if (e.button === 0) {
         this.firing = true;
-        if (
-          this.combat.weapon === FISTS &&
-          this.vehicle < 0 &&
-          !this.seatPending &&
-          !this.player.traversing
-        )
+        if (this.vehicle < 0 && !this.seatPending && !this.player.traversing)
           this.combat.fire();
       }
-      if (e.button === 2 && this.combat.weapon !== FISTS) this.aiming = true;
+      if (
+        e.button === 2 &&
+        this.combat.weapon !== FISTS &&
+        !isUtility(this.combat.weapon)
+      )
+        this.aiming = true;
     });
     document.addEventListener("mouseup", (e) => {
       if (e.button === 0) this.firing = false;
@@ -1296,10 +1375,10 @@ class Game {
       (e) => {
         if (this.state === "play") {
           e.preventDefault();
-          this.setWeapon(
-            (this.combat.weapon + (e.deltaY > 0 ? 1 : WEAPONS.length - 1)) %
-              WEAPONS.length,
-          );
+          const owned = this.combat.owned;
+          const next =
+            owned.indexOf(this.combat.weapon) + (e.deltaY > 0 ? 1 : -1);
+          this.setWeapon(owned[(next + owned.length) % owned.length]);
         }
       },
       { passive: false },
@@ -1423,6 +1502,7 @@ class Game {
         String(safeRead("dc.name", "Runner")),
         this.countySelected ? COUNTY : "",
         code ?? "",
+        this.loadout,
       );
       this.mode = "online";
       this.state = "loading";
@@ -1471,15 +1551,7 @@ class Game {
         ? [["Q / E", "Hook or release. Hold to reel in."]]
         : []),
       ["LMB / RMB", "Fire / aim"],
-      [
-        "1–5 / Wheel",
-        county
-          ? "Switch weapon · 5 equips the knife"
-          : "Switch weapon · 5 equips fists",
-      ],
-      county
-        ? ["LMB with knife", "One-hit slash · hold to chain swings"]
-        : ["LMB with fists", "Punch · hold for jab, cross and hook"],
+      ["1 / 2 / 3", "Primary / secondary / equipment · scroll to cycle"],
       ["R", "Reload"],
       ...(county
         ? [
@@ -1558,6 +1630,7 @@ class Game {
         name,
         $<HTMLInputElement>("seed").value || "notebook",
         code,
+        this.loadout,
       );
       this.mode = "online";
       this.state = "loading";
@@ -1603,6 +1676,12 @@ class Game {
       this.busy = false;
     }
   }
+  private showNetworkGrenade(effect: import("./grenades.ts").GrenadeEffect) {
+    this.combat.addGrenade({
+      ...effect,
+      expires: effect.expires - this.network.serverOffset,
+    });
+  }
   applyResume(m: any) {
     const player = m.player || m;
     const stamina = this.player.stamina;
@@ -1627,6 +1706,11 @@ class Game {
       0,
       (m.reloadRemaining ?? player.reloadRemaining ?? 0) / 1000,
     );
+    this.loadout = readLoadout(player.loadout) ?? this.loadout;
+    this.combat.owned = inventory(
+      readLoadout(player.loadout),
+      this.seed === COUNTY,
+    ).owned;
     this.combat.weapon = player.weapon ?? 0;
     this.setWeapon(this.combat.weapon, true);
     this.combat.cooldown = Math.max(
@@ -1784,6 +1868,8 @@ class Game {
       this.player.position.fromArray(m.p);
       this.player.velocity.set(0, 0, 0);
     }
+    if (m.type === "grenade" && this.combat?.online && this.state !== "loading")
+      this.showNetworkGrenade(m.effect);
     if (m.type === "ammo") {
       this.combat.mags = m.mags;
       this.combat.reloadTime = Math.max(0, m.reloadRemaining / 1000);
@@ -1794,7 +1880,13 @@ class Game {
       this.player.reset(m.p);
       this.notoriety = 0;
       this.combat.hp = 100;
-      this.combat.mags = WEAPONS.map((g) => g.mag);
+      this.loadout = readLoadout(m.loadout) ?? this.loadout;
+      Object.assign(
+        this.combat,
+        inventory(readLoadout(m.loadout), this.seed === COUNTY),
+      );
+      this.combat.cooldown = this.combat.reloadTime = 0;
+      this.setWeapon(this.combat.weapon, true);
       this.resume();
     }
     if (
@@ -1884,6 +1976,7 @@ class Game {
       if (this.rope) this.rope.visible = false;
       document.body.classList.add("county-death");
     }
+    this.respawnAt = this.mode === "online" ? Date.now() + 2500 : 0;
     this.state = win ? "complete" : "dead";
     this.keys.clear();
     this.firing = false;
@@ -1891,27 +1984,28 @@ class Game {
     this.audio.tone(win ? 820 : 160, 0.4, "triangle", 0.2, win ? 1000 : 55);
     const best = Math.max(this.combat.score, Number(safeRead("dc.best", 0)));
     localStorage.setItem("dc.best", JSON.stringify(best));
+    this.showResult(win, winner);
+  }
+  private showResult(win: boolean, winner: string) {
     const online = this.mode === "online";
     this.showDialog(
-      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : this.deathBody ? "You died" : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : online ? "RESPAWN" : "TRY ANOTHER LINE"} <span>↗</span></button>`}<button id="finish-menu" class="secondary-button">Main menu</button>`,
+      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : this.deathBody ? "You died" : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : "Respawn"} <span>↗</span></button>`}${win ? "" : '<button id="change-kit" class="secondary-button">Change loadout</button>'}<button id="finish-menu" class="secondary-button">Main menu</button>`,
     );
     if ($("retry")) {
-      if (online) {
-        const button = $<HTMLButtonElement>("retry");
-        button.disabled = true;
-        setTimeout(() => {
-          if (button.isConnected) {
-            button.disabled = false;
-          }
-        }, 2500);
-      }
-      $("retry").onclick = () => {
-        if (online) this.network.send({ type: "respawn" });
-        else {
+      const spawn = () => {
+        if (online) {
+          if (Date.now() < this.respawnAt) return;
+          this.network.send({ type: "respawn", loadout: this.loadout });
+        } else {
           if (win) this.district++;
           void this.start(this.mode);
         }
       };
+      this.waitForRespawn($<HTMLButtonElement>("retry"));
+      $("retry").onclick = spawn;
+      if (!win)
+        $("change-kit").onclick = () =>
+          this.pickLoadout(spawn, true, () => this.showResult(false, ""));
     }
     $("finish-menu").onclick = () => this.mainMenu();
   }
@@ -2036,7 +2130,7 @@ class Game {
     if (
       this.vehicle < 0 &&
       !this.seatPending &&
-      this.firing &&
+      (this.firing || this.combat.burstLeft > 0) &&
       !this.player.traversing
     )
       this.combat.fire();
@@ -2228,7 +2322,7 @@ class Game {
           : 0;
       const reload = animateWeaponParts(
         this.weaponMesh,
-        this.combat.weapon,
+        WEAPONS[this.combat.weapon].model,
         reloadProgress,
         recoil,
       );
@@ -2240,7 +2334,7 @@ class Game {
         0.3 * (1 - v.ads) + v.swayX * steady + reload.x * reloadScale,
         T.MathUtils.lerp(
           -0.3,
-          this.combat.weapon === 0 ? -0.0816 : -0.046,
+          WEAPONS[this.combat.weapon].model === 0 ? -0.0816 : -0.046,
           v.ads,
         ) +
           v.bob * 0.35 +
@@ -2248,7 +2342,7 @@ class Game {
           -reload.y * reloadScale -
           vaultPose * 0.14,
         T.MathUtils.lerp(
-          this.combat.weapon === 2 ? -0.38 : -0.68,
+          WEAPONS[this.combat.weapon].model === 2 ? -0.38 : -0.68,
           -0.72,
           v.ads,
         ) +
@@ -2266,7 +2360,7 @@ class Game {
         dt,
         cam.position,
         cam.quaternion,
-        this.combat.weapon,
+        WEAPONS[this.combat.weapon].model,
         v.ads,
         this.physics.ray.bind(this.physics),
       );
@@ -2274,6 +2368,15 @@ class Game {
       this.weaponMesh.rotation.x += clearance.pitch;
       this.weaponMesh.position.z += clearance.retract;
       this.weaponMesh.position.y -= clearance.lower;
+      if (this.combat.weapon === KNIFE) {
+        this.weaponMesh.rotation.z -= recoil * 0.8;
+        this.weaponMesh.position.z -= recoil * 0.18;
+      }
+      if (
+        isGrenade(this.combat.weapon) &&
+        this.combat.mags[this.combat.weapon] === 0
+      )
+        this.weaponMesh.visible = false;
       this.weaponMesh.scale.setScalar(0.68);
     }
     if (!this.rope) {
@@ -2627,17 +2730,39 @@ class Game {
         ? this.seed === COUNTY
           ? "LMB · SLASH"
           : "LMB · PUNCH"
-        : c.reloadTime > 0
-          ? "RELOADING…"
-          : c.mags[c.weapon] === 0
-            ? "EMPTY · R TO RELOAD"
-            : gun.tag + " · R RELOAD";
+        : c.weapon === KNIFE
+          ? "LMB · SLASH"
+          : isGrenade(c.weapon)
+            ? c.mags[c.weapon]
+              ? "LMB · THROW"
+              : "USED · SWITCH SLOT"
+            : c.reloadTime > 0
+              ? "RELOADING…"
+              : c.mags[c.weapon] === 0
+                ? "EMPTY · R TO RELOAD"
+                : gun.tag + " · R RELOAD";
     $("score").textContent = String(c.score).padStart(4, "0");
     $("timer").textContent = timeLabel(this.elapsed);
     $("hook-fill").style.width = p.stamina * 100 + "%";
     $("air-charge").textContent = p.airActionReady
       ? "AIR CHARGE ●  SPACE double jump / F boost"
       : "AIR CHARGE ○  Land to recharge";
+    const eye = p.eye.toArray();
+    const now = Date.now();
+    const veil = c.effects.reduce((opacity, effect) => {
+      const flash = effect.weapon === FLASH;
+      const d = distance(eye, effect.p);
+      return Math.max(
+        opacity,
+        d < (flash ? 7 : SMOKE_RADIUS)
+          ? Math.min(
+              1,
+              Math.max(0, (effect.expires - now) / (flash ? 1400 : 400)),
+            ) * (flash ? 0.94 : 0.86)
+          : 0,
+      );
+    }, 0);
+    $("vision-effect").style.opacity = String(veil);
     $("hurt").style.opacity = String(c.hurt * 0.6);
     $("hitmarker").style.opacity = c.hitTime > 0 ? "1" : "0";
     $("hit-region").style.opacity = c.hitTime > 0 ? "1" : "0";

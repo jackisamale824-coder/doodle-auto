@@ -72,6 +72,7 @@ try {
   mark("Settings persist to local storage");
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await resume(page);
   await get(() => {
     window.__doodles.player.yaw = 0;
@@ -207,6 +208,7 @@ try {
   await page.locator("#main-menu").click();
   await page.locator("#contract-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await resume(page);
   await page.mouse.down();
   await get(() => {
@@ -234,7 +236,7 @@ try {
   await waitSim(page, 1.6);
   assert.equal(await get(() => window.__doodles.combat.mags[0]), 30);
   await page.keyboard.press("Digit2");
-  assert.equal(await get(() => window.__doodles.combat.weapon), 1);
+  assert.equal(await get(() => window.__doodles.combat.weapon), 2);
   mark("Reload restores the magazine; number keys change weapon");
   await page.keyboard.press("Escape");
   await page.waitForSelector("#resume");
@@ -266,6 +268,7 @@ try {
   await page.waitForSelector("#main-menu");
   await page.locator("#main-menu").click();
   await page.locator("#online").click();
+  await page.locator("#equip-kit").click();
   await page.locator("#player-name").fill("Bluebird");
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
@@ -283,6 +286,7 @@ try {
   });
   await second.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await second.locator("#online").click();
+  await second.locator("#equip-kit").click();
   await second.locator("#player-name").fill("Marginalia");
   await second.locator("#room-input").fill(code);
   await second.locator("#join-room").click();

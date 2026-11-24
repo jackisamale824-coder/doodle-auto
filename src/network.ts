@@ -2,6 +2,8 @@ import { RubbleRoster } from "./county-rubble-view.ts";
 import { RELEASE_ID } from "./release-info.ts";
 import { RUST_SCALE } from "./rust-boundary.ts";
 import type { PieceState, V3 } from "./world.ts";
+import type { Loadout } from "./weapon-balance.ts";
+import type { GrenadeEffect } from "./grenades.ts";
 export interface RemoteState {
   engaged?: boolean;
   reaction?: import("./fists.ts").PunchImpact;
@@ -25,6 +27,7 @@ export interface RemoteState {
 }
 export class Network {
   constructor(private storagePrefix = "dc") {}
+  effects: GrenadeEffect[] = [];
   rubble = new RubbleRoster();
   structures = new Map<number, PieceState>();
   socket: WebSocket | null = null;
@@ -121,6 +124,7 @@ export class Network {
         {
           type: "admit",
           joinTicket: pending.joinTicket,
+          loadout: pending.loadout,
           releaseId: RELEASE_ID,
           compact: true,
         },
@@ -144,6 +148,7 @@ export class Network {
     name: string,
     seed: string,
     code: string,
+    loadout?: Loadout,
   ) {
     this.disconnect();
     if (RELEASE_ID === "dev")
@@ -152,6 +157,7 @@ export class Network {
         name,
         seed,
         code,
+        loadout,
         compact: true,
         mapScale: RUST_SCALE,
       });
@@ -168,7 +174,7 @@ export class Network {
     });
     if (!response.ok)
       throw Error("Couldn’t join the city. Please try again shortly.");
-    const admission = await response.json();
+    const admission = { ...(await response.json()), loadout };
     this.save("dc.pendingAdmission", admission);
     await this.matchingClient(admission);
     this.save("dc.pendingAdmission", null);
@@ -177,6 +183,7 @@ export class Network {
       {
         type: "admit",
         joinTicket: admission.joinTicket,
+        loadout,
         releaseId: RELEASE_ID,
         compact: true,
       },
@@ -268,6 +275,7 @@ export class Network {
         if (m.type === "welcome" || m.type === "resumed") {
           done = true;
           clearTimeout(timer);
+          this.effects = m.effects ?? [];
           this.rubble.reset();
           for (const c of m.rubble ?? []) this.rubble.add(c);
           this.structures = new Map(m.structures ?? []);
@@ -312,6 +320,11 @@ export class Network {
           if (m.type === "rubble-spawn")
             for (const i of m.indices) this.structures.set(i, 2);
         }
+        if (m.type === "grenade")
+          this.effects = [
+            ...this.effects.filter((e) => e.expires > this.worldTime * 1000),
+            m.effect,
+          ];
         if (m.type === "structure") {
           if (m.state) this.structures.set(m.index, m.state);
           else this.structures.delete(m.index);

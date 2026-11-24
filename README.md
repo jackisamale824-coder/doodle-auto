@@ -24,6 +24,8 @@ npm start
 
 ## Play
 
+Choose a primary, secondary and equipment before entering a game. Use **1**, **2** and **3** or the mouse wheel to switch slots. Each grenade can be thrown once per life. After a death, choose **Respawn** to keep your kit or **Change loadout** to equip another one.
+
 - **District run:** erase six NPC rivals, collect three gold rooftop marks, then return to the starting plaza. Completing a district generates the next seeded city with tougher, faster rivals.
 - **Free roam:** practice parkour without enemies.
 - **Online:** create a room and share the five-character code. Up to eight players join the same seed. First to 15 eliminations wins. Players can join an ongoing game.
@@ -40,7 +42,7 @@ Every building has an open front entrance and internal stair flights to its roof
 | Q / E                    | Tap to attach or detach a grapple; hold to reel                       |
 | Space while hooked       | Release with upward launch and retained horizontal momentum           |
 | Left / right mouse       | Fire / aim                                                            |
-| 1 / 2 / 3 or mouse wheel | Rifle / shotgun / pistol                                              |
+| 1 / 2 / 3 or mouse wheel | Primary / secondary / equipment                                              |
 | R                        | Reload (unlimited reserve ammunition)                                 |
 | Tab                      | Scoreboard / run statistics                                           |
 | Escape                   | Pause and release mouse                                               |

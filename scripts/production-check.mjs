@@ -35,6 +35,7 @@ try {
   );
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => !!document.pointerLockElement, {
     timeout: 15000,
   });
@@ -61,6 +62,7 @@ try {
   await page.waitForSelector("#main-menu");
   await page.locator("#main-menu").click();
   await page.locator("#online").click();
+  await page.locator("#equip-kit").click();
   await page.locator("#player-name").fill("Bluebird");
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
@@ -74,6 +76,7 @@ try {
   other.on("pageerror", (e) => errors.push(e.message));
   await other.goto(invite, { waitUntil: "networkidle" });
   await other.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
+  await other.locator("#equip-kit").click();
   await other.waitForSelector("#join-room");
   assert.equal(await other.locator("#room-input").inputValue(), code);
   await other.locator("#player-name").fill("Marginalia");

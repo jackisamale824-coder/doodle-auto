@@ -24,6 +24,7 @@ try {
   await page.waitForFunction(() => window.__doodles?.state === "menu");
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
+  await page.locator("#equip-kit").click();
   await page.waitForFunction(() => window.__doodles?.state === "play");
   const parked = await page.evaluate(() => {
     const g = window.__doodles,

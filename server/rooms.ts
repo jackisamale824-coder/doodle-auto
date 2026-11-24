@@ -35,12 +35,26 @@ import { CountyStructures } from "../src/county-structures.ts";
 import { COUNTY, countyCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
-import { RELOAD_SECONDS } from "../src/weapon-balance.ts";
+import {
+  BURST_AR,
+  BURST_RECOVERY,
+  KNIFE,
+  WEAPONS,
+  RELOAD_SECONDS,
+  MAGAZINES,
+  defaultLoadout,
+  readLoadout,
+  inventory,
+  isGrenade,
+  isUtility,
+  type Loadout,
+} from "../src/weapon-balance.ts";
 import { actorHit, HIT_MULTIPLIER, type HitRegion } from "../src/actor-hit.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
 import { Admissions } from "./admission.ts";
 import { Sessions } from "./sessions.ts";
+import { throwGrenade, type GrenadeEffect } from "../src/grenades.ts";
 import { Spatial } from "./spatial.ts";
 import { Npcs, type Npc } from "./npcs.ts";
 import { generateCity, distance, type City, type V3 } from "../src/world.ts";
@@ -54,6 +68,10 @@ export interface PlayerState {
   kills: number;
   deaths: number;
   weapon: number;
+  loadout?: Loadout;
+  owned?: number[];
+  burstCount?: number;
+  burstReadyAt?: number;
   height: number;
   anchor: V3 | null;
   lastMove: number;
@@ -90,6 +108,7 @@ export interface ReserveRequest {
   roomCode?: string;
 }
 interface Room {
+  effects: GrenadeEffect[];
   rosterRevision?: number;
   citizens?: CountyCitizens;
   incidents?: CountyImpacts;
@@ -112,7 +131,9 @@ interface Room {
 }
 const SNAPSHOT_CELL_SIZE = 32;
 const SNAPSHOT_CELL_REACH = NPC_RADIUS + SNAPSHOT_CELL_SIZE / 2;
-const FIRE_INTERVAL_MS = [110, 700, 240, 1250];
+const FIRE_INTERVAL_MS = WEAPONS.map(
+  (w, i) => [110, 700, 240, 1250][i] ?? Math.round(w.interval * 1000),
+);
 const validVector = (p: unknown): p is V3 =>
   Array.isArray(p) &&
   p.length === 3 &&
@@ -366,6 +387,7 @@ export class Rooms {
           ? new Npcs(city, spatial)
           : null;
       room = {
+        effects: [],
         cars: seed === COUNTY ? countyCars() : undefined,
         roomId: randomUUID(),
         code,
@@ -452,11 +474,13 @@ export class Rooms {
     }
   }
   private initializeStructures(room: Room) {
+    if (room.ai) room.ai.effects = room.effects;
     if (room.seed !== COUNTY) return;
     if (room.duel) {
       for (const car of room.cars!) car.driver = null;
     } else {
       room.citizens = new CountyCitizens(room.city, room.cars!, room.spatial);
+      room.citizens.effects = room.effects;
       room.npcs = room.citizens.actors;
       const incidents = (room.incidents = new CountyImpacts());
       const citizens = room.citizens;
@@ -512,6 +536,7 @@ export class Rooms {
       duel: r.duel,
       tickRate: 30,
       player: { ...p },
+      effects: r.effects,
       drive:
         this.drivers.has(p) && r.cars?.some((c) => c.driver === p.id)
           ? { seq: this.drivers.get(p)!.seq, pose: this.drivers.get(p)!.pose }
@@ -613,6 +638,8 @@ export class Rooms {
     this.lastTick = stamp;
     this.prune();
     for (const r of this.rooms.values()) {
+      for (let i = r.effects.length - 1; i >= 0; i--)
+        if (r.effects[i].expires <= now) r.effects.splice(i, 1);
       r.wreckage?.step(dt);
       if (this.tickCount % 2 === 0 && r.rubbleUpdates?.size) {
         this.broadcast(r, {
@@ -768,7 +795,7 @@ export class Rooms {
           }
         }
         if (p.reloadUntil && now >= p.reloadUntil) {
-          p.mags[p.reloadWeapon] = [30, 8, 14, 5][p.reloadWeapon];
+          p.mags[p.reloadWeapon] = MAGAZINES[p.reloadWeapon];
           p.reloadUntil = 0;
           send(ws, { type: "ammo", mags: p.mags, reloadRemaining: 0 });
         }
@@ -1140,6 +1167,7 @@ export class Rooms {
             ? new Npcs(city, spatial)
             : null;
         r = {
+          effects: [],
           cars: seed === COUNTY ? countyCars() : undefined,
           roomId: randomUUID(),
           code,
@@ -1177,6 +1205,10 @@ export class Rooms {
         return;
       }
       this.leave(ws);
+      const loadout =
+        m.loadout === undefined
+          ? undefined
+          : (readLoadout(m.loadout) ?? defaultLoadout);
       const p: PlayerState = {
         id: randomUUID(),
         name: String(m.name || "Runner")
@@ -1188,7 +1220,8 @@ export class Rooms {
         hp: 100,
         kills: 0,
         deaths: 0,
-        weapon: 0,
+        loadout,
+        ...inventory(loadout, r.seed === COUNTY),
         height: 1.76,
         anchor: null,
         lastMove: Date.now(),
@@ -1197,7 +1230,7 @@ export class Rooms {
         ready: m.compact !== true,
         notoriety: r.citizens ? 0 : undefined,
         shieldUntil: m.compact === true ? Infinity : Date.now() + 3000,
-        mags: [30, 8, 14, 5],
+
         reloadUntil: 0,
         reloadWeapon: 0,
         moveCredit: 3,
@@ -1218,6 +1251,8 @@ export class Rooms {
             )
           : {}),
         type: "welcome",
+        effects: r.effects,
+        loadout,
         rubble: r.wreckage && [...r.wreckage.clusters.values()],
         structures: r.structures && [...r.structures.states],
         id: p.id,
@@ -1351,7 +1386,7 @@ export class Rooms {
       }
       p.yaw = m.yaw;
       p.pitch = Math.max(-1.5, Math.min(1.5, m.pitch));
-      const nextWeapon = [0, 1, 2, 3, FISTS].includes(m.weapon) ? m.weapon : 0;
+      const nextWeapon = p.owned?.includes(m.weapon) ? m.weapon : p.weapon;
       if (nextWeapon !== p.weapon) {
         p.reloadUntil = 0;
         p.swing = undefined;
@@ -1378,9 +1413,10 @@ export class Rooms {
     if (
       m.type === "reload" &&
       p.weapon !== FISTS &&
+      !isUtility(p.weapon) &&
       p.hp > 0 &&
       !p.reloadUntil &&
-      p.mags[p.weapon] < [30, 8, 14, 5][p.weapon]
+      p.mags[p.weapon] < MAGAZINES[p.weapon]
     ) {
       p.reloadWeapon = p.weapon;
       p.reloadUntil = Date.now() + RELOAD_SECONDS[p.weapon] * 1000;
@@ -1403,12 +1439,14 @@ export class Rooms {
       p.punchPending = false;
       p.punchReadyAt = 0;
       if (r.citizens) p.notoriety = 0;
-      p.mags = [30, 8, 14, 5];
+      p.loadout = readLoadout(m.loadout) ?? p.loadout;
+      Object.assign(p, inventory(p.loadout, r.seed === COUNTY));
+      p.burstReadyAt = p.burstCount = p.lastShot = 0;
       p.reloadUntil = 0;
       p.moveCredit = 3;
       p.shieldUntil = Date.now() + 2500;
       p.lastMove = Date.now();
-      send(ws, { type: "respawn", p: p.p });
+      send(ws, { type: "respawn", p: p.p, loadout: p.loadout });
       return;
     }
     if (
@@ -1436,12 +1474,14 @@ export class Rooms {
       p.ready !== false
     ) {
       const now = Date.now(),
-        damages = [24, 14, 35, 90];
+        baseDamage = [24, 14, 35, 90][p.weapon] ?? WEAPONS[p.weapon].damage;
       if (
         now < (p.punchReadyAt ?? 0) ||
         now - p.lastShot < FIRE_INTERVAL_MS[p.weapon] ||
         p.reloadUntil ||
-        p.mags[p.weapon] <= 0
+        vehicle ||
+        (p.weapon === BURST_AR && now < (p.burstReadyAt ?? 0)) ||
+        (p.weapon !== KNIFE && p.mags[p.weapon] <= 0)
       ) {
         send(ws, {
           type: "ammo",
@@ -1450,7 +1490,17 @@ export class Rooms {
         });
         return;
       }
-      p.mags[p.weapon]--;
+      if (p.weapon !== KNIFE) p.mags[p.weapon]--;
+      if (p.weapon === BURST_AR) {
+        p.burstCount =
+          now - p.lastShot > BURST_RECOVERY * 1000
+            ? 1
+            : (p.burstCount ?? 0) + 1;
+        if (p.burstCount === 3) {
+          p.burstReadyAt = now + BURST_RECOVERY * 1000 - 10;
+          p.burstCount = 0;
+        }
+      }
       p.lastShot = now;
       if (r.citizens) p.notoriety = notorietyAfter(p.notoriety ?? 0, 2);
       const dir: V3 = [
@@ -1470,18 +1520,31 @@ export class Rooms {
             r.spatial.ray.bind(r.spatial),
           ),
         );
+      if (isGrenade(p.weapon)) {
+        const effect = throwGrenade(
+          p.weapon,
+          origin,
+          dir,
+          r.spatial.ray.bind(r.spatial),
+          now,
+        );
+        r.effects.push(effect);
+        this.broadcast(r, { type: "grenade", effect });
+        return;
+      }
       const rays = p.weapon === 1 ? 7 : 1;
       let endpoint: V3 = origin.map((v, i) => v + dir[i] * 70) as V3;
       for (let pellet = 0; pellet < rays; pellet++) {
         const d: V3 = [...dir];
-        if (rays > 1) {
-          d[0] += (Math.random() - 0.5) * 0.13;
-          d[1] += (Math.random() - 0.5) * 0.13;
-          d[2] += (Math.random() - 0.5) * 0.13;
+        if (rays > 1 || (p.weapon > FISTS && !isUtility(p.weapon))) {
+          const spread = rays > 1 ? 0.13 : WEAPONS[p.weapon].spread;
+          d[0] += (Math.random() - 0.5) * spread;
+          d[1] += (Math.random() - 0.5) * spread;
+          d[2] += (Math.random() - 0.5) * spread;
           const len = Math.hypot(...d);
           for (let k = 0; k < 3; k++) d[k] /= len;
         }
-        const maxRange = p.weapon === 3 ? 220 : 90;
+        const maxRange = p.weapon === KNIFE ? 2 : p.weapon === 3 ? 220 : 90;
         const surface = r.spatial.ray(origin, d, maxRange);
         const vehicleHit =
           r.cars &&
@@ -1528,9 +1591,9 @@ export class Rooms {
               direction: d,
             });
         } else if (!victim && surface?.box.pieceId !== undefined)
-          r.structures?.damage(surface.box.pieceId, damages[p.weapon]);
+          r.structures?.damage(surface.box.pieceId, baseDamage);
         if (victim) {
-          const damage = Math.round(damages[p.weapon] * HIT_MULTIPLIER[region]);
+          const damage = Math.round(baseDamage * HIT_MULTIPLIER[region]);
           this.hurt(r, victim, p, damage, region, hitSide);
           send(ws, {
             type: "hit",
@@ -1542,7 +1605,13 @@ export class Rooms {
           });
         }
       }
-      this.broadcast(r, { type: "shot", id: p.id, from: origin, to: endpoint });
+      if (p.weapon !== KNIFE)
+        this.broadcast(r, {
+          type: "shot",
+          id: p.id,
+          from: origin,
+          to: endpoint,
+        });
     }
   }
   dispose() {
