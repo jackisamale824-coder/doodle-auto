@@ -1,4 +1,10 @@
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import {
+  executePlayerCommand,
+  schema,
+  type PlayerSql,
+  type StoreCommand,
+} from "../server/player-store.ts";
 
 interface Env {
   GAME: DurableObjectNamespace<GameContainer>;
@@ -7,7 +13,34 @@ interface Env {
 const PORT = 4173;
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
 
+// Only the container's outbound intercept can invoke this entrypoint.
+export class PlayerDatabase extends WorkerEntrypoint<Env> {
+  async fetch(request: Request) {
+    const command = await request.json<StoreCommand>();
+    const result =
+      await this.env.GAME.getByName("player-database").playerCommand(command);
+    return Response.json(result);
+  }
+}
 export class GameContainer extends DurableObject<Env> {
+  private schemaReady = false;
+
+  async playerCommand(command: StoreCommand) {
+    const storage = this.ctx.storage;
+    if (!this.schemaReady) {
+      storage.transactionSync(() => {
+        for (const statement of schema) storage.sql.exec(statement);
+      });
+      this.schemaReady = true;
+    }
+    const db: PlayerSql = {
+      rows<T>(query: string, ...args: (string | number | null)[]) {
+        return storage.sql.exec(query, ...args).toArray() as T[];
+      },
+      atomic: (fn) => storage.transactionSync(fn),
+    };
+    return executePlayerCommand(db, command);
+  }
   private starting: Promise<void> | undefined;
   private ready = false;
 
@@ -22,6 +55,10 @@ export class GameContainer extends DurableObject<Env> {
     url.host = "container";
     const forwarded = new Request(url, request);
     forwarded.headers.set("x-doodle-public-host", new URL(request.url).host);
+    forwarded.headers.set(
+      "x-doodle-client-ip",
+      request.headers.get("cf-connecting-ip") || "unknown",
+    );
     forwarded.headers.delete("host");
     return this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
   }
@@ -33,11 +70,16 @@ export class GameContainer extends DurableObject<Env> {
       return;
     }
 
+    await container.interceptOutboundHttp(
+      "players.internal",
+      this.ctx.exports.PlayerDatabase,
+    );
     if (!container.running) {
       container.start({
         image: container.images.base,
         instance: "lite",
         enableInternet: false,
+        env: { PLAYER_STORE_URL: "http://players.internal" },
       });
     }
 
@@ -51,7 +93,8 @@ export class GameContainer extends DurableObject<Env> {
           signal: AbortSignal.timeout(1000),
         });
         await response.body?.cancel();
-        if (!response.ok) throw new Error(`Health check returned ${response.status}`);
+        if (!response.ok)
+          throw new Error(`Health check returned ${response.status}`);
         this.ready = true;
         return;
       } catch (error) {
@@ -60,7 +103,9 @@ export class GameContainer extends DurableObject<Env> {
       }
     }
 
-    throw new Error("Game container did not become ready", { cause: lastError });
+    throw new Error("Game container did not become ready", {
+      cause: lastError,
+    });
   }
 }
 

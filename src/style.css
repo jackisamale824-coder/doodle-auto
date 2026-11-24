@@ -862,6 +862,10 @@ dialog {
   box-shadow: 9px 9px 0 #222bc32b;
   z-index: 50;
 }
+#player-rating { font-size: 1.25rem; font-weight: 700; }
+#player-history { padding-left: 1.2em; font-size: .85rem; }
+#player-history li { margin: .4em 0; }
+#player-dialog { max-height: 85vh; overflow: auto; }
 dialog::backdrop {
   background: var(--scrim);
   backdrop-filter: blur(6px);

@@ -61,6 +61,7 @@
           Open latest version
         </button>
         <footer class="notebook-footer">
+          <button id="player-account" class="text-button">Player account</button>
           <button id="help" class="text-button">Controls</button>
           <button id="settings" class="text-button">Settings</button>
           <a id="model-credits" href="models/CREDITS.txt" hidden
@@ -146,6 +147,26 @@
       <div id="board" class="hidden"></div>
       <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE</div>
     </section>
+    <dialog id="player-dialog" aria-labelledby="player-title">
+      <button type="button" id="player-close" class="close-button" aria-label="Close player account">×</button>
+      <h2 id="player-title">Player account</h2>
+      <p id="player-status" role="status"></p>
+      <form id="player-form" hidden>
+        <label for="player-name">Username</label>
+        <input id="player-name" name="username" autocomplete="username" required minlength="3" maxlength="16" pattern="[a-zA-Z0-9_]{3,16}" title="3–16 letters, numbers or underscores">
+        <label for="player-password">Password</label>
+        <input id="player-password" name="password" type="password" autocomplete="current-password" minlength="10" maxlength="128" required>
+        <button type="submit" id="player-submit" class="primary-button">Log in</button>
+        <button type="button" id="player-switch" class="secondary-button">Create an account</button>
+      </form>
+      <section id="player-stats" hidden>
+        <p id="player-rating"></p>
+        <h3>Lifetime</h3><p id="player-lifetime"></p>
+        <h3>All players</h3><p id="player-global"></p>
+        <h3>Recent sessions</h3><ol id="player-history"></ol>
+        <button type="button" id="player-logout" class="secondary-button">Log out</button>
+      </section>
+    </dialog>
     <dialog id="dialog" aria-labelledby="dialog-title">
       <button id="close-dialog" class="close-button" aria-label="Close dialog">
         ×

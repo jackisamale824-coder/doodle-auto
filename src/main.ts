@@ -9,6 +9,7 @@ import {
   isGrenade,
 } from "./weapon-balance.ts";
 import { SMOKE_RADIUS } from "./grenades.ts";
+import { bindPlayerAccount } from "./player-account.ts";
 import { addCountyArms } from "./county-hands.ts";
 import { CountyCasings } from "./county-casings.ts";
 import { KNIFE_DAMAGE } from "./county-knife.ts";
@@ -1184,6 +1185,7 @@ class Game {
       : "";
   }
   bind() {
+    bindPlayerAccount();
     $<HTMLSelectElement>("map-picker").onchange = (event) => {
       const value = (event.currentTarget as HTMLSelectElement).value;
       $("menu").classList.add("hidden");

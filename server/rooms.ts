@@ -55,6 +55,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { Admissions } from "./admission.ts";
 import { Sessions } from "./sessions.ts";
 import { throwGrenade, type GrenadeEffect } from "../src/grenades.ts";
+import type { PlayMetrics } from "./play-metrics.ts";
 import { Spatial } from "./spatial.ts";
 import { Npcs, type Npc } from "./npcs.ts";
 import { generateCity, distance, type City, type V3 } from "../src/world.ts";
@@ -109,6 +110,8 @@ export interface ReserveRequest {
 }
 interface Room {
   effects: GrenadeEffect[];
+  duelEntrants?: number;
+  duelFinished?: boolean;
   rosterRevision?: number;
   citizens?: CountyCitizens;
   incidents?: CountyImpacts;
@@ -255,6 +258,7 @@ export class Rooms {
     wss: WebSocketServer,
     private levelFactory: (seed: string) => City = generateCity,
     private options?: WorkerOptions,
+    private metrics?: PlayMetrics,
   ) {
     let ready = false;
     const engine = initializeRapier().then(() => {
@@ -558,6 +562,11 @@ export class Rooms {
   }
   private resume(ws: WebSocket, m: any) {
     this.prune();
+    const prior = this.sessions.records.get(m.sessionId);
+    if (prior && this.metrics?.identities.get(prior.socket)?.id !== this.metrics?.identities.get(ws)?.id) {
+      send(ws, { type: "error", message: "Sign in to the original account to resume." });
+      return;
+    }
     const result = this.sessions.resume(m.sessionId, m.secret, m.attemptId);
     if (!result) {
       send(ws, {
@@ -640,6 +649,9 @@ export class Rooms {
     for (const r of this.rooms.values()) {
       for (let i = r.effects.length - 1; i >= 0; i--)
         if (r.effects[i].expires <= now) r.effects.splice(i, 1);
+      if (this.metrics && this.tickCount % 300 === 0) {
+        for (const [socket,player] of r.players) if (socket.readyState === WebSocket.OPEN) this.metrics.record(player);
+      }
       r.wreckage?.step(dt);
       if (this.tickCount % 2 === 0 && r.rubbleUpdates?.size) {
         this.broadcast(r, {
@@ -918,6 +930,14 @@ export class Rooms {
       victim.deadAt = Date.now();
       victim.deaths++;
       attacker.kills++;
+      this.metrics?.record(attacker);
+      this.metrics?.record(victim);
+      if (r.duel && !r.duelFinished && attacker.kills >= 15) {
+        r.duelFinished = true;
+        if (r.duelEntrants === 2 && r.players.size === 2 && victim !== attacker)
+          this.metrics?.finish(r.roomId,attacker,victim);
+      }
+      void this.metrics?.flush();
       this.broadcast(r, {
         type: "kill",
         by: attacker.name,
@@ -1045,7 +1065,10 @@ export class Rooms {
   leave(ws: WebSocket) {
     const r = this.memberships.get(ws);
     if (!r) return;
-    const driver = r.players.get(ws)?.id;
+    const player = r.players.get(ws);
+    if (player) this.metrics?.record(player);
+    void this.metrics?.flush();
+    const driver = player?.id;
     for (const c of r.cars ?? []) if (c.driver === driver) c.driver = null;
     r.players.delete(ws);
     this.memberships.delete(ws);
@@ -1211,7 +1234,7 @@ export class Rooms {
           : (readLoadout(m.loadout) ?? defaultLoadout);
       const p: PlayerState = {
         id: randomUUID(),
-        name: String(m.name || "Runner")
+        name: String(this.metrics?.identities.get(ws)?.name || m.name || "Runner")
           .replace(/[<>\u0000-\u001f]/g, "")
           .slice(0, 16),
         p: this.spawn(r, r.players.size),
@@ -1235,6 +1258,9 @@ export class Rooms {
         reloadWeapon: 0,
         moveCredit: 3,
       };
+      if (r.duel) r.duelEntrants = (r.duelEntrants ?? 0) + 1;
+      this.metrics?.join(ws,p,r.duel ? "duel" : r.public ? "public" : "private",r.seed);
+      void this.metrics?.flush();
       this.lastJoin.set(ws, Date.now());
       if (m.compact === true) this.compact.add(ws);
       if (m.spatialSnapshots === 1) this.spatialSnapshots.add(ws);
@@ -1617,7 +1643,10 @@ export class Rooms {
   dispose() {
     clearInterval(this.timer);
     clearInterval(this.heartbeat);
-    for (const room of this.rooms.values()) room.wreckage?.dispose();
+    for (const room of this.rooms.values()) {
+      for (const p of room.players.values()) this.metrics?.record(p);
+      room.wreckage?.dispose();
+    }
     this.rooms.clear();
     this.memberships.clear();
     this.sessions.records.clear();

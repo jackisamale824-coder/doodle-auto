@@ -7,6 +7,12 @@ import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
 import { loadCountyFleet } from "./county-fleet.ts";
 import { Rooms } from "./rooms.ts";
+import { openPlayerStore, PlayerAccounts } from "./player-accounts.ts";
+import { PlayMetrics } from "./play-metrics.ts";
+const playerStore = await openPlayerStore();
+const accounts = new PlayerAccounts(playerStore);
+const metrics = new PlayMetrics(playerStore);
+const checkpoint = setInterval(() => void metrics.flush(), 2000);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const production = process.env.NODE_ENV === "production";
 const distRoot = path.resolve(
@@ -37,6 +43,7 @@ const mime: Record<string, string> = {
   ".json": "application/json",
 };
 const server = http.createServer(async (req, res) => {
+  if (req.url?.startsWith("/api/player/")) return accounts.handle(req,res);
   if (req.url?.startsWith("/internal/")) {
     const supplied = req.headers.authorization ?? "",
       expected = `Bearer ${process.env.CONTROL_SECRET ?? ""}`;
@@ -156,11 +163,12 @@ const rooms = new Rooms(
         workerEpoch: process.env.WORKER_EPOCH!,
       }
     : undefined,
+  metrics,
 );
 rooms.vehicleModel = await loadCountyFleet(
   production ? distRoot : path.join(root, "public"),
 );
-server.on("upgrade", (req, socket, head) => {
+server.on("upgrade", async (req, socket, head) => {
   if (req.url === "/ws") {
     const now = Date.now();
     admissionCredit = Math.min(
@@ -189,9 +197,16 @@ server.on("upgrade", (req, socket, head) => {
     }
     admissionCredit--; // ws sets TCP_NODELAY on upgraded sockets.
 
-    wss.handleUpgrade(req, socket, head, (ws) =>
-      wss.emit("connection", ws, req),
-    );
+    try {
+      const user = await accounts.identity(req);
+      if (socket.destroyed) return;
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        if (user) metrics.identities.set(ws,user);
+        wss.emit("connection", ws, req);
+      });
+    } catch {
+      socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+    }
   } else if (production) socket.destroy();
 });
 const port = Number(process.env.PORT || 4173),
@@ -201,7 +216,9 @@ server.listen(port, host, () =>
 );
 for (const signal of ["SIGINT", "SIGTERM"] as const)
   process.on(signal, () => {
+    clearInterval(checkpoint);
     rooms.dispose();
+    void metrics.flush();
     wss.clients.forEach((ws) => ws.close());
     wss.close();
     server.close();

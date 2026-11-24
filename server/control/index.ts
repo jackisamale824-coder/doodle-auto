@@ -4,6 +4,8 @@ import os from "node:os";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Directory } from "./directory.ts";
+import { openPlayerStore, PlayerAccounts } from "../player-accounts.ts";
+const accounts = new PlayerAccounts(await openPlayerStore());
 import { Gateway } from "./gateway.ts";
 import { ReleaseManager } from "./releases.ts";
 const root =
@@ -54,6 +56,7 @@ async function body(req: http.IncomingMessage) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   try {
+    if (url.pathname.startsWith("/api/player/")) return accounts.handle(req,res);
     if (url.pathname.startsWith("/internal/")) {
       if (!same(req.headers.authorization ?? "", `Bearer ${secret}`)) {
         respond(res, 403, { error: "Forbidden" });
