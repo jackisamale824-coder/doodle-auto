@@ -7,11 +7,12 @@
   color-scheme: light;
   --marker-text: #805e14;
   --sheet: #faf8f0;
+  --menu-paper: linear-gradient(155deg, #d6efdf, #fcf0cf 56%, #f2d5ad);
   --field: #fffdf6;
   --label: #394875;
   --link: #355085;
   --body-text: #41506a;
-  --selected: #e1e6fa;
+  --selected: #c2e4de;
   --hover: #eef0fa;
   --border: #8790b9;
   --wash: #f7f5e95e;
@@ -38,6 +39,7 @@
   --line: #aabae340;
   --marker-text: #ffda8f;
   --sheet: #22293b;
+  --menu-paper: linear-gradient(155deg, #1c3b3d, #303440 56%, #40362e);
   --field: #171d2d;
   --label: #c8d1eb;
   --link: #afc9ff;
@@ -1182,8 +1184,8 @@ dialog input[type="checkbox"] {
   padding: clamp(21px, 3vw, 36px);
   border: 2px solid var(--ink);
   border-radius: 6px 11px 7px 5px;
-  background: var(--sheet);
-  box-shadow: 5px 6px 0 #35457926;
+  background: var(--menu-paper);
+  box-shadow: 5px 6px 0 #253d5742;
 }
 #menu h1 {
   width: auto;
@@ -1606,9 +1608,15 @@ dialog .secondary-button {
     18px "Patrick Hand",
     cursive;
 }
-#wanted-stars {
-  margin-left: 0.4em;
-  letter-spacing: 0.1em;
+#notoriety label {
+  display: flex;
+  justify-content: space-between;
+}
+#notoriety progress {
+  display: block;
+  width: 100%;
+  height: 8px;
+  accent-color: #edab51;
 }
 
 .pause-tools,
@@ -1669,6 +1677,15 @@ body.county-death dialog p {
   display: none;
 }
 
+.county-world #player-account,
+.county-world #city-map-panel:not(.expanded) :is(.map-player-key, #map-toggle-hint),
+.county-world #armory-hint,
+.county-world .inventory-tip {
+  display: none;
+}
+.county-world #city-map { background: transparent; }
+#hud #weapon-slots span { opacity: .88; text-transform: uppercase; }
+#hud .ammo-row > span, #hud #timer { opacity: .95; }
 .county-world #hud {
   --ink: #264650;
   --hud-panel: #f7f5e9dc;
@@ -1699,11 +1716,14 @@ body.county-death dialog p {
     .district-label b,
     .district-label span,
     #weapon-slots .active,
+    #mission-progress span,
+    kbd,
     #room-badge
   ) {
   color: #203e4a;
   text-shadow: none;
 }
+.county-world #hud .district-label span { padding: 1px 4px; }
 .county-world #hud :is(.district-label span, #weapon-slots .active) {
   background: #c7ded8;
   opacity: 1;
@@ -1715,7 +1735,7 @@ body.county-death dialog p {
   color: #9be9df;
 }
 .county-world #hud #notoriety {
-  color: #ffd88c;
+  color: #ffdc93;
 }
 .county-world #hud .health-bar {
   background: #183442b8;

@@ -162,10 +162,12 @@ export function drawCountyRoads(group: T.Group, streets: Street[]) {
       const random = randomSeed("county-asphalt");
       const grains = new Uint8Array(64 * 64 * 4);
       for (let i = 0; i < grains.length; i += 4) {
-        grains[i] = grains[i + 1] = grains[i + 2] = 222 + random() * 33;
+        grains[i] = grains[i + 1] = grains[i + 2] = Math.round(224 + random() * 30);
         grains[i + 3] = 255;
       }
       const map = new T.DataTexture(grains, 64, 64);
+      map.colorSpace = T.SRGBColorSpace;
+      map.anisotropy = 4;
       map.wrapS = map.wrapT = T.RepeatWrapping;
       map.generateMipmaps = true;
       map.minFilter = T.LinearMipMapLinearFilter;

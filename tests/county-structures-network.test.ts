@@ -427,9 +427,6 @@ test("a driver's sweep knocks down one citizen and both wire formats agree on in
     assert.ok(a.players[0].notoriety > 0);
     assert.equal(a.players[0].notoriety, b.actors[0][13]);
     assert.equal(other.notoriety, 0);
-    assert.deepEqual(a.players[0].wanted, { stars: 0, phase: "calling" });
-    assert.deepEqual(b.actors[0][18], a.players[0].wanted);
-    assert.equal(a.players[1].wanted, undefined);
     for (let i = 0; i < 3; i++) {
       await delay(35);
       await advance();

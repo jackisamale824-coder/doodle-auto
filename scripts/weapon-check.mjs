@@ -14,7 +14,7 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 850 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
-  await page.goto(process.env.GAME_URL || "http://127.0.0.1:5173");
+  await page.goto(process.env.GAME_URL || "http://127.0.0.1:5173/?mode=rust");
   await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.locator("#roam-mode").click();

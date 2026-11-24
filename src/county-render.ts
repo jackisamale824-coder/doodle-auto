@@ -26,7 +26,6 @@ export async function drawCounty(city: City, group: T.Group) {
   const loader = new GLTFLoader(),
     mat = inkMaterial("#294856", 0.16);
   mat.uniforms.uPaper.value.set("#557981");
-  group.add(countySky());
   mat.uniforms.uSurface.value = 1.7;
   async function geometry(name: string) {
     const model = await loader.loadAsync(assetUrl("models/" + name + ".glb"));
@@ -185,34 +184,4 @@ export async function drawCounty(city: City, group: T.Group) {
     token.name = "county-mark";
   }
   return cars;
-}
-
-function countySky() {
-  const material = new T.ShaderMaterial({
-    side: T.BackSide,
-    depthWrite: false,
-    uniforms: {
-      zenith: { value: new T.Color("#408dcc") },
-      horizon: { value: new T.Color("#b4dce7") },
-    },
-    vertexShader: `varying vec3 skyDirection;
-    void main(){skyDirection=position;vec4 clip=projectionMatrix*vec4(mat3(viewMatrix)*position,1.);gl_Position=clip.xyww;}`,
-    fragmentShader: `uniform vec3 zenith,horizon;varying vec3 skyDirection;
-    float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-    float noise(vec2 p){vec2 i=floor(p),t=fract(p);t=t*t*(3.-2.*t);
-      return mix(mix(hash(i),hash(i+vec2(1,0)),t.x),mix(hash(i+vec2(0,1)),hash(i+1.),t.x),t.y);}
-    void main(){vec3 d=normalize(skyDirection);float h=max(0.,d.y);
-      vec3 sky=mix(horizon,zenith,1.-exp(-3.4*h));vec2 p=d.xz/(.16+h)*2.8;
-      float clouds=noise(p)*.52+noise(p*2.1)*.29+noise(p*4.3)*.14+noise(p*8.5)*.05;
-      sky=mix(sky,vec3(.95,.93,.87),smoothstep(.49,.75,clouds)*smoothstep(.02,.25,h)*.76);
-      float sun=max(0.,dot(d,normalize(vec3(-.55,.82,.35))));
-      gl_FragColor=vec4(mix(sky+vec3(.35,.22,.09)*pow(sun,32.),vec3(1.,.95,.78),smoothstep(.9992,.99965,sun)),1.);
-      #include <colorspace_fragment>
-    }`,
-  });
-  const sky = new T.Mesh(new T.SphereGeometry(1, 24, 12), material);
-  sky.name = "county-daylight";
-  sky.frustumCulled = false;
-  sky.renderOrder = 1000;
-  return sky;
 }

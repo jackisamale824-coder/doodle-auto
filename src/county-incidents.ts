@@ -13,6 +13,17 @@ export function notorietyAfter(value: number, points: number) {
 export function injuryPoints(before: number, after: number) {
   return (before - after) * 0.24 + (after === 0 && before > 0 ? 12 : 0);
 }
+export function shovePosition(feet: V3, source: V3): V3 {
+  const x = feet[0] - source[0],
+    z = feet[2] - source[2];
+  const n = Math.hypot(x, z);
+  return [
+    feet[0] + (n ? x / n : 1) * 0.65,
+    feet[1],
+    feet[2] + (n ? z / n : 0) * 0.65,
+  ];
+}
+
 // Only airborne or recovering citizens need body queries. Standing pedestrians
 // use the street simulation and seated citizens stay inside their own vehicle.
 export class CountyImpacts {

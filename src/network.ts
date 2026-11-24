@@ -10,8 +10,7 @@ export interface RemoteState {
   swing?: import("./fists.ts").Punch;
   notoriety?: number;
   fall?: import("./county-incidents.ts").CountyFall;
-  action?: import("./county-citizens.ts").CountyAction;
-  wanted?: import("./county-citizens.ts").Wanted;
+  action?: "idle" | "shove" | "melee" | "shoot";
   id: string;
   name: string;
   rating?: number;
@@ -96,7 +95,7 @@ export class Network {
       !url.pathname.startsWith(`/releases/${record.releaseId}/`)
     )
       throw Error("This match is unavailable. Please try again.");
-    if (this.storagePrefix === "county") url.searchParams.set("mode", "county");
+    url.searchParams.set("mode", this.storagePrefix === "county" ? "county" : "rust");
     location.replace(url.href);
     return new Promise<never>(() => {});
   }
@@ -364,7 +363,6 @@ export class Network {
               fall: a[15],
               swing: a[16],
               reaction: a[17],
-              wanted: a[18],
             }));
           const now = performance.now();
           for (const p of m.players as RemoteState[]) {

@@ -8,7 +8,7 @@
       name="description"
       content="A first-person ink-and-paper parkour shooter. Grapple, vault and fight across an ever-changing city."
     />
-    <title>doodlesCreed — Rust — the oil yard</title>
+    <title>Doodle Auto — Switchback County · Suncoast</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
@@ -16,11 +16,12 @@
     <div id="hurt"></div>
     <div id="loading">
       <div class="loading-pencil">✎</div>
-      <strong>Loading map…</strong>
+      <strong>Doodle Auto</strong>
+      <span>Loading map…</span>
     </div>
     <section id="menu" class="screen hidden" aria-label="Main menu">
       <main class="menu-copy">
-        <h1>doodlesCreed</h1>
+        <h1>Doodle Auto</h1>
         <div class="map-field">
           <label for="map-picker">Map</label>
           <select id="map-picker">
@@ -84,7 +85,9 @@
           ><span id="beacon-objective">◇ 0 / 3 MARKS</span>
         </div>
         <div id="notoriety" hidden>
-          Wanted <b id="wanted-stars" aria-label="0 of 3 stars">☆☆☆</b>
+          <label for="notoriety-bar"
+            >Notoriety <b id="notoriety-number">0%</b></label
+          ><progress id="notoriety-bar" max="100" value="0"></progress>
         </div>
       </div>
       <div id="compass">N <span>· · ·</span> NE <span>· · ·</span> E</div>
@@ -147,7 +150,7 @@
         <small id="armory-hint" hidden>B · LOADOUT</small>
       </div>
       <div id="board" class="hidden"></div>
-      <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE <span>·</span> HOLD T INVENTORY</div>
+      <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE <span class="inventory-tip">· &nbsp; HOLD T INVENTORY</span></div>
     </section>
     <dialog id="session-dialog" aria-labelledby="session-title">
       <h2 id="session-title">Join this session</h2>

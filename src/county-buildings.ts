@@ -3,8 +3,8 @@ import type { CountyPiece, Facade } from "./county-architecture.ts";
 import type { Box, PieceState, V3 } from "./world.ts";
 
 const ink = 0x475a82,
-  slate = 0x8295ad,
-  linen = 0xe9e8dd,
+  slate = 0x4f7981,
+  linen = 0xe9d4b3,
   white = 0xf8f7eb;
 const wood = 0xaa7951;
 const facades: Record<Facade, number[]> = {
@@ -60,7 +60,7 @@ function surface(style: Facade) {
 // around a hatch. Their physical scale stays fixed across different floor sizes.
 function flooring(planks: boolean) {
   const mat = tile((c) => {
-    c.fillStyle = planks ? "#dfd7c5" : "#e3e4dc";
+    c.fillStyle = planks ? "#d4ad83" : "#dfd6bf";
     c.fillRect(0, 0, 128, 128);
     const rows = planks ? 8 : 4;
     for (let i = 0; i < rows; i++) {
@@ -142,7 +142,7 @@ function glazing(style: Facade) {
       c.fillStyle = colour;
       c.fillRect(x, y, w, h);
     };
-    fill(0, 0, 128, 128, "rgba(160,187,210,.28)");
+    fill(0, 0, 128, 128, "rgba(68,155,184,.38)");
     c.fillStyle = "rgba(231,244,246,.27)";
     c.beginPath();
     c.moveTo(12, 0);
@@ -195,7 +195,7 @@ function doorTile(interior: boolean) {
       c.fillRect(x, y, w, h);
     };
     fill(0, 0, 128, 128, "#536780");
-    fill(4, 3, 120, 122, interior ? "#b3ad9f" : "#859aaf");
+    fill(4, 3, 120, 122, interior ? "#b48864" : "#458d96");
     fill(12, 10, 104, 62, "#677b91");
     fill(16, 13, 96, 55, interior ? "#c9c3b3" : "#c1d1d8");
     if (!interior) {
@@ -283,11 +283,19 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
   ]);
   const batches = new Map<string, Batch>();
   const refs = new Map<CountyPiece, Binding[]>();
+  const finishes = new Map<string, number>();
   function material(key: string, build: () => T.MeshBasicMaterial) {
     if (!materials.has(key)) materials.set(key, build());
     return key;
   }
   for (const box of pieces) {
+    let variant = finishes.get(box.buildingId);
+    if (variant === undefined) {
+      let hash = 0;
+      for (const ch of box.buildingId) hash = Math.imul(hash, 31) + ch.charCodeAt(0);
+      variant = (hash >>> 0) % 4;
+      finishes.set(box.buildingId, variant);
+    }
     const shape = box.closedDoor ?? box;
     const [x, y, z] = shape.p,
       [w, h, d] = shape.s;
@@ -336,7 +344,7 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
     if (box.mesh) {
       const key = "pitch-" + box.frontage;
       if (!geometries.has(key)) geometries.set(key, roofGeometry(box));
-      part(0xc4cbd2, x, y, z, w, h, d, "plain", key);
+      part([0xac6950, 0x597a7c, 0xa45845, 0x707786][variant], x, y, z, w, h, d, "plain", key);
     } else if (box.piece === "door") {
       const inside = box.kind === "room-door";
       const mat = material(box.kind, () => doorTile(inside));
@@ -350,11 +358,6 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
           const mat = material("surface-" + box.frontage, () =>
             surface(box.frontage),
           );
-          const variant =
-            Array.from(box.buildingId).reduce(
-              (hash, ch) => (hash * 31 + ch.charCodeAt(0)) >>> 0,
-              0,
-            ) % 4;
           part(facades[box.frontage][variant], x, y, z, w, h, d, mat);
           break;
         }
@@ -376,7 +379,7 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
             flooring(planks),
           );
           part(
-            deck ? 0xd4dce1 : white,
+            deck ? 0x9ba9a5 : white,
             x,
             y + h * 0.455,
             z,

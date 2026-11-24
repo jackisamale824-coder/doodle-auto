@@ -1,5 +1,6 @@
 import { blimpPosition, type Blimp } from "./aerial.ts";
 import * as T from "three";
+import { daylightSky } from "./daylight.ts";
 import { type City, type Box, type V3, randomSeed } from "./world.ts";
 export const INK = "#222bc3",
   RED = "#d23c45",
@@ -25,7 +26,8 @@ float fibreScale=55.;float fibreFade=1.-smoothstep(.35,1.2,max(fwidth(uv.x),fwid
 float fibres=(surfaceNoise(uv*vec2(fibreScale,fibreScale*.7))-.5)*fibreFade;
 uv=gl_FragCoord.xy*mix(.09,.155,uLocal);float wobble=sin(uv.x*1.9+uv.y*.7)*.11;
 float hatch=pen(uv.x+uv.y*.9+wobble);float cross=pen(uv.x-uv.y*.8+wobble);
-float strength=hatch*shade*1.15+cross*max(0.,shade-mix(.64,.36,uLocal))*1.1;strength*=smoothstep(.16,.36,shade);strength*=mix(.3,1.,uLocal);strength*=mix(1.-smoothstep(25.,110.,vDepth),1.,uLocal);strength=max(strength,uFill*mix(.45,1.,uLocal));strength+=uSurface*(.025+.09*shade+.024*(grain-.5)+.010*(patina-.5)+.018*fibres);vec3 color=mix(uPaper,uInk,clamp(strength,0.,1.));float fog=smoothstep(65.,250.,vDepth);color=mix(color,uPaper,fog*.86);gl_FragColor=vec4(color,1.);
+float strength=hatch*shade*.50+cross*max(0.,shade-mix(.64,.36,uLocal))*.55;strength*=smoothstep(.16,.36,shade);strength*=mix(.3,1.,uLocal);strength*=mix(1.-smoothstep(25.,110.,vDepth),1.,uLocal);strength=max(strength,uFill*mix(.45,.70,uLocal));strength+=uSurface*(.025+.09*shade+.024*(grain-.5)+.010*(patina-.5)+.018*fibres);vec3 color=mix(uPaper,uInk,clamp(strength,0.,1.))*mix(vec3(.56,.65,.73),vec3(1.08,1.03,.95),smoothstep(-.48,.85,light));
+float fog=smoothstep(65.,250.,vDepth);color=mix(color,vec3(.55,.73,.79),fog*.83);gl_FragColor=vec4(color,1.);
 #include <colorspace_fragment>
 }`;
 export function inkMaterial(ink = INK, fill = 0, local = false) {
@@ -121,7 +123,7 @@ export class Renderer {
       groundAware: { value: 0 },
       depth: { value: null },
       pixel: { value: new T.Vector2(1, 1) },
-      ink: { value: new T.Color(INK) },
+      ink: { value: new T.Color("#26364b") },
       clip: { value: new T.Vector2(0.06, 700) },
     },
     vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}`,
@@ -138,6 +140,7 @@ export class Renderer {
     depthTest: false,
     depthWrite: false,
   });
+  private sky = daylightSky();
   scene = new T.Scene();
   camera = new T.PerspectiveCamera(82, 1, 0.06, 700);
   cityGroup = new T.Group();
@@ -157,7 +160,7 @@ export class Renderer {
     this.scene.background = new T.Color(SKY);
     this.scene.fog = new T.Fog(SKY, 65, 250);
     this.camera.rotation.order = "YXZ";
-    this.scene.add(this.cityGroup, this.camera);
+    this.scene.add(this.cityGroup, this.camera, this.sky);
     this.inkPost.uniforms.color.value = this.inkTarget.texture;
     this.inkPost.uniforms.depth.value = this.inkTarget.depthTexture;
     this.inkScene.add(new T.Mesh(new T.PlaneGeometry(2, 2), this.inkPost));
@@ -183,10 +186,13 @@ export class Renderer {
   async build(city: City) {
     this.countyCars = [];
     const county = city.seed === "switchback-county";
+    const horizon = county ? "#b4dce7" : "#f4c79e";
+    this.sky.material.uniforms.zenith.value.set(county ? "#408dcc" : "#5991b8");
+    this.sky.material.uniforms.horizon.value.set(horizon);
+    (this.scene.fog as T.Fog).color.set(horizon);
+    (this.scene.background as T.Color).set(horizon);
     if (county !== this.county) {
       this.county = county;
-      this.inkPost.uniforms.ink.value.set(county ? "#26364b" : INK);
-      (this.scene.fog as T.Fog).color.set(county ? "#b4dce7" : SKY);
       this.frameCost = 0.025;
       this.camera.far = county ? 285 : 700;
       this.camera.updateProjectionMatrix();
@@ -257,7 +263,7 @@ export class Renderer {
             : kind === "metal"
               ? 0.16
               : 0;
-      const fillMaterial = inkMaterial(county ? "#344959" : INK, fill);
+      const fillMaterial = inkMaterial(INK, fill);
       if (county) fillMaterial.uniforms.uPaper.value.set("#d6bda3");
       const inst = new T.InstancedMesh(
           unit.clone(),

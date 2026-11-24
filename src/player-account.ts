@@ -143,11 +143,6 @@ export function bindPlayerAccount() {
       gate.close();
       return;
     }
-    if (!profile && !guest && !gate.open) {
-      dialog.close();
-      gate.showModal();
-      return;
-    }
     if (!profile) {
       setMode(false);
       if (googleEnabled) void googleButton("login", current);
@@ -243,13 +238,13 @@ export function bindPlayerAccount() {
       if (account && account.name === name && rating !== undefined)
         account.rating = rating;
     },
-    async enter() {
+    async enter(requireName = true) {
       try {
         setAccount((await readProfile()).profile);
       } catch {
         /* Guests can play while the account service is unavailable. */
       }
-      if (account || guest) return;
+      if (!requireName || account || guest) return;
       const entered = new Promise<void>((resolve) =>
         gate.addEventListener("close", () => resolve(), { once: true }),
       );

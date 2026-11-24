@@ -16,7 +16,7 @@ try {
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto(process.env.GAME_URL || "http://127.0.0.1:5199");
+  await page.goto(process.env.GAME_URL || "http://127.0.0.1:5199/?mode=rust");
   await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.locator("#roam-mode").click();

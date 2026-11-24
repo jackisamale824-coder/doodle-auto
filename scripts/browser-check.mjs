@@ -51,7 +51,7 @@ async function resume(p) {
   await p.waitForTimeout(200);
 }
 try {
-  await page.goto(process.env.GAME_URL || "http://127.0.0.1:4173", {
+  await page.goto(process.env.GAME_URL || "http://127.0.0.1:4173/?mode=rust", {
     waitUntil: "networkidle",
   });
   const gate = page.locator("#session-dialog");
@@ -289,7 +289,7 @@ try {
   });
   const second = await context2.newPage();
   second.on("pageerror", (e) => errors.push(e.message));
-  await second.goto(process.env.GAME_URL || "http://127.0.0.1:4173", {
+  await second.goto(process.env.GAME_URL || "http://127.0.0.1:4173/?mode=rust", {
     waitUntil: "networkidle",
   });
   await enterGuest(second, "Marginalia");

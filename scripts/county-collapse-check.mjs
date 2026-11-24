@@ -1,4 +1,3 @@
-import { enterGuest } from "./guest-session.mjs";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
@@ -34,11 +33,9 @@ try {
     console.error(error.message);
   });
   await page.goto(new URL("/?mode=county", origin).href);
-  await enterGuest(page);
   await page.waitForFunction(() => window.__doodles?.state === "menu");
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();
-  await page.locator("#equip-kit").click();
   await page.waitForFunction(
     () => ["play", "paused"].includes(window.__doodles?.state),
     null,

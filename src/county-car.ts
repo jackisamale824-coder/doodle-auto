@@ -77,11 +77,13 @@ export async function loadFleet() {
     uniforms: { coat: { value: new T.Color(0xf5f4ec) } },
     vertexShader: `uniform vec3 coat;
     varying vec3 tint, worldNormal, worldPosition, panelPosition;
+    varying float enamel;
     #ifdef PANEL_DAMAGE
     uniform int count; uniform vec3 points[16], normals[16];
     #endif
     void main(){
-      tint=mix(pow(color.rgb,vec3(2.2)),coat,color.a);
+      enamel=color.a;
+      tint=mix(pow(color.rgb,vec3(2.2)),coat,enamel);
       panelPosition=position;
       vec3 p=position;
       #ifdef PANEL_DAMAGE
@@ -93,12 +95,14 @@ export async function loadFleet() {
       gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
     }`,
     fragmentShader: `varying vec3 tint,worldNormal,worldPosition,panelPosition;
+    varying float enamel;
     #ifdef PANEL_DAMAGE
     uniform int count; uniform vec3 points[16];
     #endif
     void main(){
       vec3 n=normalize(worldNormal),l=normalize(vec3(-.55,1.,.35)),v=normalize(cameraPosition-worldPosition);
-      vec3 paint=tint*(.53+.54*max(0.,dot(n,l))) + vec3(.40,.35,.26)*pow(max(0.,dot(n,normalize(l+v))),48.);
+      float rim=pow(1.-max(0.,dot(n,v)),3.);
+      vec3 paint=tint*(.50+.56*max(0.,dot(n,l)))+enamel*(vec3(.06,.12,.15)*rim+vec3(.75,.69,.55)*pow(max(0.,dot(n,normalize(l+v))),48.)*.48);
       #ifdef PANEL_DAMAGE
       for(int i=0;i<16;i++){if(i>=count)break;
         float r=distance(panelPosition,points[i]);paint=mix(paint,vec3(.085,.072,.06),1.-smoothstep(.018,.048,r));}

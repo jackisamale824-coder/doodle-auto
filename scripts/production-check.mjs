@@ -2,7 +2,7 @@ import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-const url = process.env.GAME_URL || "http://127.0.0.1:4173";
+const url = process.env.GAME_URL || "http://127.0.0.1:4173/?mode=rust";
 const errors = [],
   checks = [];
 const browser = await chromium.launch({

@@ -15,7 +15,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
-  await page.goto("http://127.0.0.1:5173");
+  await page.goto("http://127.0.0.1:5173/?mode=rust");
   await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.screenshot({ path: `output/playwright/style-${pass}-menu.png` });
@@ -61,7 +61,7 @@ try {
   const mobile = await browser.newPage({
     viewport: { width: 390, height: 844 },
   });
-  await mobile.goto("http://127.0.0.1:5173");
+  await mobile.goto("http://127.0.0.1:5173/?mode=rust");
   await enterGuest(mobile);
   await mobile.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await mobile.screenshot({

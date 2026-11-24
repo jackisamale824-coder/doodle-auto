@@ -12,7 +12,7 @@ const browser = await chromium.launch({
   ],
 });
 let peer;
-const url = process.env.GAME_URL || "http://127.0.0.1:5199";
+const url = process.env.GAME_URL || "http://127.0.0.1:5199/?mode=rust";
 try {
   const page = await browser.newPage({
     viewport: { width: 1200, height: 850 },

@@ -32,16 +32,13 @@ import {
 } from "./fists.ts";
 import { buildFists, animateFists } from "./fist-view.ts";
 import { Spatial } from "../server/spatial.ts";
-import {
-  CountyCitizens,
-  type CountyCitizen,
-  type Wanted,
-} from "./county-citizens.ts";
+import { CountyCitizens, type CountyCitizen } from "./county-citizens.ts";
 import { CountyRagdolls } from "./county-ragdoll.ts";
 import {
   CountyImpacts,
   injuryPoints,
   notorietyAfter,
+  shovePosition,
 } from "./county-incidents.ts";
 import { actorHit, HIT_MULTIPLIER } from "./actor-hit.ts";
 import type { RemoteState } from "./network.ts";
@@ -136,22 +133,22 @@ const timeLabel = (s: number) =>
 type Mode = "contract" | "roam" | "online";
 class Game {
   private mapExpanded = false;
-  loadout = readLoadout(safeRead("dc.loadout", null)) ?? defaultLoadout;
+  loadout = readLoadout(safeRead("dc.loadout", null));
   private respawnAt = 0;
   private armorySpawn?: V3;
   private previousWeapon?: number;
   private quickInventory = new QuickInventory($("quick-inventory"));
   render = new Renderer(canvas);
   audio = new AudioEngine();
-  countySelected =
-    new URLSearchParams(location.search).get("mode") === "county";
+  private params = new URLSearchParams(location.search);
+  countySelected = this.params.get("level") !== "city" &&
+    (this.params.get("mode") === "county" || (location.pathname === "/" && !this.params.has("mode") && !this.params.has("room")));
   network = new Network(this.countySelected ? "county" : "dc");
   private identity = bindPlayerAccount();
   cars: CountyCar[] = [];
   citizens?: CountyCitizens;
   countySpatial?: Spatial;
   notoriety = 0;
-  private wanted?: Wanted;
   private citizenTick = 0;
   private selfReaction?: PunchImpact;
   private equippedAt = 0;
@@ -160,13 +157,6 @@ class Game {
   private lastFall = new WeakMap<Doodle, number>();
   private countyVandalism() {
     this.notoriety = notorietyAfter(this.notoriety, 5);
-    this.citizens?.alarm(
-      "local",
-      this.player.position.toArray(),
-      Date.now(),
-      5,
-      20,
-    );
   }
   private injureCitizen(
     actor: CountyCitizen,
@@ -175,18 +165,11 @@ class Game {
   ) {
     const before = actor.hp;
     actor.hp = Math.max(0, before - amount);
-    if (playerCaused) {
-      const points = injuryPoints(before, actor.hp);
-      this.notoriety = notorietyAfter(this.notoriety, points);
-      this.citizens?.alarm(
-        "local",
-        this.player.position.toArray(),
-        Date.now(),
-        points,
-        32,
-        actor,
+    if (playerCaused)
+      this.notoriety = notorietyAfter(
+        this.notoriety,
+        injuryPoints(before, actor.hp),
       );
-    }
     if (before > 0 && !actor.hp) {
       actor.deadAt = Date.now();
       actor.deaths++;
@@ -238,6 +221,13 @@ class Game {
       now,
       [me],
       (_target, bot, damage, kind) => {
+        if (kind === "shove" && this.vehicle < 0) {
+          const dest = shovePosition(me.p, bot.p);
+          if (q.movement(me.p, dest, p.height) && q.clear(dest, p.height)) {
+            p.position.fromArray(dest);
+            me.p = dest;
+          }
+        }
         if (damage > 0) {
           if (kind === "punch")
             this.selfReaction = punchImpact(
@@ -262,7 +252,6 @@ class Game {
         );
       },
     );
-    this.wanted = citizens.wanted("local");
   }
   vehicle = -1;
   carSpeed = 0;
@@ -556,21 +545,18 @@ class Game {
     $("model-credits").hidden = !this.countySelected;
     $("duel").hidden = $("public-mode").hidden = this.archive;
     if (this.archive) this.menuMode = "roam";
-    if (this.countySelected)
-      document.querySelector("h1")!.textContent = "Doodle Auto";
-    if (this.countySelected)
-      document.title = "Doodle Auto — Switchback County · Suncoast";
+    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.archive ? "City Archive" : "Rust · Oil Yard");
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
     $("loading").classList.add("hidden");
-    await this.identity.enter();
+    await this.identity.enter(!this.countySelected);
     try {
       const restored = await this.network.bootstrap();
       if (restored) {
         this.mode = "online";
         this.state = "loading";
-        this.loadout = readLoadout(restored.loadout) ?? this.loadout;
+        this.loadout = readLoadout(restored.loadout);
         await this.build(restored.seed, 1, restored.p || restored.spawn);
         $("menu").classList.add("hidden");
         $("hud").classList.remove("hidden");
@@ -593,7 +579,7 @@ class Game {
     $("menu").classList.toggle("hidden", this.state !== "menu");
     const invite = new URLSearchParams(location.search).get("room");
     if (this.mode !== "online" && invite && /^[A-Z0-9]{5}$/i.test(invite)) {
-      this.pickLoadout(() => {
+      await this.prepareEntry(true, () => {
         this.showOnline();
         $<HTMLInputElement>("room-input").value = invite.toUpperCase();
       });
@@ -690,7 +676,6 @@ class Game {
       };
     this.citizenTick = 0;
     this.notoriety = 0;
-    this.wanted = undefined;
     this.structures =
       seed === COUNTY
         ? new CountyStructures(
@@ -835,13 +820,6 @@ class Game {
         : this.player.eye.clone().addScaledVector(this.player.forward, 0.5);
     };
     this.combat.onPunch = () => {
-      this.citizens?.alarm(
-        "local",
-        this.player.position.toArray(),
-        Date.now(),
-        2,
-        2.5,
-      );
       this.armorySpawn = undefined;
       if (this.mode === "online") {
         this.sendState();
@@ -946,16 +924,7 @@ class Game {
         );
       }
       this.viewMotion.shot(WEAPONS[this.combat.weapon].model);
-      if (this.citizens) {
-        this.notoriety = notorietyAfter(this.notoriety, 2);
-        this.citizens.alarm(
-          "local",
-          this.player.position.toArray(),
-          Date.now(),
-          2,
-          this.combat.weapon === KNIFE ? 2.5 : 36,
-        );
-      }
+      if (this.citizens) this.notoriety = notorietyAfter(this.notoriety, 2);
       if (this.mode === "online") {
         this.sendState();
         this.network.send({ type: "fire" });
@@ -995,7 +964,7 @@ class Game {
     }
     this.render.camera.add(this.weaponMesh);
     $("weapon-name").textContent =
-      i === FISTS && this.seed === COUNTY ? "KNIFE" : WEAPONS[i].name;
+      this.seed === COUNTY && i === FISTS ? "KNIFE" : i === 0 ? "INKRIFLE" : WEAPONS[i].name;
     $("weapon-slots").replaceChildren(
       ...this.combat.owned.map((id, slot) => {
         const item = document.createElement("span");
@@ -1003,7 +972,7 @@ class Game {
           slot +
           1 +
           " " +
-          (id === FISTS && this.seed === COUNTY ? "Knife" : WEAPONS[id].name);
+          (this.seed === COUNTY ? (["Rifle", "Shotgun", "Pistol", "Sniper", "Knife"][id] ?? WEAPONS[id].name) : WEAPONS[id].name);
         item.classList.toggle("active", id === i);
         return item;
       }),
@@ -1018,7 +987,7 @@ class Game {
     let chosenSlot: keyof Loadout | undefined;
     this.showDialog(
       loadoutScreen(
-        this.loadout,
+        this.loadout ?? defaultLoadout,
         live
           ? "Return to game"
           : respawning
@@ -1238,21 +1207,32 @@ class Game {
       $("mission-title").textContent = "SWITCHBACK COUNTY";
       $("mission-title").style.display = "";
       $("mission").textContent =
-        this.wanted?.phase === "calling"
-          ? "Witness calling police"
-          : this.wanted?.phase === "responding"
-            ? "County police dispatched"
-            : this.wanted?.phase === "pursuit"
-              ? "Police pursuit · Break line of sight"
-              : this.wanted?.phase === "search"
-                ? "Police searching · Stay out of sight"
-                : "Explore on foot or take a parked car";
+        this.notoriety > 75
+          ? "Armed citizens and hostile drivers"
+          : this.notoriety > 50
+            ? "Citizens will attack on sight"
+            : this.notoriety > 30
+              ? "Citizens may shove or cut you off"
+              : "Explore on foot or take a parked car";
       $("mission-progress").style.display = "none";
       if (!online) $("mode-label").textContent = "OPEN WORLD";
     }
     $("room-badge").textContent = online
       ? `${this.network.public ? "PUBLIC" : this.network.duel ? "DUEL" : "ROOM"} ${this.network.code} · ${this.network.players.filter((p) => !p.npc).length} PLAYERS · ${Math.round(this.network.rtt)} ms`
       : "";
+  }
+  private async prepareEntry(multiplayer: boolean, enter: () => void) {
+    if (!this.countySelected) return this.pickLoadout(enter);
+    if (multiplayer && !this.identity.name) {
+      if (this.busy) return;
+      this.busy = true;
+      try {
+        await this.identity.enter();
+      } finally {
+        this.busy = false;
+      }
+    }
+    enter();
   }
   bind() {
     $<HTMLSelectElement>("map-picker").onchange = (event) => {
@@ -1264,7 +1244,7 @@ class Game {
           ? "/?mode=county"
           : value === "archive"
             ? "/?level=city"
-            : "/",
+            : "/?mode=rust",
       );
     };
     window.addEventListener("pageshow", (e) => {
@@ -1277,7 +1257,7 @@ class Game {
       if (this.busy) return;
       this.district = 1;
       const mode = this.menuMode;
-      this.pickLoadout(() => {
+      void this.prepareEntry(mode === "public" || mode === "duel", () => {
         if (mode === "public" || mode === "duel") {
           const lobby = this.lobbies.find(
             (r) => r.mode === (mode === "public" ? "play" : "duel"),
@@ -1324,7 +1304,7 @@ class Game {
       );
     $("help").onclick = () => this.showHelp();
     $("settings").onclick = () => this.showSettings();
-    $("online").onclick = () => this.pickLoadout(() => this.showOnline());
+    $("online").onclick = () => void this.prepareEntry(true, () => this.showOnline());
     $("close-dialog").onclick = () => {
       if (!this.busy) this.dismissDialog();
     };
@@ -1565,6 +1545,7 @@ class Game {
     const url = new URL("/", location.origin);
     if (this.countySelected) url.searchParams.set("mode", "county");
     else if (this.archive) url.searchParams.set("level", "city");
+    else url.searchParams.set("mode", "rust");
     location.assign(url.href);
   }
   async refreshLobbies() {
@@ -1716,16 +1697,17 @@ class Game {
       ["Tab / Esc", "Scoreboard / pause"],
     ];
     this.showDialog(
-      `<h2>Controls</h2><div class="help-grid">${controls.map(([key, action]) => `<kbd>${key}</kbd><span>${action}</span>`).join("")}</div>${county ? "<p>Civilians give you space. Threaten one in view and witnesses run and call the county police. More reported trouble brings backup. Break line of sight and stay hidden until the search ends.</p>" : ""}<button id="help-done" class="secondary-button">Back</button>`,
+      `<h2>Controls</h2><div class="help-grid">${controls.map(([key, action]) => `<kbd>${key}</kbd><span>${action}</span>`).join("")}</div>${county ? "<p>Notoriety starts at zero. Above 30% citizens may shove or cut you off, above 50% they fight, and above 75% they may shoot or ram.</p>" : ""}<button id="help-done" class="secondary-button">Back</button>`,
       back,
     );
     $("help-done").onclick = back;
   }
   showSettings(paused = false) {
     this.showDialog(
-      `<h2>Settings</h2><label for="ui-theme">Appearance</label><select id="ui-theme"><option value="system">Use system setting</option><option value="light">Light</option><option value="dark">Dark</option></select><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label><button id="settings-done" class="primary-button">Done</button>`,
+      `<h2>Settings</h2><label for="ui-theme">Appearance</label><select id="ui-theme"><option value="system">Use system setting</option><option value="light">Light</option><option value="dark">Dark</option></select><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label>${this.countySelected ? '<button id="settings-account" class="secondary-button">Player account</button>' : ""}<button id="settings-done" class="primary-button">Done</button>`,
       () => (paused ? this.showPause() : this.closeDialog()),
     );
+    if (this.countySelected) $("settings-account").onclick = () => $("player-account").click();
     const theme = $<HTMLSelectElement>("ui-theme");
     theme.value = ["light", "dark"].includes(settings.theme)
       ? settings.theme
@@ -1851,7 +1833,6 @@ class Game {
     this.player.pitch = player.pitch ?? this.player.pitch;
     this.combat.hp = player.hp;
     this.notoriety = player.notoriety ?? 0;
-    this.wanted = player.wanted;
     this.combat.kills = player.kills;
     this.combat.score = player.kills * 100;
     this.combat.mags = m.mags || player.mags;
@@ -1859,7 +1840,7 @@ class Game {
       0,
       (m.reloadRemaining ?? player.reloadRemaining ?? 0) / 1000,
     );
-    this.loadout = readLoadout(player.loadout) ?? this.loadout;
+    this.loadout = readLoadout(player.loadout);
     this.combat.owned = inventory(
       readLoadout(player.loadout),
       this.seed === COUNTY,
@@ -1976,7 +1957,6 @@ class Game {
         if (me.hp <= 0 && this.state === "paused" && $("kit-form"))
           this.finish();
         this.notoriety = me.notoriety ?? 0;
-        this.wanted = me.wanted;
         this.combat.kills = me.kills;
         this.combat.score = me.kills * 100;
       }
@@ -2053,9 +2033,8 @@ class Game {
       this.combat.cancelPunch();
       this.player.reset(m.p);
       this.notoriety = 0;
-      this.wanted = undefined;
       this.combat.hp = 100;
-      this.loadout = readLoadout(m.loadout) ?? this.loadout;
+      this.loadout = readLoadout(m.loadout);
       Object.assign(
         this.combat,
         inventory(readLoadout(m.loadout), this.seed === COUNTY),
@@ -2583,7 +2562,6 @@ class Game {
     for (const state of states) {
       if (state.id === this.network.id && this.mode === "online") continue;
       const civil = state.id.startsWith("civilian-");
-      const police = state.id.startsWith("police-");
       let model = this.remotes.get(state.id);
       const nearby =
         !state.npc ||
@@ -2595,15 +2573,9 @@ class Game {
       }
       if (!model) {
         model = new Doodle(
-          police
-            ? "#17395c"
-            : civil
-              ? "#446e95"
-              : state.npc
-                ? "#d23c45"
-                : "#347a75",
-          police ? "POLICE" : state.npc ? undefined : state.name,
-          police ? "police" : civil ? "civilian" : undefined,
+          civil ? "#446e95" : state.npc ? "#d23c45" : "#347a75",
+          state.npc ? undefined : state.name,
+          civil ? "civilian" : undefined,
         );
         model.group.position.fromArray(state.p);
         this.render.scene.add(model.group);
@@ -2634,7 +2606,7 @@ class Game {
         dz = target.z - model.group.position.z;
       if (dist > 6) model.group.position.copy(target);
       else model.group.position.lerp(target, 1 - Math.exp(-dt * 35));
-      if (civil || police) {
+      if (civil) {
         model.setCivilianAction(state.action ?? "idle");
         if (state.fall && this.lastFall.get(model) !== state.fall.at) {
           const age = Math.max(0, (now - state.fall.at) / 1000);
@@ -2727,15 +2699,6 @@ class Game {
           ]);
         } else rope.visible = false;
       } else if (rope) rope.visible = false;
-    }
-    if (this.citizens) {
-      for (const [id, model] of this.remotes) {
-        if (id.startsWith("police-") && !states.some((a) => a.id === id)) {
-          this.ragdolls?.remove(model);
-          model.dispose();
-          this.remotes.delete(id);
-        }
-      }
     }
     this.ragdolls?.update(dt, cam.position);
     for (const [id, line] of this.remoteRopes)
@@ -2934,9 +2897,9 @@ class Game {
     $("notoriety").hidden =
       this.seed !== COUNTY || (this.mode === "online" && this.network.duel);
     if (this.seed === COUNTY) {
-      const stars = this.wanted?.stars ?? 0;
-      $("wanted-stars").textContent = "★".repeat(stars) + "☆".repeat(3 - stars);
-      $("wanted-stars").setAttribute("aria-label", stars + " of 3 stars");
+      const n = Math.ceil(this.notoriety);
+      $("notoriety-number").textContent = n + "%";
+      $<HTMLProgressElement>("notoriety-bar").value = this.notoriety;
     }
     $("wave-status").textContent = wave
       ? wave.nextIn > 0
@@ -2982,7 +2945,7 @@ class Game {
               ? "RELOADING…"
               : c.mags[c.weapon] === 0
                 ? "EMPTY · R TO RELOAD"
-                : gun.tag + " · R RELOAD";
+                : `${String(c.weapon + 1).padStart(2, "0")} / ${gun.tag.toUpperCase()} · R RELOAD`;
     $("score").textContent = String(c.score).padStart(4, "0");
     $("timer").textContent = timeLabel(this.elapsed);
     $("hook-fill").style.width = p.stamina * 100 + "%";

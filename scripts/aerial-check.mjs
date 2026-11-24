@@ -15,7 +15,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 950 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
-  await page.goto("http://127.0.0.1:5177");
+  await page.goto("http://127.0.0.1:5177/?mode=rust");
   await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 90000 });
   await page.locator("#roam-mode").click();

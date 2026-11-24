@@ -33,7 +33,7 @@ import {
   label,
   disposeGroup,
 } from "./render.ts";
-import type { CountyAction } from "./county-citizens.ts";
+export type CivilianAction = "idle" | "shove" | "melee" | "shoot";
 export class Doodle {
   group = new T.Group();
   pelvis = new T.Bone();
@@ -65,12 +65,12 @@ export class Doodle {
   private forwardWeight = 1;
   private sideWeight = 0;
   private ready = 0;
-  private civilianAction: CountyAction = "idle";
+  private civilianAction: CivilianAction = "idle";
   private gestureTime = 0;
   constructor(
     public color = RED,
     name?: string,
-    readonly role: "combatant" | "civilian" | "police" = "combatant",
+    readonly role: "combatant" | "civilian" = "combatant",
   ) {
     // Simple paper figures with a clear front silhouette and readable limbs.
     const paper = new T.MeshBasicMaterial({
@@ -106,11 +106,7 @@ export class Doodle {
       0,
     );
     torso.scale.z = 0.65;
-    if (role === "police") {
-      torso.material = dark;
-      const badge = new T.MeshBasicMaterial({ color: "#f3bf4e" });
-      shape(new T.CircleGeometry(0.055, 5), badge, torso, 0.1, 0.12, 0.26);
-    } else if (role === "civilian") {
+    if (role === "civilian") {
       torso.material = cloth;
       outlinedBox(
         [0.095, 0.08, 0.035],
@@ -148,23 +144,6 @@ export class Doodle {
     );
     outline.scale.setScalar(1.035);
     helmet.add(outline);
-    if (role === "police") {
-      shape(
-        new T.CylinderGeometry(0.258, 0.275, 0.12, 12),
-        dark,
-        this.head,
-        0,
-        0.19,
-        0,
-      );
-      outlinedBox(
-        [0.32, 0.035, 0.17],
-        [0, 0.135, 0.22],
-        dark,
-        this.head,
-        color,
-      );
-    }
     if (role === "civilian") {
       for (const x of [-0.095, 0.095])
         shape(
@@ -253,7 +232,7 @@ export class Doodle {
     muzzle.name = "muzzle";
     muzzle.position.set(0, 0.015, 0.525);
     this.aimRig.add(muzzle);
-    this.aimRig.visible = role === "combatant";
+    this.aimRig.visible = role !== "civilian";
     this.group.add(this.aimRig);
     // Pelvis -> spine -> head/shoulders, with independent leg chains.
     this.pelvis.name = "pelvis";
@@ -279,18 +258,17 @@ export class Doodle {
       this.group.add(this.nameLabel);
     }
   }
-  setCivilianAction(action: CountyAction) {
-    if (this.role === "combatant") return;
+  setCivilianAction(action: CivilianAction) {
+    if (this.role !== "civilian") return;
     if (action !== this.civilianAction) this.gestureTime = 0;
     this.civilianAction = action;
-    this.aimRig.visible = this.role === "police" && action === "shoot";
+    this.aimRig.visible = action === "shoot";
   }
   finishCarFall(dead: boolean) {
     this.fallTime = dead ? 1 : 0;
     if (dead) this.group.visible = false;
     this.aimRig.visible =
-      this.role === "combatant" ||
-      (this.role === "police" && this.civilianAction === "shoot");
+      this.role !== "civilian" || this.civilianAction === "shoot";
   }
   react(region: HitRegion = "body", side = 1, damage = 25) {
     this.impactRegion = region;
@@ -449,21 +427,18 @@ export class Doodle {
         );
         if (side === 1) this.spine.rotation.y += pose.twist;
       }
-    } else if (this.role !== "combatant" && !this.aimRig.visible) {
+    } else if (this.role === "civilian" && this.civilianAction !== "shoot") {
       this.gestureTime += step;
+      // A shove extends both hands together. A punch extends the lead hand while the rear hand guards the chest.
       const drive = Math.sin(Math.min(1, this.gestureTime / 0.46) * Math.PI);
-      const punching = this.civilianAction === "melee";
+      const shoving = this.civilianAction === "shove",
+        punching = this.civilianAction === "melee";
       for (const [arm, elbow, side] of [
         [this.leftArm, this.leftElbow, -1],
         [this.rightArm, this.rightElbow, 1],
       ] as const) {
-        if (this.civilianAction === "calling" && side === 1) {
-          arm.rotation.set(-0.8, 0, 0.28);
-          elbow.rotation.set(-2.1, 0, 0);
-          continue;
-        }
-        const reach = punching && side === 1 ? drive : 0;
-        const guard = punching ? 1 : 0;
+        const reach = shoving || (punching && side === 1) ? drive : 0;
+        const guard = shoving || punching ? 1 : 0;
         arm.rotation.set(
           -0.13 -
             guard * 0.65 -
@@ -555,8 +530,8 @@ export function buildWeapon(id: number, county = false) {
   const index = WEAPONS[id].model;
   const g = new T.Group();
   g.name = "weapon-no-hands";
-  const paper = inkMaterial(INK, 0, true),
-    dark = inkMaterial(INK, 0.45, true);
+  const paper = inkMaterial(INK, county ? 0.08 : 0, true),
+    dark = inkMaterial(INK, county ? 0.16 : 0.45, true);
   if (county) {
     paper.uniforms.uInk.value.set("#253749");
     paper.uniforms.uPaper.value.set(
@@ -579,7 +554,7 @@ export function buildWeapon(id: number, county = false) {
   ) => {
     const geo = new T.CylinderGeometry(radius, radius, length, 10);
     geo.rotateX(Math.PI / 2);
-    const mesh = new T.Mesh(geo, paper);
+    const mesh = new T.Mesh(geo, county ? dark : paper);
     mesh.position.set(x, y, z);
     mesh.add(
       new T.LineSegments(
