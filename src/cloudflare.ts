@@ -6,10 +6,6 @@ import {
   type StoreCommand,
 } from "../server/player-store.ts";
 
-interface Env {
-  GAME: DurableObjectNamespace<GameContainer>;
-}
-
 const PORT = 4173;
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
 
@@ -18,7 +14,9 @@ export class PlayerDatabase extends WorkerEntrypoint<Env> {
   async fetch(request: Request) {
     const command = await request.json<StoreCommand>();
     const result =
-      await this.env.GAME.getByName("player-database").playerCommand(command);
+      await this.ctx.exports.GameContainer.getByName(
+        "player-database",
+      ).playerCommand(command);
     return Response.json(result);
   }
 }
@@ -110,7 +108,9 @@ export class GameContainer extends DurableObject<Env> {
 }
 
 export default {
-  fetch(_request: Request, env: Env): Promise<Response> {
-    return env.GAME.getByName("shared-game-server").fetch(_request);
+  fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {
+    return ctx.exports.GameContainer.getByName("shared-game-server").fetch(
+      request,
+    );
   },
 } satisfies ExportedHandler<Env>;

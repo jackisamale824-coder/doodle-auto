@@ -3,8 +3,10 @@ const element = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const time = (seconds: number) =>
   seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
+const count = (n: number, singular: string, plural = singular + "s") =>
+  `${n} ${n === 1 ? singular : plural}`;
 const totals = (s: Totals) =>
-  `${s.sessions} sessions · ${s.kills} kills · ${s.deaths} deaths · ${time(s.seconds)} played`;
+  `${count(s.sessions, "session")} · ${count(s.kills, "kill")} · ${count(s.deaths, "death")} · ${time(s.seconds)} played`;
 
 export function bindPlayerAccount() {
   const dialog = element<HTMLDialogElement>("player-dialog"),
@@ -47,7 +49,7 @@ export function bindPlayerAccount() {
     }
     element("player-title").textContent = profile.name;
     element("player-rating").textContent =
-      `${profile.rating} Elo · ${profile.wins} ranked wins · ${profile.losses} losses`;
+      `${profile.rating} Elo · ${count(profile.wins, "ranked win")} · ${count(profile.losses, "loss", "losses")}`;
     status.textContent =
       "Elo counts completed first-to-15 Duels between two signed-in players.";
     element("player-lifetime").textContent = totals(profile.lifetime);
