@@ -16,9 +16,16 @@ const titles = new Map([
   ["https://drive-mad.sully6.com/", "Drive Mad"],
   ["https://pool.sully6.com/", "Side Pocket"],
 ]);
-assert.deepEqual(new Set(hosts), new Set(titles.keys()));
+const viceCity = "https://vice-city.sully6.com/";
+assert.deepEqual(new Set(hosts), new Set([...titles.keys(), viceCity]));
 await Promise.all(hosts.map(async host => {
   assert.ok(live.includes(`href="${host}"`), `Missing tile for ${host}`);
+  if (host === viceCity) {
+    const response = await fetch(host + now, { redirect: "manual", signal: AbortSignal.timeout(12000) });
+    assert.equal(response.status, 302, host);
+    assert.equal(response.headers.get("location"), "https://quenq.com/apps/vice-city/");
+    return;
+  }
   assert.ok((await html(host + now)).includes("<title>" + titles.get(host)), `Wrong game at ${host}`);
 }));
 console.log("Verified the arcade and", hosts.length, "public game hosts.");
