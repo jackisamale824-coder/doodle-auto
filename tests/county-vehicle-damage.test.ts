@@ -67,7 +67,7 @@ test("County broadcasts the struck part, restores damage to a joining player and
   try {
     rooms.vehicleModel = await loadCountyFleet("public");
     const a = await connect();
-    a.send({ type: "duel", seed: COUNTY });
+    a.send({ type: "duel", name: "Driver", seed: COUNTY });
     const { code } = await a.wait("welcome");
     const room = rooms.rooms.get(code)!;
     const [attacker] = room.players.values();
@@ -80,7 +80,7 @@ test("County broadcasts the struck part, restores damage to a joining player and
     a.send({ type: "fire" });
     assert.equal((await a.wait("vehicle-impact")).part, 1);
     const b = await connect();
-    b.send({ type: "join", code });
+    b.send({ type: "join", name: "Passenger", code });
     await b.wait("welcome");
     assert.equal((await b.wait("snapshot", (m) => !!m.cars)).cars[0].damage, 1);
     const victim = [...room.players.values()][1];

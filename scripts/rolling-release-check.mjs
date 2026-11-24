@@ -227,6 +227,7 @@ try {
       const admission = await allocation(workerId, "create", { seed: "rust" });
       const context = await browser.newContext();
       await context.addInitScript((value) => {
+        sessionStorage.setItem("dc.sessionNickname", "Rehearsal");
         if (!sessionStorage.getItem("dc.session"))
           sessionStorage.setItem("dc.pendingAdmission", JSON.stringify(value));
       }, admission);

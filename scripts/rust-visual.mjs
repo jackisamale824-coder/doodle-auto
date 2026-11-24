@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({
@@ -14,6 +15,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto(process.env.GAME_URL || "http://127.0.0.1:5181");
+  await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 90000 });
   await page.screenshot({ path: "output/playwright/rust-menu.png" });
   await page.locator("#roam-mode").click();

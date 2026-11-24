@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { mkdir, writeFile, copyFile } from "node:fs/promises";
@@ -53,6 +54,14 @@ try {
   await page.goto(process.env.GAME_URL || "http://127.0.0.1:4173", {
     waitUntil: "networkidle",
   });
+  const gate = page.locator("#session-dialog");
+  await gate.waitFor({ timeout: 90000 });
+  await page.keyboard.press("Escape");
+  await page.getByLabel("Guest nickname").fill("   ");
+  await page.getByRole("button", { name: "Play as guest" }).click();
+  assert.ok(await gate.isVisible());
+  assert.ok(await page.locator("#menu").isHidden());
+  await enterGuest(page, "Bluebird");
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await snap("01-menu");
   mark("Main menu renders the procedural 3D city");
@@ -269,7 +278,6 @@ try {
   await page.locator("#main-menu").click();
   await page.locator("#online").click();
   await page.locator("#equip-kit").click();
-  await page.locator("#player-name").fill("Bluebird");
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
   const code = await get(() => window.__doodles.network.code);
@@ -284,10 +292,10 @@ try {
   await second.goto(process.env.GAME_URL || "http://127.0.0.1:4173", {
     waitUntil: "networkidle",
   });
+  await enterGuest(second, "Marginalia");
   await second.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await second.locator("#online").click();
   await second.locator("#equip-kit").click();
-  await second.locator("#player-name").fill("Marginalia");
   await second.locator("#room-input").fill(code);
   await second.locator("#join-room").click();
   await second.waitForSelector("#hud:not(.hidden)", { timeout: 30000 });
@@ -325,6 +333,10 @@ try {
   );
   assert.ok(remoteZ < start - 3);
   await page.keyboard.down("Tab");
+  await page.locator("#board tbody tr").filter({ hasText: "Bluebird (you)" }).waitFor();
+  const guestRow = page.locator("#board tbody tr").filter({ hasText: "Marginalia" });
+  assert.match(await guestRow.innerText(), /Guest/);
+  assert.equal(await guestRow.locator("td").last().innerText(), "—");
   await snap("09-multiplayer");
   await page.keyboard.up("Tab");
   mark(

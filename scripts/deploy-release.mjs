@@ -105,6 +105,7 @@ async function canary(releaseId, workerId) {
         failures.push(`Asset ${response.status()}: ${response.url()}`);
     });
     await page.addInitScript((admission) => {
+      sessionStorage.setItem("dc.sessionNickname", "Release canary");
       sessionStorage.setItem("dc.pendingAdmission", JSON.stringify(admission));
       const NativeSocket = window.WebSocket;
       window.WebSocket = class extends NativeSocket {

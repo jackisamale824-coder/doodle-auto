@@ -1,5 +1,6 @@
 import type { Profile, Totals } from "../server/player-store.ts";
 import { loadGoogleIdentity } from "./google-sign-in.ts";
+import { sessionName } from "./session-name.ts";
 const element = <T extends HTMLElement = HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const time = (seconds: number) =>
@@ -10,6 +11,37 @@ const totals = (s: Totals) =>
   `${count(s.sessions, "session")} · ${count(s.kills, "kill")} · ${count(s.deaths, "death")} · ${time(s.seconds)} played`;
 
 export function bindPlayerAccount() {
+  const gate = element<HTMLDialogElement>("session-dialog");
+  const nickname = element<HTMLInputElement>("session-nickname");
+  let guest = "";
+  let account: Pick<Profile, "name" | "rating"> | null = null;
+  try {
+    guest = sessionName(sessionStorage.getItem("dc.sessionNickname"));
+  } catch {
+    /* Keep the nickname in memory when storage is unavailable. */
+  }
+  function setGuest(name: string) {
+    guest = name;
+    try {
+      if (name) sessionStorage.setItem("dc.sessionNickname", name);
+      else sessionStorage.removeItem("dc.sessionNickname");
+    } catch {
+      /* The current page still has its session name. */
+    }
+  }
+  gate.addEventListener("cancel", (event) => event.preventDefault());
+  nickname.oninput = () => nickname.setCustomValidity("");
+  element<HTMLFormElement>("nickname-form").onsubmit = (event) => {
+    event.preventDefault();
+    const name = sessionName(nickname.value);
+    if (!name) {
+      nickname.setCustomValidity("Enter a nickname to play.");
+      nickname.reportValidity();
+      return;
+    }
+    setGuest(name);
+    gate.close();
+  };
   const dialog = element<HTMLDialogElement>("player-dialog"),
     form = element<HTMLFormElement>("player-form"),
     password = element<HTMLInputElement>("player-password"),
@@ -73,6 +105,25 @@ export function bindPlayerAccount() {
       ? "Choose a username and a password of at least 10 characters."
       : "Log in to track your multiplayer sessions.";
   }
+  async function readProfile(): Promise<{
+    profile: Profile | null;
+    googleEnabled: boolean;
+  }> {
+    const response = await fetch("/api/player/profile", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok)
+      throw Error(
+        "Couldn’t load your profile. Reopen Player account to retry.",
+      );
+    return response.json();
+  }
+  function setAccount(profile: Profile | null) {
+    account = profile && { name: profile.name, rating: profile.rating };
+    menu.textContent = profile ? "My stats" : "Player account";
+    if (profile) setGuest("");
+  }
   async function refresh() {
     const current = ++generation;
     for (const id of ["google-login", "google-link-button"]) {
@@ -80,22 +131,23 @@ export function bindPlayerAccount() {
       target.hidden = true;
       target.replaceChildren();
     }
-    const response = await fetch("/api/player/profile", { cache: "no-store" });
-    if (!response.ok)
-      throw Error(
-        "Couldn’t load your profile. Reopen Player account to retry.",
-      );
-    const {
-      profile,
-      googleEnabled,
-    }: { profile: Profile | null; googleEnabled: boolean } =
-      await response.json();
+    const { profile, googleEnabled } = await readProfile();
     if (current !== generation || !dialog.open) return;
     link.hidden = !profile || !googleEnabled || profile.googleLinked;
     element("google-linked").hidden = !profile?.googleLinked;
     form.hidden = !!profile;
     element("player-stats").hidden = !profile;
-    menu.textContent = profile ? "My stats" : "Player account";
+    setAccount(profile);
+    if (profile && gate.open) {
+      dialog.close();
+      gate.close();
+      return;
+    }
+    if (!profile && !guest && !gate.open) {
+      dialog.close();
+      gate.showModal();
+      return;
+    }
     if (!profile) {
       setMode(false);
       if (googleEnabled) void googleButton("login", current);
@@ -137,7 +189,12 @@ export function bindPlayerAccount() {
       if (!response.ok)
         throw Error((await response.json()).error || "Please try again.");
       password.value = "";
-      await refresh();
+      if (action === "logout") {
+        setAccount(null);
+        dialog.close();
+        nickname.value = "";
+        gate.showModal();
+      } else await refresh();
     } catch (e) {
       showError(e);
     } finally {
@@ -151,7 +208,13 @@ export function bindPlayerAccount() {
     dialog.showModal();
     void refresh().catch(showError);
   };
-  element("player-close").onclick = () => dialog.close();
+  element("session-login").onclick = () => menu.click();
+  element("player-close").onclick = () => {
+    if (!busy) dialog.close();
+  };
+  dialog.addEventListener("cancel", (event) => {
+    if (busy) event.preventDefault();
+  });
   dialog.addEventListener("close", () => {
     generation++;
     password.value = "";
@@ -169,4 +232,29 @@ export function bindPlayerAccount() {
   };
   toggle.onclick = () => setMode(!register);
   logout.onclick = () => void post("logout");
+  return {
+    get name() {
+      return account?.name ?? guest;
+    },
+    get rating() {
+      return account?.rating;
+    },
+    updateRating(name: string, rating?: number) {
+      if (account && account.name === name && rating !== undefined)
+        account.rating = rating;
+    },
+    async enter() {
+      try {
+        setAccount((await readProfile()).profile);
+      } catch {
+        /* Guests can play while the account service is unavailable. */
+      }
+      if (account || guest) return;
+      const entered = new Promise<void>((resolve) =>
+        gate.addEventListener("close", () => resolve(), { once: true }),
+      );
+      gate.showModal();
+      await entered;
+    },
+  };
 }

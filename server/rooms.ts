@@ -54,6 +54,7 @@ import { actorHit, HIT_MULTIPLIER, type HitRegion } from "../src/actor-hit.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
 import { Admissions } from "./admission.ts";
+import { sessionName } from "../src/session-name.ts";
 import { Sessions } from "./sessions.ts";
 import { throwGrenade, type GrenadeEffect } from "../src/grenades.ts";
 import type { PlayMetrics } from "./play-metrics.ts";
@@ -63,6 +64,7 @@ import { generateCity, distance, type City, type V3 } from "../src/world.ts";
 export interface PlayerState {
   id: string;
   name: string;
+  rating?: number;
   p: V3;
   yaw: number;
   pitch: number;
@@ -830,6 +832,7 @@ export class Rooms {
         players: [...humans, ...r.npcs].map((p) => ({
           id: p.id,
           name: p.name,
+          rating: p.rating,
           p: p.p.map((v) => Math.round(v * 1000) / 1000),
           yaw: Math.round(p.yaw * 10000) / 10000,
           pitch: Math.round(p.pitch * 10000) / 10000,
@@ -937,7 +940,7 @@ export class Rooms {
       if (r.duel && !r.duelFinished && attacker.kills >= 15) {
         r.duelFinished = true;
         if (r.duelEntrants === 2 && r.players.size === 2 && victim !== attacker)
-          this.metrics?.finish(r.roomId,attacker,victim);
+          this.metrics?.finish(r.roomId, attacker, victim, () => this.roster(r));
       }
       void this.metrics?.flush();
       this.broadcast(r, {
@@ -955,6 +958,7 @@ export class Rooms {
       actors: [...r.players.values(), ...r.npcs].map((p) => ({
         id: p.id,
         name: p.name,
+        rating: p.rating,
         npc: !!p.npc,
       })),
     });
@@ -1129,6 +1133,12 @@ export class Rooms {
       m.type === "duel"
     ) {
       if (this.memberships.has(ws)) return;
+      const identity = this.metrics?.identities.get(ws);
+      const name = identity?.name ?? sessionName(m.name);
+      if (!name) {
+        send(ws, { type: "error", message: "Enter a nickname or sign in to play." });
+        return;
+      }
       if (Date.now() - (this.lastJoin.get(ws) ?? 0) < 3000) {
         send(ws, {
           type: "error",
@@ -1236,9 +1246,8 @@ export class Rooms {
           : (readLoadout(m.loadout) ?? defaultLoadout);
       const p: PlayerState = {
         id: randomUUID(),
-        name: String(this.metrics?.identities.get(ws)?.name || m.name || "Runner")
-          .replace(/[<>\u0000-\u001f]/g, "")
-          .slice(0, 16),
+        name,
+        rating: identity?.rating,
         p: this.spawn(r, r.players.size),
         yaw: 0,
         pitch: 0,

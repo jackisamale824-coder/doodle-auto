@@ -19,7 +19,7 @@ test("County drivers advance only from timed, owned input; a real crash is broad
   ws.on("message", (raw) => messages.push(JSON.parse(String(raw))));
   try {
     await once(ws, "open");
-    ws.send(JSON.stringify({ type: "create", seed: COUNTY }));
+    ws.send(JSON.stringify({ type: "create", name: "Driver", seed: COUNTY }));
     const joinDeadline = Date.now() + 10000;
     while (!messages.some((m) => m.type === "welcome")) {
       assert.ok(Date.now() < joinDeadline, "timed out joining test room");

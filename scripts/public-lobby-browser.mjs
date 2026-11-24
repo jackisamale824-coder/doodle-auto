@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
@@ -21,11 +22,8 @@ async function player(name) {
   page.on("crash", () => console.error("RENDERER CRASH"));
   console.log("Opening", name);
   await page.goto(url);
+  await enterGuest(page, name);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
-  await page.evaluate(
-    (name) => localStorage.setItem("dc.name", JSON.stringify(name)),
-    name,
-  );
   assert.equal(
     await page.locator("#public-mode").getAttribute("aria-pressed"),
     "true",

@@ -142,6 +142,7 @@ class Game {
   countySelected =
     new URLSearchParams(location.search).get("mode") === "county";
   network = new Network(this.countySelected ? "county" : "dc");
+  private identity = bindPlayerAccount();
   cars: CountyCar[] = [];
   citizens?: CountyCitizens;
   countySpatial?: Spatial;
@@ -519,6 +520,7 @@ class Game {
   private feedUntil = 0;
   private buildVersion = 0;
   private busy = false;
+  private boardContent = "";
   private lookReady = 0;
   async init() {
     if (new URLSearchParams(location.search).get("level") === "city")
@@ -548,6 +550,8 @@ class Game {
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
+    $("loading").classList.add("hidden");
+    await this.identity.enter();
     try {
       const restored = await this.network.bootstrap();
       if (restored) {
@@ -1219,7 +1223,6 @@ class Game {
       : "";
   }
   bind() {
-    bindPlayerAccount();
     $<HTMLSelectElement>("map-picker").onchange = (event) => {
       const value = (event.currentTarget as HTMLSelectElement).value;
       $("menu").classList.add("hidden");
@@ -1479,6 +1482,10 @@ class Game {
       (e) => {
         if (this.state === "play" && !this.quickInventory.open) {
           e.preventDefault();
+          if (this.keys.has("Tab")) {
+            $("board").scrollTop += e.deltaY;
+            return;
+          }
           const owned = this.combat.owned;
           const next =
             owned.indexOf(this.combat.weapon) + (e.deltaY > 0 ? 1 : -1);
@@ -1603,7 +1610,7 @@ class Game {
     try {
       const welcome = await this.network.connect(
         code ? "join" : mode,
-        String(safeRead("dc.name", "Runner")),
+        this.identity.name,
         this.countySelected ? COUNTY : "",
         code ?? "",
         this.loadout,
@@ -1716,7 +1723,7 @@ class Game {
   }
   showOnline() {
     this.showDialog(
-      `<h2>Private room</h2><label for="player-name">Your name</label><input id="player-name" maxlength="16" value="${escape(safeRead("dc.name", "Runner"))}"><form id="room-form"><label for="room-input">Room code</label><div class="code-entry"><input id="room-input" maxlength="5" placeholder="ABCDE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="join-room" class="primary-button">Join room</button></div></form><div class="room-divider">or</div><button id="create-room" class="secondary-button">Create a new room</button><p id="network-error" class="error" role="status"></p>`,
+      `<h2>Private room</h2><p>Playing as <b>${escape(this.identity.name)}</b></p><form id="room-form"><label for="room-input">Room code</label><div class="code-entry"><input id="room-input" maxlength="5" placeholder="ABCDE" autocapitalize="characters" autocomplete="off" spellcheck="false"><button id="join-room" class="primary-button">Join room</button></div></form><div class="room-divider">or</div><button id="create-room" class="secondary-button">Create a new room</button><p id="network-error" class="error" role="status"></p>`,
     );
     $("create-room").onclick = () => void this.join("create");
     $("room-form").onsubmit = (e) => {
@@ -1725,8 +1732,7 @@ class Game {
     };
   }
   async join(type: "create" | "join") {
-    const name = $<HTMLInputElement>("player-name").value.trim() || "Runner",
-      code = $<HTMLInputElement>("room-input").value.trim();
+    const code = $<HTMLInputElement>("room-input").value.trim();
     if (this.busy) return;
     if (type === "join" && !/^[a-z0-9]{5}$/i.test(code)) {
       $("network-error").textContent = "Enter the five-character room code.";
@@ -1734,14 +1740,13 @@ class Game {
       return;
     }
     this.busy = true;
-    localStorage.setItem("dc.name", JSON.stringify(name));
     $<HTMLButtonElement>("create-room").disabled = true;
     $<HTMLButtonElement>("join-room").disabled = true;
     $("network-error").textContent = "Drawing a shared district…";
     try {
       const welcome = await this.network.connect(
         type,
-        name,
+        this.identity.name,
         $<HTMLInputElement>("seed").value || "notebook",
         code,
         this.loadout,
@@ -1931,6 +1936,7 @@ class Game {
     if (m.type === "snapshot" && this.mode === "online") {
       const me = m.players.find((p: any) => p.id === this.network.id);
       if (me) {
+        this.identity.updateRating(me.name, me.rating);
         if (me.hp < this.combat.hp) this.combat.hurt = 0.8;
         if (me.reaction) this.selfReaction = me.reaction;
         this.combat.hp = me.hp;
@@ -2988,19 +2994,51 @@ class Game {
       })
       .join("");
     const board = $("board");
-    board.classList.toggle("hidden", !this.keys.has("Tab"));
-    if (this.keys.has("Tab"))
-      board.innerHTML =
-        this.mode === "online"
-          ? `<h2>Rooftop roll call</h2>${this.network.players
-              .filter((p) => this.seed !== COUNTY || !p.npc)
-              .sort((a, b) => b.kills - a.kills)
-              .map(
-                (r) =>
-                  `<div class="row"><span>${escape(r.name)}${r.id === this.network.id ? " (you)" : ""}</span><b>${r.kills} / ${r.deaths}</b></div>`,
-              )
-              .join("")}`
-          : `<h2>Your field notes</h2><div class="row"><span>Rivals erased</span><b>${c.kills}</b></div>${this.seed === COUNTY ? `<div class="row"><span>Notoriety</span><b>${Math.ceil(this.notoriety)}%</b></div>` : `<div class="row"><span>Rooftop marks</span><b>${this.collected.size} / 3</b></div>`}<div class="row"><span>Distance travelled</span><b>${Math.round(p.travel)} m</b></div><div class="row"><span>${this.city.arena ? "Vaults" : "Vaults / hooks"}</span><b>${this.city.arena ? p.vaults : `${p.vaults} / ${p.hooks}`}</b></div><div class="row"><span>Frame rate</span><b>${this.fps} fps</b></div>`;
+    const visible = this.keys.has("Tab");
+    board.classList.toggle("hidden", !visible);
+    if (!visible) return;
+    const content = this.sessionBoard();
+    if (content !== this.boardContent) {
+      board.innerHTML = content;
+      this.boardContent = content;
+    }
+  }
+  private sessionBoard() {
+    const title = "<h2>Session scoreboard</h2>";
+    if (this.mode === "online") {
+      const network = this.network;
+      const mode = network.duel ? "Duel" : network.public ? "Public game" : "Private room";
+      const rows = network.players
+        .filter((p) => this.seed !== COUNTY || !p.npc)
+        .sort((a, b) => Number(!!a.npc) - Number(!!b.npc) || b.kills - a.kills)
+        .map((p) => {
+          const self = p.id === network.id;
+          const status = p.npc ? "NPC" : p.rating === undefined ? "Guest" : "Signed in";
+          return `<tr${self ? ' class="board-self"' : ""}>
+            <th scope="row">${escape(p.name)}${self ? " (you)" : ""}<small>${status}</small></th>
+            <td>${p.hp > 0 ? Math.ceil(p.hp) + " HP" : "Down"}</td>
+            <td>${p.kills}</td><td>${p.deaths}</td><td>${p.rating ?? "—"}</td>
+          </tr>`;
+        });
+      return `${title}<p class="board-mode">${mode} · ${escape(network.code)}</p>
+        <table><thead><tr><th>Player</th><th>Status</th><th>Kills</th><th>Deaths</th><th>Elo</th></tr></thead>
+        <tbody>${rows.join("")}</tbody></table>`;
+    }
+    const p = this.player;
+    const { name, rating } = this.identity;
+    const stats = [
+      ["Health", `${Math.ceil(this.combat.hp)} HP`],
+      ["Rivals erased", this.combat.kills],
+      this.seed === COUNTY
+        ? ["Notoriety", `${Math.ceil(this.notoriety)}%`]
+        : ["Rooftop marks", `${this.collected.size} / 3`],
+      ["Distance travelled", `${Math.round(p.travel)} m`],
+      this.city.arena ? ["Vaults", p.vaults] : ["Vaults / hooks", `${p.vaults} / ${p.hooks}`],
+      ["Frame rate", `${this.fps} fps`],
+    ];
+    return `${title}<p class="board-mode">${this.mode === "roam" ? "Free roam" : "District run"}</p>
+      <div class="row"><b>${escape(name)} (you)</b><span>${rating === undefined ? "Guest" : `Signed in · ${rating} Elo`}</span></div>
+      ${stats.map(([label, value]) => `<div class="row"><span>${label}</span><b>${value}</b></div>`).join("")}`;
   }
   loop(now: number) {
     const frameSeconds = (now - this.previous) / 1000;

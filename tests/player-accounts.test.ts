@@ -75,12 +75,16 @@ test("authenticated duel records sessions, totals and exactly one paired Elo cha
     const [winner, loser] = [...room.players.values()];
     assert.equal(winner.name, "Alpha");
     assert.equal(loser.name, "Bravo");
+    assert.equal(winner.rating, 1000);
+    assert.equal(loser.rating, 1000);
     for (let i = 0; i < 15; i++) {
       loser.hp = 100;
       loser.shieldUntil = 0;
       rooms.hurt(room, loser, winner, 100);
     }
     await metrics.flush();
+    assert.equal(winner.rating, 1016);
+    assert.equal(loser.rating, 984);
     const profile = async (cookie: string) =>
       (
         await (

@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import { WebSocket } from "ws";
 import assert from "node:assert/strict";
@@ -19,6 +20,7 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(url);
+  await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.waitForSelector("#duel:not(.hidden)");
   assert.equal(await page.locator("#play").innerText(), "Join public game");

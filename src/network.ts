@@ -13,6 +13,7 @@ export interface RemoteState {
   action?: "idle" | "shove" | "melee" | "shoot";
   id: string;
   name: string;
+  rating?: number;
   p: V3;
   yaw: number;
   pitch: number;
@@ -49,7 +50,7 @@ export class Network {
   }
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   private rosterRevision?: number;
-  private roster: { id: string; name: string; npc: boolean }[] = [];
+  private roster: Pick<RemoteState, "id" | "name" | "npc" | "rating">[] = [];
   private samples = new Map<
     string,
     { p: V3; v: V3; time: number; serverTime: number }

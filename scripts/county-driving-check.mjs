@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
@@ -21,6 +22,7 @@ try {
     viewport: { width: 1280, height: 720 },
   });
   await page.goto(new URL("/?mode=county", origin).href);
+  await enterGuest(page);
   await page.waitForFunction(() => window.__doodles?.state === "menu");
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();

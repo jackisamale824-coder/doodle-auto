@@ -9,7 +9,10 @@ export class PlayMetrics {
   readonly identities = new WeakMap<object, Identity>();
   private sessions = new WeakMap<PlayerState, PlaySession>();
   private pending = new Map<string, PlaySession>();
-  private results = new Map<string, DuelResult>();
+  private results = new Map<
+    string,
+    { result: DuelResult; rated: (ratings: Record<string, number>) => void }
+  >();
   private flushing?: Promise<void>;
   constructor(private store: PlayerStore) {}
   join(socket: object, player: PlayerState, mode: string, map: string) {
@@ -38,13 +41,25 @@ export class PlayMetrics {
     });
     this.pending.set(session.id, { ...session });
   }
-  finish(room: string, winner: PlayerState, loser: PlayerState) {
+  finish(
+    room: string,
+    winner: PlayerState,
+    loser: PlayerState,
+    refreshRoster: () => void,
+  ) {
     const a = this.sessions.get(winner),
       b = this.sessions.get(loser);
     if (!a || !b || a.player === b.player) return;
     this.record(winner);
     this.record(loser);
-    this.results.set(room, { room, winner: a.id, loser: b.id });
+    this.results.set(room, {
+      result: { room, winner: a.id, loser: b.id },
+      rated: (ratings) => {
+        winner.rating = ratings[a.id];
+        loser.rating = ratings[b.id];
+        refreshRoster();
+      },
+    });
   }
   flush(): Promise<void> {
     if (this.flushing) return this.flushing;
@@ -58,14 +73,18 @@ export class PlayMetrics {
       const sessions = [...this.pending.values()],
         results = [...this.results.values()];
       try {
-        await this.store({ op: "metrics", batch: { sessions, results } });
+        const ratings = await this.store({
+          op: "metrics",
+          batch: { sessions, results: results.map((r) => r.result) },
+        });
+        if (ratings) for (const r of results) r.rated(ratings);
       } catch {
         console.error("Player metrics checkpoint failed; will retry.");
         return;
       }
       for (const s of sessions)
         if (this.pending.get(s.id) === s) this.pending.delete(s.id);
-      for (const r of results) this.results.delete(r.room);
+      for (const r of results) this.results.delete(r.result.room);
     }
   }
 }

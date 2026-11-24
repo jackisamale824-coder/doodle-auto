@@ -1,8 +1,10 @@
+import { enterGuest } from "./guest-session.mjs";
 import {chromium} from 'playwright';
 const browser=await chromium.launch({headless:true,args:['--no-sandbox','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
 try{
  const page=await browser.newPage({viewport:{width:1100,height:750}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('http://127.0.0.1:5199');await page.waitForSelector('#menu:not(.hidden)',{timeout:60000});
+ await page.goto('http://127.0.0.1:5199');
+  await enterGuest(page);await page.waitForSelector('#menu:not(.hidden)',{timeout:60000});
  await page.locator('#roam-mode').click();await page.locator('#play').click();await page.waitForFunction(()=>!!document.pointerLockElement);
  const results=await page.evaluate(()=>{
   const g=window.__doodles;g.state='paused';g.loop=()=>{};const results=[];

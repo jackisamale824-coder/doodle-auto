@@ -244,7 +244,7 @@ export class ReleaseManager {
       throw Error("Invalid match type");
     const input = {
       type,
-      name: String(req.name ?? "Runner").slice(0, 16),
+      name: typeof req.name === "string" ? req.name.slice(0, 16) : "",
       seed: String(req.seed ?? "paper").slice(0, 40),
       code: String(req.code ?? "").toUpperCase(),
       canaryWorker,

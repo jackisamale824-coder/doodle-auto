@@ -204,7 +204,7 @@ test("loading clients cannot fight until their first valid state, and reload com
   const rooms = new Rooms(wss),
     a = await connect((wss.address() as any).port);
   try {
-    a.ws.send(JSON.stringify({ type: "public", compact: true }));
+    a.ws.send(JSON.stringify({ type: "public", name: "Observer", compact: true }));
     const welcome = await until(() =>
       a.messages.find((m) => m.type === "welcome"),
     );
@@ -330,7 +330,7 @@ test("boarding keeps the parked pose across late walking packets and old driving
   const rooms = new Rooms(wss, generateLevel),
     a = await connect((wss.address() as any).port);
   try {
-    a.ws.send(JSON.stringify({ type: "public", seed: "switchback-county" }));
+    a.ws.send(JSON.stringify({ type: "public", name: "Observer", seed: "switchback-county" }));
     const welcome = await until(() =>
       a.messages.find((m) => m.type === "welcome"),
     );

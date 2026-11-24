@@ -1459,8 +1459,38 @@ dialog .secondary-button {
   flex-wrap: wrap;
 }
 #board {
-  max-height: 75vh;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(540px, 96vw);
+  max-height: 80vh;
   overflow-y: auto;
+  z-index: 3;
+}
+#board .board-mode {
+  margin: -8px 0 16px;
+  font-size: 13px;
+}
+#board table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+#board :is(td, th) {
+  padding: 6px 3px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+#board th:first-child {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+#board th small {
+  display: block;
+  font-weight: normal;
+}
+#board .board-self {
+  background: var(--line);
 }
 
 #air-charge {

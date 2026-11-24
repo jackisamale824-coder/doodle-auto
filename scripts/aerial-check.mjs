@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
@@ -15,6 +16,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto("http://127.0.0.1:5177");
+  await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 90000 });
   await page.locator("#roam-mode").click();
   await page.locator("#play").click();

@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
@@ -27,6 +28,7 @@ try {
   assert.equal((await (await fetch(url + "/health")).json()).ok, true);
   checks.push("Production health endpoint");
   await page.goto(url, { waitUntil: "networkidle" });
+  await enterGuest(page, "Bluebird");
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   assert.equal(await page.evaluate(() => typeof window.__doodles), "undefined");
   await page.screenshot({ path: "output/playwright/production-menu.png" });
@@ -63,7 +65,6 @@ try {
   await page.locator("#main-menu").click();
   await page.locator("#online").click();
   await page.locator("#equip-kit").click();
-  await page.locator("#player-name").fill("Bluebird");
   await page.locator("#create-room").click();
   await page.waitForSelector("#enter-room", { timeout: 30000 });
   const code = (await page.locator(".room-code").innerText()).trim();
@@ -75,11 +76,11 @@ try {
   });
   other.on("pageerror", (e) => errors.push(e.message));
   await other.goto(invite, { waitUntil: "networkidle" });
+  await enterGuest(other, "Marginalia");
   await other.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await other.locator("#equip-kit").click();
   await other.waitForSelector("#join-room");
   assert.equal(await other.locator("#room-input").inputValue(), code);
-  await other.locator("#player-name").fill("Marginalia");
   await other.locator("#room-input").fill(code);
   await other.locator("#join-room").click();
   await other.waitForSelector("#hud:not(.hidden)", { timeout: 30000 });

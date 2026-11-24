@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
@@ -28,6 +29,7 @@ try {
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(new URL("/?mode=county", origin).href);
+  await enterGuest(page);
   await page.waitForFunction(
     () => window.__doodles?.state === "menu",
     {},

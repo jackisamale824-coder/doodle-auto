@@ -40,8 +40,14 @@ test("real websocket clients join the same city and invalid rooms return a usefu
   const a = await client(port),
     b = await client(port);
   try {
+    for (const name of [undefined, "  <>  "]) {
+      const rejected = next(a, "error");
+      a.send(JSON.stringify({ type: "create", name }));
+      assert.match((await rejected).message, /nickname/i);
+      assert.equal(rooms.rooms.size, 0);
+    }
     const ready = next(a, "welcome");
-    a.send(JSON.stringify({ type: "create", name: "Alice", seed: "paper" }));
+    a.send(JSON.stringify({ type: "create", name: " Alice ", rating: 1600, seed: "paper" }));
     const room = await ready;
     assert.equal(room.seed, "paper");
     assert.match(room.code, /^[A-Z0-9]{5}$/);
@@ -55,6 +61,8 @@ test("real websocket clients join the same city and invalid rooms return a usefu
     assert.notEqual(data.id, room.id);
     const snapshot = await next(a, "snapshot");
     assert.equal(snapshot.players.length, 2);
+    assert.equal(snapshot.players[0].name, "Alice");
+    assert.equal(snapshot.players[0].rating, undefined);
     const closed = next(a, "snapshot");
     b.close();
     await closed;
@@ -225,7 +233,7 @@ test("multiplayer permits spawn loadout changes and locks the kit after an attac
   const second = { primary: HEAVY_AR, secondary: SMG, utility: FLASH };
   try {
     const ready = next(ws, "welcome");
-    ws.send(JSON.stringify({ type: "create", seed: "paper", loadout: first }));
+    ws.send(JSON.stringify({ type: "create", name: "Kit tester", seed: "paper", loadout: first }));
     const { code, loadout } = await ready;
     assert.deepEqual(loadout, first);
     const room = rooms.rooms.get(code)!;

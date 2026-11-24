@@ -21,7 +21,7 @@ test("spatial snapshots preserve distant actors between updates and reduce bytes
     const room = rooms.rooms.get(welcome.code)!;
     const joined = once(legacy, "message");
     legacy.send(
-      JSON.stringify({ type: "join", compact: true, code: room.code }),
+      JSON.stringify({ type: "join", name: "Far", compact: true, code: room.code }),
     );
     await joined;
     const viewer = [...room.players.values()][0];

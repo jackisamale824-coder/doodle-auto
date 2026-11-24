@@ -151,6 +151,15 @@
       <div id="board" class="hidden"></div>
       <div class="escape-tip">ESC PAUSE <span>·</span> TAB SCORE <span>·</span> HOLD T INVENTORY</div>
     </section>
+    <dialog id="session-dialog" aria-labelledby="session-title">
+      <h2 id="session-title">Join this session</h2>
+      <form id="nickname-form">
+        <label for="session-nickname">Guest nickname</label>
+        <input id="session-nickname" name="nickname" autocomplete="nickname" maxlength="16" required autofocus>
+        <button type="submit" class="primary-button">Play as guest</button>
+      </form>
+      <button type="button" id="session-login" class="secondary-button">Sign in to your account</button>
+    </dialog>
     <dialog id="player-dialog" aria-labelledby="player-title">
       <button type="button" id="player-close" class="close-button" aria-label="Close player account">×</button>
       <h2 id="player-title">Player account</h2>

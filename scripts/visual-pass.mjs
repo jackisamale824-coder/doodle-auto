@@ -1,3 +1,4 @@
+import { enterGuest } from "./guest-session.mjs";
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
 const pass = process.env.PASS || "1";
@@ -15,6 +16,7 @@ const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 try {
   await page.goto("http://127.0.0.1:5173");
+  await enterGuest(page);
   await page.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await page.screenshot({ path: `output/playwright/style-${pass}-menu.png` });
   await page.locator("#roam-mode").click();
@@ -40,13 +42,13 @@ try {
     viewport: { width: 1000, height: 800 },
   });
   await other.goto(invite);
+  await enterGuest(other, "Invite friend");
   await other.locator("#equip-kit").click();
   await other.waitForSelector("#join-room", { timeout: 60000 });
   assert.equal(
     await other.locator("#room-input").inputValue(),
     new URL(invite).searchParams.get("room"),
   );
-  await other.locator("#player-name").fill("Invite friend");
   await other.locator("#join-room").click();
   await other.waitForSelector("#enter-room", { timeout: 30000 });
   assert.equal(
@@ -60,6 +62,7 @@ try {
     viewport: { width: 390, height: 844 },
   });
   await mobile.goto("http://127.0.0.1:5173");
+  await enterGuest(mobile);
   await mobile.waitForSelector("#menu:not(.hidden)", { timeout: 60000 });
   await mobile.screenshot({
     path: `output/playwright/style-${pass}-mobile.png`,
