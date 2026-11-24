@@ -95,7 +95,7 @@ export class Network {
       !url.pathname.startsWith(`/releases/${record.releaseId}/`)
     )
       throw Error("This match is unavailable. Please try again.");
-    url.searchParams.set("mode", this.storagePrefix === "county" ? "county" : "rust");
+    if (this.storagePrefix === "county") url.searchParams.set("mode", "county");
     location.replace(url.href);
     return new Promise<never>(() => {});
   }
