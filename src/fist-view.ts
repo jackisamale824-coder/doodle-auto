@@ -1,5 +1,7 @@
 import { countyHand } from "./county-hands.ts";
 import { buildKnife, knifePose } from "./county-knife.ts";
+import { mountWeaponModel } from "./weapon-models.ts";
+import { KNIFE } from "./weapon-balance.ts";
 import * as T from "three";
 import { handMesh } from "./hand-model.ts";
 import { guardRaise, punchPose } from "./fists.ts";
@@ -16,6 +18,7 @@ export function buildFists(knifeEquipped = false) {
     hand.add(knifeEquipped ? countyHand(side) : handMesh(side, paper, true));
     if (knifeEquipped && side === 1) {
       const knife = buildKnife();
+      mountWeaponModel(knife, KNIFE, "hand");
       knife.rotation.set(-0.92, 0.35, 0.65);
       hand.add(knife);
     }

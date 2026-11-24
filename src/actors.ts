@@ -10,8 +10,10 @@ import {
   BURST_AR,
 } from "./weapon-balance.ts";
 import { buildKnife, knifePose } from "./county-knife.ts";
+import { mountWeaponModel } from "./weapon-models.ts";
 import { handMesh } from "./hand-model.ts";
 import {
+  FISTS,
   guardRaise,
   punchPose,
   reactionWeights,
@@ -59,6 +61,12 @@ export class Doodle {
   nameLabel: T.Mesh | null = null;
   flashTime = 0;
   aimRig = new T.Group();
+  private heldWeapon?: number;
+  showHeldWeapon(id: number) {
+    if (this.heldWeapon === id || !WEAPONS[id] || id === FISTS) return;
+    this.heldWeapon = id;
+    mountWeaponModel(this.aimRig, id, "actor");
+  }
   private stride = 0;
   private walkSpeed = 0;
   private aimPitch = 0;
@@ -254,6 +262,7 @@ export class Doodle {
     muzzle.position.set(0, 0.015, 0.525);
     this.aimRig.add(muzzle);
     this.aimRig.visible = role === "combatant";
+    if (role === "combatant") this.showHeldWeapon(0);
     this.group.add(this.aimRig);
     // Pelvis -> spine -> head/shoulders, with independent leg chains.
     this.pelvis.name = "pelvis";
@@ -284,6 +293,7 @@ export class Doodle {
     if (action !== this.civilianAction) this.gestureTime = 0;
     this.civilianAction = action;
     this.aimRig.visible = this.role === "police" && action === "shoot";
+    if (this.aimRig.visible) this.showHeldWeapon(2);
   }
   finishCarFall(dead: boolean) {
     this.fallTime = dead ? 1 : 0;
@@ -321,6 +331,7 @@ export class Doodle {
   ) {
     if (knifeEquipped && equipped && !this.knife) {
       this.knife = buildKnife();
+      mountWeaponModel(this.knife, KNIFE, "hand");
       this.knife.rotation.x = 1.35;
       this.leftHand.add(this.knife);
     }
@@ -736,5 +747,6 @@ export function buildWeapon(id: number, county = false) {
       g.userData.animatedParts.push(part);
     }
   });
+  mountWeaponModel(g, id);
   return g;
 }

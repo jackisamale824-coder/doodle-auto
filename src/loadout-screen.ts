@@ -28,15 +28,16 @@ export function loadoutScreen(kit: Loadout, action: string) {
     )
     .join("");
   return `<form id="kit-form" class="armory">
-    <div class="armory-header"><h2>Loadout</h2></div>
+    <div class="armory-header"><h2>Weapon loadout</h2></div>
     <div class="armory-body">
       <div class="armory-rack">${columns}
         <div class="kit-feedback"><output id="kit-choice" aria-live="polite">Choose equipment</output>
         <span id="kit-hint">1–3 category · then item number</span></div>
       </div>
       <aside class="armory-inspect" aria-label="Equipment preview">
+        <div class="inspect-portrait"><img id="inspect-icon" alt=""></div>
         <div class="inspect-info"><span id="inspect-kind"></span><h3 id="inspect-name"></h3>
-          <div class="inspect-spec"><img id="inspect-icon" alt=""><span id="inspect-stat"></span></div>
+          <div class="inspect-spec"><span id="inspect-stat"></span></div>
         </div>
       </aside>
     </div>

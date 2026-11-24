@@ -10,3 +10,31 @@ Street Lamp 01 and Namaqualand Stones 01 by Poly Haven (CC0).
 https://polyhaven.com/a/street_lamp_01
 https://polyhaven.com/a/namaqualand_stones_01
 County adaptations: selected mesh modules, reduced geometry and white-and-blue materials.
+
+Weapon models and loadout portraits
+The firearms use the weapon-only portions of cktang88's 3d-fps adaptations.
+https://github.com/cktang88/3d-fps#credits--licences
+Doodle Auto removed the arm rigs, compressed the meshes and textures, added cartoon shading and markings, and rendered the menu portraits.
+
+CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/
+Ink AR — M4A1 by Firewarden
+https://sketchfab.com/3d-models/m4a1-40d8ef818c7549a896371cbb1f64fec6
+Burst AR — FN Scar-L Assault Rifle by Hitansh_3DArtist
+https://sketchfab.com/3d-models/fn-scar-l-assault-rifle-ea1823de59684fd596d9f6726382f948
+Scatterpen — FPS Arms remington by ccransh, shotgun by tris09
+https://sketchfab.com/3d-models/fps-arms-remington-shotgun-e68ef617fe8a48cca8610d016ffd5881
+Longshot — AWM by erhanmatur
+https://sketchfab.com/3d-models/awm-bacc05ad5c074c9daa3aa7ca02766a6c
+Pistol — Sig Sauer P226 by Alexcanot
+https://sketchfab.com/3d-models/sig-sauer-p226-e3d4f1ab22f342f4a0891743353c114c
+SMG — MP5 Submachine Gun by Rotuma
+https://sketchfab.com/3d-models/mp5-submachine-gun-a73b61932a0e4eecb5db5c63c158aa24
+
+CC0 source meshes — https://creativecommons.org/publicdomain/zero/1.0/
+Carbine AR — Special Sniper Rifle VSS Vintorez by ArmsMuseum
+https://sketchfab.com/3d-models/special-sniper-rifle-vss-vintorez-4d5d8c1b7b79429abfa4816f18330089
+Heavy AR — Operation Steel Tide AK, adapted by 3d-fps
+https://github.com/AetherRadar/operation-steel-tide
+https://github.com/cktang88/3d-fps
+
+Mammoth Pistol, Knife, Flashbang and Smoke Grenade are original Doodle Auto models.

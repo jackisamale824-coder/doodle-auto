@@ -141,6 +141,7 @@ type Mode = "contract" | "roam" | "online";
 class Game {
   private mapExpanded = false;
   loadout = readLoadout(safeRead("dc.loadout", null));
+  private kitReviewed = false;
   private respawnAt = 0;
   private armorySpawn?: V3;
   private previousWeapon?: number;
@@ -569,7 +570,7 @@ class Game {
     $("contract-mode").hidden = this.countySelected;
     $("roam-mode").textContent = this.countySelected ? "Solo" : "Free roam";
     $("seed-options").hidden = !!this.selectedSeed;
-    $("model-credits").hidden = !this.countySelected;
+    $("model-credits").hidden = false;
     if (this.islandsSelected) this.menuMode = "roam";
     document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : "Rust · Oil Yard");
     this.paintLobbyOptions();
@@ -1026,6 +1027,7 @@ class Game {
     respawning = false,
     back = () => this.closeDialog(),
     live = false,
+    menuOnly = false,
   ) {
     let chosenSlot: keyof Loadout | undefined;
     this.showDialog(
@@ -1035,7 +1037,9 @@ class Game {
           ? "Return to game"
           : respawning
             ? "Equip and respawn"
-            : "Use this loadout",
+            : menuOnly
+              ? "Save loadout"
+              : "Use this loadout",
       ),
       back,
     );
@@ -1070,6 +1074,10 @@ class Game {
         this.setWeapon(weapon, true);
       }
       this.loadout = kit;
+      if (this.state === "menu") {
+        this.kitReviewed = menuOnly;
+        this.showKitSummary();
+      }
       try {
         localStorage.setItem("dc.loadout", JSON.stringify(kit));
       } catch {}
@@ -1166,6 +1174,7 @@ class Game {
     $("main-menu").onclick = () => this.mainMenu();
   }
   mainMenu() {
+    this.showKitSummary();
     this.clearDeathBody();
     this.network.disconnect();
     this.state = "menu";
@@ -1271,7 +1280,6 @@ class Game {
       : "";
   }
   private async prepareEntry(multiplayer: boolean, enter: () => void) {
-    if (!this.selectedSeed) return this.pickLoadout(enter);
     if (multiplayer && !this.identity.name) {
       if (this.busy) return;
       this.busy = true;
@@ -1281,9 +1289,20 @@ class Game {
         this.busy = false;
       }
     }
-    enter();
+    if (this.kitReviewed) {
+      this.kitReviewed = false;
+      enter();
+    } else this.pickLoadout(enter);
+  }
+  private showKitSummary() {
+    const kit = this.loadout ?? defaultLoadout;
+    $("menu-kit-summary").textContent = loadoutSlots
+      .map(({ key }) => WEAPONS[kit[key]].name)
+      .join(" · ");
   }
   bind() {
+    this.showKitSummary();
+    $("menu-weapons").onclick = () => this.pickLoadout(() => {}, false, () => this.closeDialog(), false, true);
     $<HTMLSelectElement>("map-picker").onchange = (event) => {
       const value = (event.currentTarget as HTMLSelectElement).value;
       $("menu").classList.add("hidden");
@@ -2695,13 +2714,15 @@ class Game {
           continue;
         }
       }
-      if (!state.npc)
+      if (!state.npc) {
+        if (state.weapon !== FISTS) model.showHeldWeapon(state.weapon);
         model.setFistPose(
           state.weapon === FISTS,
           state.swing?.move ?? 0,
           state.swing ? (now - state.swing.start) / 1000 : 1,
           this.seed === COUNTY,
         );
+      }
       const desiredYaw = state.yaw + Math.PI;
       const turn = Math.atan2(
         Math.sin(desiredYaw - model.group.rotation.y),

@@ -849,6 +849,8 @@ export function disposeGroup(group: T.Group) {
     mats = new Set<T.Material>(),
     textures = new Set<T.Texture>();
   group.traverse((o) => {
+    o.userData.cancelWeaponLoad?.();
+    if (o.userData.sharedWeaponAsset) return;
     if (o instanceof T.DirectionalLight) o.shadow.dispose();
     const m = o as T.Mesh;
     if ((m as T.InstancedMesh).isInstancedMesh)
