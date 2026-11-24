@@ -32,6 +32,7 @@ import { initializeRapier } from "../src/rapier-init.ts";
 import type { RubblePose } from "../src/county-rubble.ts";
 import { CountyWreckage } from "../src/county-wreckage.ts";
 import { CountyStructures } from "../src/county-structures.ts";
+import { DUST_A } from "../src/dust-a.ts";
 import { publicMapSeed } from "../src/levels.ts";
 import { ISLANDS, SEA_LEVEL } from "../src/islands.ts";
 import { COUNTY, countyCars, type CountyCar } from "../src/county.ts";
@@ -822,7 +823,7 @@ export class Rooms {
       if (!safe.length) throw new Error("Rust has no safe spawn points");
       return [...safe[index % safe.length]];
     }
-    if (!r.public || r.seed === COUNTY || r.city.seed === ISLANDS)
+    if (!r.public || r.seed === COUNTY || r.city.seed === ISLANDS || r.city.seed === DUST_A)
       return [...r.city.spawns[index % r.city.spawns.length]];
     const center = r.city.spawns[0],
       near = r.city.streetNodes

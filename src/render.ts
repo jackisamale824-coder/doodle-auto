@@ -1,5 +1,6 @@
 import { blimpPosition, type Blimp } from "./aerial.ts";
 import * as T from "three";
+import { DUST_A } from "./dust-a.ts";
 import { ISLANDS } from "./islands.ts";
 import { drawIslands } from "./island-view.ts";
 import { daylightSky } from "./daylight.ts";
@@ -178,7 +179,7 @@ export class Renderer {
   }
   setQuality(high: boolean) {
     this.qualityHigh = high;
-    this.renderer.shadowMap.enabled = high && (this.oilYard || !!this.updateTides);
+    this.renderer.shadowMap.enabled = high && (this.sunlitMaterials || !!this.updateTides);
     this.renderer.shadowMap.needsUpdate = true;
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
@@ -186,7 +187,7 @@ export class Renderer {
   addCountyCar?: Awaited<ReturnType<typeof import("./county-render.ts").drawCounty>>["addCar"];
   countyCars: import("./county-car.ts").CountyCarModel[] = [];
   private county = false;
-  private oilYard = false;
+  private sunlitMaterials = false;
   private frameCost = 0;
   private qualityHigh = true;
   private updateTides?: (time: number) => void;
@@ -195,8 +196,9 @@ export class Renderer {
     this.addCountyCar = undefined;
     const county = city.seed === "switchback-county";
     const islands = city.seed === ISLANDS;
-    this.oilYard = !!city.arena?.model;
-    const horizon = islands ? "#a6dddf" : county ? "#b4dce7" : this.oilYard ? "#e6cdb0" : "#f4c79e";
+    const dust = city.seed === DUST_A;
+    this.sunlitMaterials = !!city.arena?.model || dust;
+    const horizon = dust ? "#d9dbcd" : islands ? "#a6dddf" : county ? "#b4dce7" : this.sunlitMaterials ? "#e6cdb0" : "#f4c79e";
     (this.scene.fog as T.Fog).near = islands ? 95 : 65;
     this.sky.material.uniforms.zenith.value.set(islands ? "#347fb9" : county ? "#408dcc" : "#5991b8");
     this.sky.material.uniforms.horizon.value.set(horizon);
@@ -223,7 +225,7 @@ export class Renderer {
       const sun = new T.DirectionalLight(0xffead6, 2.1);
       sun.position.set(-4, 7, 4);
       const daylight = new T.Group();
-      if (this.oilYard) {
+      if (this.sunlitMaterials) {
         sun.position.set(-48, 72, 30);
         sun.castShadow = true;
         sun.shadow.mapSize.set(2048, 2048);
@@ -240,9 +242,15 @@ export class Renderer {
     this.blimpMeshes = [];
     this.decor = [];
     this.updateTides = undefined;
-    this.renderer.shadowMap.enabled = (islands || this.oilYard) && this.qualityHigh;
+    this.renderer.shadowMap.enabled = (islands || this.sunlitMaterials) && this.qualityHigh;
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
+    if (dust) {
+      const { drawDustSite } = await import("./dust-view.ts");
+      drawDustSite(city, this.cityGroup);
+      this.buildMarks(city);
+      return;
+    }
     if (islands) {
       this.updateTides = drawIslands(city, this.cityGroup);
       this.buildMarks(city);
@@ -842,7 +850,7 @@ export class Renderer {
           ) < 180;
     }
     this.inkPost.uniforms.clip.value.set(this.camera.near, this.camera.far);
-    if (this.oilYard) {
+    if (this.sunlitMaterials) {
       this.renderer.setRenderTarget(null);
       this.renderer.render(this.scene, this.camera);
       return;

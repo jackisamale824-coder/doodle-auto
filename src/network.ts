@@ -101,7 +101,8 @@ export class Network {
     )
       throw Error("This match is unavailable. Please try again.");
     if (this.storagePrefix === "county") url.searchParams.set("mode", "county");
-    if (this.storagePrefix === "islands") url.searchParams.set("level", "islands");
+    if (this.storagePrefix === "islands" || this.storagePrefix === "dust-a")
+      url.searchParams.set("level", this.storagePrefix);
     location.replace(url.href);
     return new Promise<never>(() => {});
   }
@@ -120,7 +121,7 @@ export class Network {
     }
     // The county entry opens the selected build. Reloading a pinned match on
     // its own release still resumes it, including after a newer deployment.
-    if (this.storagePrefix === "county" || this.storagePrefix === "islands") {
+    if (["county", "islands", "dust-a"].includes(this.storagePrefix)) {
       for (const key of ["dc.session", "dc.pendingAdmission"]) {
         const record = this.read(key);
         if (record && record.releaseId !== RELEASE_ID) this.save(key, null);

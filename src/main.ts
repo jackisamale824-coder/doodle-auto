@@ -69,6 +69,7 @@ import { WeaponClearance } from "./weapon-clearance.ts";
 /// <reference types="vite/client" />
 import { ISLANDS, SEA_LEVEL } from "./islands.ts";
 import { drawIslandMap, islandMapScale } from "./island-view.ts";
+import { DUST_A } from "./dust-a.ts";
 import { publicMapSeed, generateLevel } from "./levels.ts";
 import "./style.css";
 import * as T from "three";
@@ -156,10 +157,11 @@ class Game {
   private params = new URLSearchParams(location.search);
   private readonly weaponTest = this.params.get("mode") === "weapon-test";
   private islandsSelected = ["islands", "city"].includes(this.params.get("level") ?? "");
-  countySelected = !this.islandsSelected &&
+  private dustSelected = this.params.get("level") === DUST_A;
+  countySelected = !this.islandsSelected && !this.dustSelected &&
     (this.params.get("mode") === "county" || (location.pathname === "/" && !this.params.has("mode") && !this.params.has("room")));
-  private selectedSeed = this.islandsSelected ? ISLANDS : this.countySelected ? COUNTY : "";
-  network = new Network(this.islandsSelected ? "islands" : this.countySelected ? "county" : "dc");
+  private selectedSeed = this.dustSelected ? DUST_A : this.islandsSelected ? ISLANDS : this.countySelected ? COUNTY : "";
+  network = new Network(this.dustSelected ? DUST_A : this.islandsSelected ? "islands" : this.countySelected ? "county" : "dc");
   private identity = bindPlayerAccount();
   cars: CountyCar[] = [];
   citizens?: CountyCitizens;
@@ -568,7 +570,7 @@ class Game {
     $<HTMLInputElement>("seed").value = this.seed;
     await document.fonts.ready;
     await this.build(this.seed, 1);
-    const map = this.countySelected
+    const map = this.dustSelected ? DUST_A : this.countySelected
       ? "county"
       : this.islandsSelected
         ? "islands"
@@ -578,8 +580,8 @@ class Game {
     $("roam-mode").textContent = this.countySelected ? "Solo" : "Free roam";
     $("seed-options").hidden = !!this.selectedSeed;
     $("model-credits").hidden = false;
-    if (this.islandsSelected) this.menuMode = "roam";
-    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : "Rust · Oil Yard");
+    if (this.islandsSelected || this.dustSelected) this.menuMode = "roam";
+    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : this.dustSelected ? "Dust II · A Site" : "Rust · Oil Yard");
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
@@ -632,7 +634,7 @@ class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
   async build(seed: string, district: number, spawn?: V3) {
-    if (this.mode !== "online" && this.islandsSelected) seed = ISLANDS;
+    if (this.mode !== "online" && (this.islandsSelected || this.dustSelected)) seed = this.selectedSeed;
     const version = ++this.buildVersion;
     const city = this.weaponTest ? rangeWorld() : generateLevel(seed, district),
       physics = await Physics.create(city.boxes);
@@ -656,7 +658,7 @@ class Game {
     this.remoteRopes.clear();
     this.city = city;
     const islands = city.seed === ISLANDS;
-    document.querySelector("#city-map-panel small")!.textContent = islands ? "Gold lines mark bridges" : "solid: streets · gold: roof routes";
+    document.querySelector("#city-map-panel small")!.textContent = islands ? "Gold lines mark bridges" : city.seed === DUST_A ? "Teal: crates · red: A site" : "solid: streets · gold: roof routes";
     $("city-map").setAttribute("aria-label", islands ? "Five islands, bridges and player positions" : "Map with your position in red and other living players in blue");
     this.cars = seed === COUNTY ? countyCars() : [];
     this.vehicle = -1;
@@ -675,7 +677,7 @@ class Game {
     this.seed = seed;
     this.setMapExpanded(false);
     document.body.classList.toggle("county-world", seed === COUNTY);
-    document.body.classList.toggle("daylight-world", seed === COUNTY || islands);
+    document.body.classList.toggle("daylight-world", seed === COUNTY || islands || seed === DUST_A);
     this.district = district;
     await this.render.build(city);
     if (this.weaponTest) drawRange(this.render.cityGroup);
@@ -751,10 +753,10 @@ class Game {
       "no-grapple",
       !!city.arena || seed === COUNTY,
     );
-    if (city.arena)
+    if (city.arena || seed === DUST_A)
       this.player.yaw = Math.atan2(
         this.player.position.x + 3,
-        this.player.position.z + 3,
+        this.player.position.z + (seed === DUST_A ? 10 : 3),
       );
     this.player.movingHooks = () =>
       city.blimps.map((b) => {
@@ -1035,7 +1037,7 @@ class Game {
     if (!force && !this.combat.switchWeapon(i)) return;
     this.previousWeapon = force ? undefined : before;
     disposeGroup(this.weaponMesh);
-    const daylight = this.weaponTest || this.seed === COUNTY || this.city.seed === ISLANDS;
+    const daylight = this.seed === DUST_A || this.weaponTest || this.seed === COUNTY || this.city.seed === ISLANDS;
     const look = characterLook(this.appearanceId);
     this.weaponMesh =
       i === FISTS
@@ -1174,7 +1176,7 @@ class Game {
       this.resume();
       this.notice(
         mode === "roam"
-          ? this.city.seed === ISLANDS ? "COMPASS CAY" : this.city.arena
+          ? this.city.seed === DUST_A ? "DUST II · A SITE" : this.city.seed === ISLANDS ? "COMPASS CAY" : this.city.arena
             ? "THE YARD IS YOURS"
             : "THE CITY IS YOURS"
           : mode === "online"
@@ -1321,6 +1323,10 @@ class Game {
           ? "Reach the starting plaza to draw the next district."
           : "Erase 6 rivals · Find 3 rooftop marks";
     $("mission-progress").style.display = online || roam ? "none" : "flex";
+    if (this.seed === DUST_A && roam) {
+      $("mission-title").textContent = "DUST II · A SITE";
+      $("mission").textContent = "Explore Long A, the raised site and the lower passage.";
+    }
     $("kill-objective").textContent =
       `${this.combat.kills >= 6 ? "✓" : "○"} ${Math.min(6, this.combat.kills)} / 6 RIVALS`;
     $("beacon-objective").textContent =
@@ -1380,7 +1386,7 @@ class Game {
       location.assign(
         value === "county"
           ? "/?mode=county"
-          : value === "islands"
+          : value === DUST_A ? "/?level=dust-a" : value === "islands"
             ? "/?level=islands"
             : "/?mode=rust",
       );
@@ -1692,6 +1698,7 @@ class Game {
     this.network.disconnect();
     const url = new URL("/", location.origin);
     if (this.countySelected) url.searchParams.set("mode", "county");
+    else if (this.dustSelected) url.searchParams.set("level", DUST_A);
     else if (this.islandsSelected) url.searchParams.set("level", "islands");
     else url.searchParams.set("mode", "rust");
     location.assign(url.href);
@@ -1744,6 +1751,10 @@ class Game {
       text.roam = "Start at Compass Cay and explore four islands linked by bridges.";
       text.contract = "Eliminate six rivals, collect three island marks, then return to Compass Cay.";
     }
+    if (this.dustSelected) {
+      text.public = "Join a public match at Dust II’s A site.";
+      text.roam = "Explore the site, Long A and the short approach.";
+    }
     const lobby =
       (mode === "duel" || mode === "public") &&
       this.lobbies.find((r) => r.mode === (mode === "duel" ? "duel" : "play"));
@@ -1795,7 +1806,7 @@ class Game {
           ? "DUEL · REAL PLAYERS ONLY"
           : this.seed === COUNTY
             ? "SWITCHBACK COUNTY · E TO ENTER A CAR"
-            : "WELCOME TO RUST",
+            : this.seed === DUST_A ? "DUST II · A SITE" : "WELCOME TO RUST",
         2,
       );
     } catch (error) {
@@ -1931,7 +1942,7 @@ class Game {
         return;
       }
       this.showDialog(
-        `<h2>Room ready</h2><p>Share this code or invite link with friends.</p><div class="room-code">${escape(welcome.code)}</div><button id="enter-room" class="primary-button">Enter game</button><button id="copy-invite" class="secondary-button">Copy invite link</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : publicMapSeed(welcome.seed) === ISLANDS ? "/?level=islands&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">Copy room code</button>`,
+        `<h2>Room ready</h2><p>Share this code or invite link with friends.</p><div class="room-code">${escape(welcome.code)}</div><button id="enter-room" class="primary-button">Enter game</button><button id="copy-invite" class="secondary-button">Copy invite link</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : welcome.seed === DUST_A ? "/?level=dust-a&room=" : publicMapSeed(welcome.seed) === ISLANDS ? "/?level=islands&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">Copy room code</button>`,
       );
       $("copy-invite").onclick = async () => {
         const field = $<HTMLInputElement>("invite-link");
@@ -3015,6 +3026,21 @@ class Game {
             )
           ? "County Highway"
           : "Highlands";
+      return;
+    }
+    if (this.seed === DUST_A) {
+      const scale = 90 / this.city.bounds;
+      c.clearRect(0, 0, 190, 190);
+      for (const b of this.city.boxes) {
+        if (b.kind === "boundary") continue;
+        c.fillStyle = b.kind === "crate" ? "#528883" : b.kind === "platform" ? "#d18a72" : ["hotel","stucco","ochre"].includes(b.kind) ? "#ac947d" : "#d3c8b3";
+        c.fillRect(95 + (b.p[0] - b.s[0]/2) * scale, 95 + (b.p[2] - b.s[2]/2) * scale, b.s[0]*scale, b.s[2]*scale);
+      }
+      this.drawMapPlayers(c, 0, 0, scale);
+      const { x, z } = this.player.position;
+      $("neighborhood-label").textContent = this.city.buildings.reduce((a, b) =>
+        Math.hypot(x-a.x, z-a.z) < Math.hypot(x-b.x, z-b.z) ? a : b
+      ).name;
       return;
     }
     const mapBounds =

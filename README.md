@@ -12,6 +12,8 @@ cf pages deployments create sully6-games --branch main --manifest '{}' --worker-
 
 ## Doodle Auto
 
+Select **Dust II · A Site** in the map picker for a playable recreation of the raised courtyard, Long A ramp and Short A bridge. [Open the map](https://doodle-auto.sully6.com/?level=dust-a).
+
 The [Doodle Auto system map](https://sully6.com/system-map.html) traces a match through the browser, multiplayer server and player database, and shows how releases reach sully6.com.
 
 An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and swing through procedurally generated cities with navigable interiors and rooftops.
