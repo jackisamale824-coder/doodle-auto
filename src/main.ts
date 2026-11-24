@@ -1,3 +1,4 @@
+import { bindLoadoutPreview, loadoutScreen } from "./loadout-screen.ts";
 import {
   defaultLoadout,
   readLoadout,
@@ -966,21 +967,8 @@ class Game {
     respawning = false,
     back = () => this.closeDialog(),
   ) {
-    const groups = loadoutSlots
-      .map(
-        ({ key, name, options }, index) =>
-          `<fieldset class="kit-group"><legend><kbd>${index + 1}</kbd> ${name}</legend><div class="kit-options">${options
-            .map(
-              (id) =>
-                `<label class="kit-option"><input type="radio" name="${key}" value="${id}" ${id === this.loadout[key] ? "checked" : ""}><span>${WEAPONS[id].name}</span></label>`,
-            )
-            .join("")}</div></fieldset>`,
-      )
-      .join("");
-    this.showDialog(
-      `<h2>Choose your loadout</h2><form id="kit-form">${groups}<button id="equip-kit" class="primary-button">${respawning ? "Equip and respawn" : "Use this loadout"}</button></form>`,
-      back,
-    );
+    this.showDialog(loadoutScreen(this.loadout, respawning), back);
+    bindLoadoutPreview($<HTMLFormElement>("kit-form"), back);
     if (respawning) this.waitForRespawn($<HTMLButtonElement>("equip-kit"));
     $("kit-form").onsubmit = (event) => {
       event.preventDefault();

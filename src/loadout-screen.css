@@ -1,0 +1,372 @@
+/* The equipment screen shares the game's modal and keeps its own armory palette. */
+#dialog:has(.armory) {
+  --gold: #eaca85;
+  width: min(1120px, calc(100vw - 46px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  margin: auto;
+  color: #f4f2e8;
+  background: #202321;
+  border: 1px solid #60645b;
+  border-radius: 3px;
+  box-shadow: 0 25px 100px #06080799;
+  font:
+    500 14px/1.3 "DM Sans",
+    sans-serif;
+}
+#dialog:has(.armory)::backdrop {
+  background: #101511bd;
+  backdrop-filter: blur(3px);
+}
+#dialog:has(.armory) .close-button {
+  color: #d7dacd;
+  top: 14px;
+  right: 18px;
+  z-index: 2;
+}
+.armory-header,
+.armory-footer {
+  background: #191c1a;
+  padding: 15px 23px;
+}
+.armory-header {
+  border-bottom: 1px solid #494d44;
+}
+#dialog .armory-header h2 {
+  margin: 0;
+  font:
+    700 clamp(25px, 3vw, 36px)/1 "DM Sans",
+    sans-serif;
+  letter-spacing: -0.05em;
+  text-transform: uppercase;
+}
+.armory-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(240px, 1fr);
+}
+.armory-rack {
+  display: grid;
+  position: relative;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 15px 16px 18px;
+  background: linear-gradient(125deg, #30332f, #242723 60%, #1e211e);
+}
+.armory-column {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+.armory-column legend {
+  width: 100%;
+  margin-bottom: 8px;
+  color: #e5e5db;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.09em;
+}
+.armory-column legend b {
+  color: var(--gold);
+  font: 600 10px/1.4 monospace;
+  margin-right: 4px;
+}
+#dialog .armory-card {
+  position: relative;
+  display: block;
+  margin: 0 0 5px;
+  color: #e8e7df;
+  cursor: pointer;
+  font:
+    600 12px/1.2 "DM Sans",
+    sans-serif;
+  letter-spacing: 0;
+}
+.armory-card:last-child {
+  margin-bottom: 0;
+}
+#dialog .armory-card input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+}
+.item-face {
+  position: relative;
+  display: block;
+  height: clamp(52px, 8.2vh, 80px);
+  padding: 6px 9px;
+  border: 1px solid #565a51;
+  border-radius: 2px;
+  background: linear-gradient(112deg, #40443c, #30332f);
+}
+.item-name {
+  position: relative;
+  z-index: 1;
+}
+.item-face img {
+  display: block;
+  width: 88%;
+  height: calc(100% - 14px);
+  margin: 1px auto 0;
+  object-fit: contain;
+  filter: saturate(0.68);
+}
+.item-face i {
+  display: none;
+  position: absolute;
+  bottom: 5px;
+  right: 7px;
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 700;
+}
+.armory-card:hover .item-face {
+  border-color: #b4b5a8;
+  background: #44483e;
+}
+.armory-card input:checked + .item-face {
+  border-color: var(--gold);
+  box-shadow: inset 3px 0 var(--gold);
+  background: linear-gradient(115deg, #534b37, #36382f);
+}
+.armory-card input:checked + .item-face i {
+  display: block;
+}
+.armory-card input:focus-visible + .item-face,
+.armory button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.kit-wheel {
+  --wheel-size: clamp(110px, 20vh, 180px);
+  width: var(--wheel-size);
+  aspect-ratio: 1;
+  position: absolute;
+  left: 66.5%;
+  bottom: 7%;
+  transform: translateX(-50%);
+  isolation: isolate;
+  border-radius: 50%;
+  border: 1px solid #727466;
+  box-shadow: 0 3px 15px #0004;
+  overflow: hidden;
+  background: #191c19;
+}
+.wheel-slot {
+  inset: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #343830;
+  color: var(--gold);
+  cursor: pointer;
+  padding: 0;
+}
+.wheel-slot:nth-child(1) {
+  clip-path: polygon(50% 49%, 0 19%, 0 0, 100% 0, 100% 19%);
+}
+.wheel-slot:nth-child(2) {
+  clip-path: polygon(51% 50%, 100% 21%, 100% 100%, 51% 100%);
+}
+.wheel-slot:nth-child(3) {
+  clip-path: polygon(49% 50%, 49% 100%, 0 100%, 0 21%);
+}
+.wheel-slot:hover,
+.wheel-slot:focus-visible {
+  background: #60563c;
+}
+.wheel-slot img {
+  position: absolute;
+  object-fit: contain;
+  width: 33%;
+  height: 23%;
+  transform: translate(-50%, -50%);
+}
+.wheel-slot span {
+  position: absolute;
+  font: bold 9px monospace;
+  transform: translateX(-50%);
+}
+.wheel-slot:nth-child(1) img {
+  left: 50%;
+  top: 22%;
+}
+.wheel-slot:nth-child(2) img {
+  left: 76%;
+  top: 62%;
+}
+.wheel-slot:nth-child(3) img {
+  left: 24%;
+  top: 62%;
+}
+.wheel-slot:nth-child(1) span {
+  left: 50%;
+  top: 31%;
+}
+.wheel-slot:nth-child(2) span {
+  left: 76%;
+  top: 75%;
+}
+.wheel-slot:nth-child(3) span {
+  left: 24%;
+  top: 75%;
+}
+.wheel-hub {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 23%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid #575d50;
+  background: #20231f;
+  color: #cbb788;
+  pointer-events: none;
+}
+.armory-inspect {
+  min-height: 0;
+  position: relative;
+  display: flex;
+  align-items: end;
+  border-left: 1px solid #51564c;
+  background: #202522 url("/loadout/runner.webp") center top / cover no-repeat;
+}
+.inspect-info {
+  width: 100%;
+  padding: 45px 20px 14px;
+  background: linear-gradient(transparent, rgba(15, 18, 16, 0.94) 34%);
+}
+#inspect-kind {
+  color: var(--gold);
+  text-transform: uppercase;
+  font:
+    700 10px/1.3 "DM Sans",
+    sans-serif;
+  letter-spacing: 0.12em;
+}
+#inspect-name {
+  font:
+    700 clamp(21px, 2.5vw, 32px)/1.1 "DM Sans",
+    sans-serif;
+  margin: 4px 0 9px;
+  letter-spacing: -0.04em;
+}
+.inspect-spec {
+  border-top: 1px solid #626456;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 7px;
+}
+#inspect-icon {
+  width: 38%;
+  height: 32px;
+  object-fit: contain;
+}
+#inspect-stat {
+  font-size: 12px;
+  color: #d3d5c9;
+  text-align: right;
+}
+.armory-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid #51554b;
+  padding-block: 12px;
+}
+.armory-footer button {
+  border: none;
+  font:
+    700 13px/1.2 "DM Sans",
+    sans-serif;
+  cursor: pointer;
+}
+#kit-back {
+  background: transparent;
+  color: #d5d6ca;
+  padding: 10px 0;
+}
+.armory-equip {
+  background: var(--gold);
+  color: #222319;
+  border-radius: 2px;
+  padding: 12px 16px;
+}
+.armory-equip span {
+  padding-left: 15px;
+}
+.armory-equip:hover {
+  background: #f6d99b;
+}
+.armory-equip:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+@media (max-width: 740px) {
+  #dialog:has(.armory) {
+    width: calc(100vw - 18px);
+    max-height: calc(100dvh - 18px);
+  }
+  .armory-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .armory-inspect {
+    border-left: 0;
+    border-top: 1px solid #51564c;
+    min-height: 86px;
+    background-position: right top;
+    background-size: 34% auto;
+  }
+  .inspect-info {
+    padding: 10px 15px;
+    background: linear-gradient(90deg, #1a1f1c 0 55%, transparent 84%);
+  }
+  .inspect-spec {
+    max-width: 63%;
+    justify-content: start;
+    gap: 10px;
+    border: none;
+    padding: 0;
+  }
+  #inspect-icon {
+    width: 55px;
+    height: 21px;
+  }
+  #inspect-name {
+    font-size: 20px;
+    margin: 2px 0 4px;
+  }
+  .armory-rack {
+    padding: 10px;
+    gap: 5px;
+  }
+  .item-face {
+    height: 57px;
+    padding: 5px 6px;
+  }
+  .armory-column legend {
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  #dialog .armory-card {
+    font-size: 11px;
+  }
+  .armory-header,
+  .armory-footer {
+    padding: 10px 14px;
+  }
+  .kit-wheel {
+    --wheel-size: 110px;
+  }
+}
