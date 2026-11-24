@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import process from "node:process";
-import { defineConfig, defineContainer, exports } from "cf/config";
+import { bindings, defineConfig, defineContainer, exports } from "cf/config";
 
 import * as entrypoint from "./src/cloudflare.ts" with { type: "cf-worker" };
 
@@ -11,14 +11,17 @@ const gameContainer = defineContainer({
   maxInstances: 1,
 });
 
+const workerName = process.env.GAME_WORKER_NAME || "doodle-auto";
+
 export default defineConfig({
   accountId:
     process.env.CLOUDFLARE_ACCOUNT_ID || "a667cabeb7494676d4f8e412b2f6ca30",
   worker: {
-    name: process.env.GAME_WORKER_NAME || "doodle-auto",
+    name: workerName,
     entrypoint,
     compatibilityDate: "2026-11-23",
-    domains: ["sully6.com"],
+    domains: ["sully6.com", "www.sully6.com"],
+    env: { GAME: bindings.durableObject({ worker: workerName, exportName: "GameContainer" }) },
     exports: {
       GameContainer: exports.durableObject({
         storage: "sqlite",
