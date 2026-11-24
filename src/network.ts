@@ -45,6 +45,7 @@ export class Network {
     return (Date.now() + this.serverOffset) / 1000;
   }
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private rosterRevision?: number;
   private roster: { id: string; name: string; npc: boolean }[] = [];
   private samples = new Map<
     string,
@@ -253,7 +254,8 @@ export class Network {
         () => fail(Error("Connection timed out. Please try again.")),
         8000,
       );
-      ws.onopen = () => ws.send(JSON.stringify(handshake));
+      ws.onopen = () =>
+        ws.send(JSON.stringify({ ...handshake, spatialSnapshots: 1 }));
       ws.onerror = () => fail(Error("Could not reach your match."));
       ws.onmessage = (e) => {
         if (this.socket !== ws) return;
@@ -320,14 +322,17 @@ export class Network {
             this.rtt = this.rtt ? this.rtt * 0.7 + rtt * 0.3 : rtt;
         } else if (m.type === "roster") {
           this.roster = m.actors;
+          this.rosterRevision = m.revision;
         } else if (m.type === "snapshot") {
           this.wave = m.wave ?? null;
           if (Number.isFinite(m.time))
             this.serverOffset = m.time + this.rtt / 2 - Date.now();
-          if (m.actors && m.actors.length !== this.roster.length) return;
+          if (m.actors && m.revision !== this.rosterRevision) return;
+          if (m.actors && !m.indices && m.actors.length !== this.roster.length)
+            return;
           if (m.actors)
             m.players = m.actors.map((a: any[], i: number) => ({
-              ...this.roster[i],
+              ...this.roster[m.indices?.[i] ?? i],
               p: a.slice(0, 3),
               yaw: a[3],
               pitch: a[4],
@@ -358,6 +363,13 @@ export class Network {
             const speed = Math.hypot(...v);
             if (speed > 60) v.fill(0);
             this.samples.set(p.id, { p: [...p.p], v, time: now, serverTime });
+          }
+          if (m.indices) {
+            const merged = this.players.slice();
+            m.indices.forEach((slot: number, i: number) => {
+              merged[slot] = m.players[i];
+            });
+            m.players = merged;
           }
           const ids = new Set(m.players.map((p: RemoteState) => p.id));
           for (const id of this.samples.keys())

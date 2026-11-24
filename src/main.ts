@@ -1560,8 +1560,13 @@ class Game {
         this.syncSeat();
       }
     }
-    if (m.type === "snapshot" && m.cars && this.seed === COUNTY) {
-      this.cars = m.cars;
+    if (
+      m.type === "snapshot" &&
+      (m.cars || m.carUpdates) &&
+      this.seed === COUNTY
+    ) {
+      if (m.cars) this.cars = m.cars;
+      else for (const [index, car] of m.carUpdates) this.cars[index] = car;
       if (this.seatPending && performance.now() - this.seatRequestedAt > 2000)
         this.seatPending = false;
     }

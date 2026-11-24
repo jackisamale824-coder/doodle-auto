@@ -1,3 +1,4 @@
+import { NPC_RADIUS } from "../src/npc-presence.ts";
 import {
   FISTS,
   PUNCHES,
@@ -83,6 +84,7 @@ export interface ReserveRequest {
   roomCode?: string;
 }
 interface Room {
+  rosterRevision?: number;
   citizens?: CountyCitizens;
   incidents?: CountyImpacts;
   structures?: CountyStructures;
@@ -102,6 +104,8 @@ interface Room {
   ai: Npcs | null;
   npcs: Npc[];
 }
+const SNAPSHOT_CELL_SIZE = 32;
+const SNAPSHOT_CELL_REACH = NPC_RADIUS + SNAPSHOT_CELL_SIZE / 2;
 const FIRE_INTERVAL_MS = [110, 700, 240, 1250];
 const validVector = (p: unknown): p is V3 =>
   Array.isArray(p) &&
@@ -213,6 +217,8 @@ export class Rooms {
   private createCredit = 4;
   private createAt = Date.now();
   private lastJoin = new WeakMap<WebSocket, number>();
+  private spatialSnapshots = new WeakSet<WebSocket>();
+  private baselineRevision = new WeakMap<WebSocket, number>();
   private compact = new WeakSet<WebSocket>();
   private timer: NodeJS.Timeout;
   private heartbeat: NodeJS.Timeout;
@@ -547,6 +553,7 @@ export class Rooms {
     r.players.set(ws, p);
     this.memberships.set(ws, r);
     if (m.compact === true) this.compact.add(ws);
+    if (m.spatialSnapshots === 1) this.spatialSnapshots.add(ws);
     if (previous !== ws) previous.close(4001, "Session resumed elsewhere");
     this.resumeSuccess++;
     send(ws, {
@@ -850,8 +857,10 @@ export class Rooms {
     }
   }
   roster(r: Room) {
+    r.rosterRevision = (r.rosterRevision ?? 0) + 1;
     this.broadcast(r, {
       type: "roster",
+      revision: r.rosterRevision,
       actors: [...r.players.values(), ...r.npcs].map((p) => ({
         id: p.id,
         name: p.name,
@@ -861,7 +870,9 @@ export class Rooms {
   }
   broadcast(r: Room, m: any) {
     let full: string | undefined, compact: string | undefined;
-    for (const ws of r.players.keys()) {
+    let rows: any[][] | undefined;
+    const byCell = new Map<string, string>();
+    for (const [ws, viewer] of r.players) {
       if (ws.readyState !== WebSocket.OPEN) continue;
       if (ws.bufferedAmount > 131072) {
         ws.close(1008, "Slow connection");
@@ -880,31 +891,82 @@ export class Rooms {
         continue;
       }
       if (m.type === "snapshot" && this.compact.has(ws)) {
-        compact ??= JSON.stringify({
+        const actorRows = (rows ??= (m.players as any[]).map((p) => [
+          ...p.p,
+          p.yaw,
+          p.pitch,
+          p.hp,
+          p.kills,
+          p.deaths,
+          p.weapon,
+          p.height,
+          p.anchor,
+          p.lean ?? 0,
+          p.engaged ? 1 : 0,
+          ...(r.citizens || p.swing || p.reaction
+            ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
+            : []),
+          ...(p.swing || p.reaction ? [p.swing ?? null] : []),
+          ...(p.reaction ? [p.reaction] : []),
+        ]));
+        const header = {
           type: "snapshot",
           time: m.time,
           wave: m.wave,
-          cars: m.cars,
-          actors: m.players.map((p: any) => [
-            ...p.p,
-            p.yaw,
-            p.pitch,
-            p.hp,
-            p.kills,
-            p.deaths,
-            p.weapon,
-            p.height,
-            p.anchor,
-            p.lean ?? 0,
-            p.engaged ? 1 : 0,
-            ...(r.citizens || p.swing || p.reaction
-              ? [p.notoriety ?? 0, p.action ?? null, p.fall ?? null]
-              : []),
-            ...(p.swing || p.reaction ? [p.swing ?? null] : []),
-            ...(p.reaction ? [p.reaction] : []),
-          ]),
-        });
-        ws.send(compact);
+          revision: r.rosterRevision,
+        };
+        if (!this.spatialSnapshots.has(ws)) {
+          compact ??= JSON.stringify({
+            ...header,
+            actors: actorRows,
+            cars: m.cars,
+          });
+          ws.send(compact);
+          continue;
+        }
+        const revision = r.rosterRevision ?? 0;
+        const baseline = this.baselineRevision.get(ws) !== revision;
+        const allActors =
+          baseline || r.npcs.length === 0 || this.tickCount % 6 === 0;
+        const allCars = baseline || this.tickCount % 30 === 0;
+        const cellX = Math.floor(viewer.p[0] / SNAPSHOT_CELL_SIZE);
+        const cellZ = Math.floor(viewer.p[2] / SNAPSHOT_CELL_SIZE);
+        const shared = allActors && (allCars || !m.cars);
+        const key = shared
+          ? allCars
+            ? "all-with-cars"
+            : "all-actors"
+          : cellX + "," + cellZ;
+        let packet = byCell.get(key);
+        if (!packet) {
+          // Include the whole viewer cell plus a 100 m margin in each direction.
+          const nearby = (p: number[]) =>
+            Math.abs(p[0] - (cellX + 0.5) * SNAPSHOT_CELL_SIZE) <=
+              SNAPSHOT_CELL_REACH &&
+            Math.abs(p[2] - (cellZ + 0.5) * SNAPSHOT_CELL_SIZE) <=
+              SNAPSHOT_CELL_REACH;
+          const indices: number[] = [];
+          if (!allActors)
+            m.players.forEach((p: PlayerState, i: number) => {
+              if (!p.npc || nearby(p.p)) indices.push(i);
+            });
+          const partial = !allActors && indices.length < actorRows.length;
+          packet = JSON.stringify({
+            ...header,
+            actors: partial ? indices.map((i) => actorRows[i]) : actorRows,
+            indices: partial ? indices : undefined,
+            cars: allCars ? r.cars : undefined,
+            carUpdates:
+              !allCars && m.cars
+                ? (m.cars as CountyCar[]).flatMap((c, i) =>
+                    nearby(c.p) ? [[i, c]] : [],
+                  )
+                : undefined,
+          });
+          byCell.set(key, packet);
+        }
+        ws.send(packet);
+        this.baselineRevision.set(ws, revision);
       } else {
         full ??= JSON.stringify(m);
         ws.send(full);
@@ -1100,6 +1162,7 @@ export class Rooms {
       };
       this.lastJoin.set(ws, Date.now());
       if (m.compact === true) this.compact.add(ws);
+      if (m.spatialSnapshots === 1) this.spatialSnapshots.add(ws);
       r.players.set(ws, p);
       this.memberships.set(ws, r);
       const credentials = this.options ? this.sessions.create(ws) : undefined;
