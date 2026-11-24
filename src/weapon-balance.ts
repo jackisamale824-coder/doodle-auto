@@ -54,7 +54,7 @@ export const WEAPONS = [
 ];
 export function scopeMagnification(id: number) {
   if (id === 3) return 4;
-  if (id === CARBINE) return 2;
+  if (id === 0 || id === CARBINE) return 1;
   return 0;
 }
 export const BURST_RECOVERY = 0.34;
@@ -64,6 +64,7 @@ export const isGrenade = (id: number) =>
   id === FLASH || id === SMOKE || id === FRAG;
 export const isBlastWeapon = (id: number) => id === FRAG || id === ROCKET;
 export const isUtility = (id: number) => id === KNIFE || isGrenade(id);
+export const canAimWeapon = (id: number) => id !== ROCKET && id !== FISTS && !isUtility(id);
 export const loadoutSlots = [
   {
     key: "primary",

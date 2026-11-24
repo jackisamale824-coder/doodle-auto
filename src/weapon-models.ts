@@ -11,19 +11,21 @@ import {
   MAMMOTH,
   SMG,
   isGrenade,
+  scopeMagnification,
   WEAPONS,
 } from "./weapon-balance.ts";
+import { REFLEX_HEIGHT, reflexSight } from "./weapon-attachments.ts";
 import { disposeGroup } from "./render.ts";
 
 // Height of the front post or optical axis in camera space at the 0.68 view scale.
 const viewSightHeight: Record<number, number> = {
-  0: 0.09,
+  0: REFLEX_HEIGHT * 0.68,
   1: 0.029,
   2: 0.028,
   3: 0.083,
   [BURST_AR]: 0.119,
   [HEAVY_AR]: 0.071,
-  [CARBINE]: 0.083,
+  [CARBINE]: REFLEX_HEIGHT * 0.68,
   [SMG]: 0.069,
   [MAMMOTH]: 0.042,
   [ROCKET]: 0.054,
@@ -174,6 +176,17 @@ function template(id: number) {
             (socket?.[2] ?? box.min.z) * scale,
         );
       }
+      if (id === 0) {
+        const rear = scene.getObjectByName("RearIronSight");
+        if (rear) rear.visible = false;
+      }
+      if (id === CARBINE) {
+        // Named primitives of the VSS asset's original telescopic optic and bracket.
+        for (const name of ["Glass", "Body_6", "Body_7", "Body_8", "Body_11", "Body_17"]) {
+          const part = scene.getObjectByName(name);
+          if (part) part.visible = false;
+        }
+      }
       return holder;
     })
     .catch((error) => {
@@ -211,12 +224,22 @@ export function mountWeaponModel(host: T.Group, id: number, pose: "view" | "hand
       }
       host.add(model);
       if (pose === "actor") {
+        if (scopeMagnification(id) === 1) model.add(reflexSight());
         model.rotation.y = Math.PI;
         model.scale.setScalar(0.58);
         host.userData.weaponModel = id;
         return;
       }
       if (pose === "view") host.userData.sightHeight = viewSightHeight[id];
+      const paintedRound = id === ROCKET && instance.getObjectByName("LauncherRound");
+      if (paintedRound && host.userData.reloadRound) {
+        disposeGroup(host.userData.reloadRound);
+        const pivot = new T.Group();
+        pivot.position.set(0, -0.045, -0.70);
+        host.add(pivot);
+        pivot.attach(paintedRound);
+        host.userData.reloadRound = pivot;
+      }
       const parts: T.Object3D[] = [];
       const shell = host.getObjectByName("shell");
       if (shell) parts.push(shell);

@@ -13,6 +13,7 @@ import {
   FLASH,
   ROCKET,
   scopeMagnification,
+  canAimWeapon,
   isUtility,
   isGrenade,
 } from "./weapon-balance.ts";
@@ -1041,17 +1042,15 @@ class Game {
         ? buildFists(this.seed === COUNTY, look)
         : buildWeapon(i, daylight);
     this.animateArms =
-      daylight && i !== FISTS
+      (daylight || i === ROCKET) && i !== FISTS
         ? addCountyArms(this.weaponMesh, WEAPONS[i].model, look)
         : undefined;
     $("ammo-row").classList.toggle("hidden", i === FISTS || i === KNIFE);
-    if (isUtility(i)) this.aiming = false;
-    if (i === FISTS) {
-      this.aiming = false;
-      this.equippedAt = this.time;
-    }
+    if (!canAimWeapon(i)) this.aiming = false;
+    if (i === ROCKET) this.viewMotion.ads = 0;
+    if (i === FISTS) this.equippedAt = this.time;
     const zoom = scopeMagnification(i);
-    $("scope-label").textContent = zoom
+    $("scope-label").textContent = zoom > 1
       ? WEAPONS[i].name + " · " + zoom + "×"
       : "";
     this.render.camera.add(this.weaponMesh);
@@ -1282,7 +1281,9 @@ class Game {
   updateMission() {
     if (this.weaponTest) {
       $("mission-title").textContent = "Weapon test range";
-      $("mission").textContent = "Left click · Use　 Right click · Aim";
+      $("mission").textContent = canAimWeapon(this.combat.weapon)
+        ? "Left click · Use　 Right click · Aim"
+        : "Left click · Use";
       return;
     }
     const online = this.mode === "online",
@@ -1626,8 +1627,7 @@ class Game {
         e.button === 2 &&
         this.vehicle < 0 &&
         !this.seatPending &&
-        this.combat.weapon !== FISTS &&
-        !isUtility(this.combat.weapon)
+        canAimWeapon(this.combat.weapon)
       )
         this.aiming = true;
     });
@@ -2633,8 +2633,9 @@ class Game {
     cam.fov = v.fov;
     cam.updateProjectionMatrix();
     const scoped =
-      canAim && zoom ? T.MathUtils.smoothstep(v.ads, 0.55, 0.94) : 0;
+      canAim && zoom > 1 ? T.MathUtils.smoothstep(v.ads, 0.55, 0.94) : 0;
     $("sniper-scope").style.opacity = String(scoped);
+    $("crosshair").classList.toggle("reflex-dot", zoom === 1 && v.ads > 0.85);
     $("crosshair").style.opacity = String(1 - scoped);
     $("crosshair").style.setProperty("--spread-opacity", String(1 - v.ads));
     this.weaponMesh.visible =
@@ -2659,9 +2660,10 @@ class Game {
           : 0;
       const reload = animateWeaponParts(
         this.weaponMesh,
-        WEAPONS[this.combat.weapon].model,
+        this.combat.weapon,
         reloadProgress,
         recoil,
+        this.combat.mags[this.combat.weapon] > 0,
       );
       this.animateArms?.(reload, reloadProgress);
       const reloadScale = settings.reduced ? 0.35 : 1;
@@ -2681,14 +2683,14 @@ class Game {
           vaultPose * 0.14,
         T.MathUtils.lerp(
           WEAPONS[this.combat.weapon].model === 2 ? -0.38 : -0.68,
-          -0.72,
+          zoom === 1 ? -0.46 : -0.72,
           v.ads,
         ) +
           recoil * 0.035,
       );
       this.weaponMesh.rotation.set(
         reload.pitch * reloadScale + recoil * 0.04 - vaultPose * 0.3,
-        -0.04 * (1 - v.ads),
+        -0.04 * (1 - v.ads) + reload.yaw * reloadScale,
         reload.roll * reloadScale +
           v.bob * 0.3 -
           vaultPose * 0.22 +

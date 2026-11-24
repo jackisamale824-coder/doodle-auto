@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { buildWeapon } from "../src/actors.ts";
 import { animateWeaponParts, reloadPose } from "../src/weapon-motion.ts";
 import { disposeGroup } from "../src/render.ts";
+import { ROCKET, canAimWeapon } from "../src/weapon-balance.ts";
 import { ViewMotion } from "../src/motion.ts";
 test("all reloads start and end neutral, move their loading parts, and reset on cancellation", () => {
   for (let weapon = 0; weapon < 4; weapon++) {
@@ -27,6 +28,27 @@ test("all reloads start and end neutral, move their loading parts, and reset on 
     } finally {
       disposeGroup(group);
     }
+  }
+});
+test("launcher stays at hip and the reload round clears on finish or cancellation", () => {
+  assert.equal(canAimWeapon(ROCKET), false);
+  const group = buildWeapon(ROCKET);
+  try {
+    const round = group.userData.reloadRound;
+    animateWeaponParts(group, ROCKET, 0.4, 0);
+    assert.ok(round.visible);
+    const incoming = round.position.clone();
+    animateWeaponParts(group, ROCKET, 0.71, 0);
+    assert.ok(round.visible && round.position.z > incoming.z);
+    for (const end of [0, 1]) {
+      const pose = animateWeaponParts(group, ROCKET, end, 0);
+      assert.equal(round.visible, true);
+      assert.equal(Math.abs(pose.roll) + Math.abs(pose.y) + pose.roundGrip, 0);
+    }
+    animateWeaponParts(group, ROCKET, 0, 0, false);
+    assert.equal(round.visible, false);
+  } finally {
+    disposeGroup(group);
   }
 });
 test("minor recoil remains bounded during automatic fire and settles after stopping", () => {

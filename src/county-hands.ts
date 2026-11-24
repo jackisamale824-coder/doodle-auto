@@ -39,7 +39,9 @@ export function addCountyArms(
       hand,
       sleeve,
       rest: hand.position.clone(),
-      elbow: new T.Vector3(side * 0.32, -0.38, 0.35),
+      elbow: gun.userData.reloadRound
+        ? new T.Vector3(side * 0.32, -0.69, 0.56)
+        : new T.Vector3(side * 0.32, -0.38, 0.35),
     };
   });
   gun.name = "county-weapon";
@@ -49,7 +51,12 @@ export function addCountyArms(
     for (const [i, arm] of arms.entries()) {
       const { hand, sleeve, rest, elbow } = arm;
       hand.position.copy(rest);
-      if (i === 0) {
+      if (i === 0 && gun.userData.reloadRound) {
+        target.copy(gun.userData.reloadRound.position);
+        target.x -= 0.06;
+        target.y -= 0.038;
+        hand.position.lerp(target, pose.roundGrip);
+      } else if (i === 0) {
         const action = gun.getObjectByName("action");
         const magazine = gun.getObjectByName(
           weapon === 1 ? "shell" : "magazine",

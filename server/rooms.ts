@@ -51,6 +51,7 @@ import {
   isGrenade,
   isBlastWeapon,
   isUtility,
+  canAimWeapon,
   type Loadout,
 } from "../src/weapon-balance.ts";
 import { actorHit, HIT_MULTIPLIER, type HitRegion } from "../src/actor-hit.ts";
@@ -1731,7 +1732,7 @@ export class Rooms {
         ? Math.max(1.08, Math.min(1.76, m.height))
         : 1.76;
       p.lean =
-        m.aiming === true
+        m.aiming === true && canAimWeapon(p.weapon)
           ? validatedLean(
               [p.p[0], p.p[1] + p.height - 0.16, p.p[2]],
               p.yaw,

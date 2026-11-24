@@ -46,7 +46,8 @@ test("sniper selects, hits a distant NPC, enforces its cycle and reloads five ro
 test("scoped optics preserve their magnification at every field of view", () => {
   for (const [weapon, zoom] of [
     [3, 4],
-    [CARBINE, 2],
+    [0, 1],
+    [CARBINE, 1],
   ]) {
     assert.equal(scopeMagnification(weapon), zoom);
     for (const hip of [65, 82, 105]) {
@@ -56,12 +57,14 @@ test("scoped optics preserve their magnification at every field of view", () => 
       v.shot(WEAPONS[weapon].model);
       assert.ok(Number.isFinite(v.kick));
       v.update(1 / 60, true, 0, true, false, hip, target);
-      assert.ok(v.fov > target && v.fov < hip);
+      if (zoom > 1) assert.ok(v.fov > target && v.fov < hip);
+      else assert.ok(Math.abs(v.fov - hip) < 1e-10);
       for (let i = 0; i < 30; i++)
         v.update(1 / 60, true, 0, true, false, hip, target);
       assert.ok(Math.abs(v.fov - target) < 0.01);
       v.update(1 / 60, false, 0, true, false, hip, target);
-      assert.ok(v.fov > target && v.fov < hip);
+      if (zoom > 1) assert.ok(v.fov > target && v.fov < hip);
+      else assert.ok(Math.abs(v.fov - hip) < 1e-10);
     }
   }
   assert.equal(scopeMagnification(2), 0);

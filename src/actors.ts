@@ -1,5 +1,7 @@
 import {
   WEAPONS,
+  ROCKET,
+  scopeMagnification,
   KNIFE,
   isGrenade,
   SMOKE,
@@ -10,6 +12,7 @@ import {
   BURST_AR,
 } from "./weapon-balance.ts";
 import { buildKnife, knifePose } from "./county-knife.ts";
+import { reflexSight, REFLEX_HEIGHT, launcherRound } from "./weapon-attachments.ts";
 import { mountWeaponModel } from "./weapon-models.ts";
 import {
   characterLook,
@@ -605,6 +608,9 @@ export function buildWeapon(id: number, county = false) {
     g.add(body);
     box([0.09, 0.045, 0.09], [0, 0.11, 0], dark);
     box([0.035, 0.13, 0.04], [0.064, 0.075, 0]);
+  } else if (id === ROCKET) {
+    tube(0.116, 1.42, 0, -0.035, -0.19);
+    box([0.07, 0.2, 0.09], [0, -0.21, 0.02], dark);
   } else if (index === 0) {
     // Slender receiver, separate handguard and barrel, angled magazine, open optic.
     box([0.075, 0.105, 0.34], [0, 0, -0.12]);
@@ -619,10 +625,12 @@ export function buildWeapon(id: number, county = false) {
     mag.name = "magazine";
     for (let i = 0; i < 5; i++)
       box([0.069, 0.012, 0.016], [0, 0.048, -0.32 - i * 0.048], dark);
-    box([0.085, 0.012, 0.068], [0, 0.079, -0.1]);
-    box([0.009, 0.083, 0.016], [-0.038, 0.12, -0.1]);
-    box([0.009, 0.083, 0.016], [0.038, 0.12, -0.1]);
-    box([0.085, 0.009, 0.016], [0, 0.16, -0.1]);
+    if (scopeMagnification(id) !== 1) {
+      box([0.085, 0.012, 0.068], [0, 0.079, -0.1]);
+      box([0.009, 0.083, 0.016], [-0.038, 0.12, -0.1]);
+      box([0.009, 0.083, 0.016], [0.038, 0.12, -0.1]);
+      box([0.085, 0.009, 0.016], [0, 0.16, -0.1]);
+    }
     box([0.026, 0.012, 0.065], [0.041, 0.008, -0.055], dark).name = "action";
   } else if (index === 1) {
     box([0.084, 0.1, 0.27], [0, 0, -0.055]);
@@ -738,5 +746,14 @@ export function buildWeapon(id: number, county = false) {
     }
   });
   mountWeaponModel(g, id);
+  if (scopeMagnification(id) === 1) {
+    g.add(reflexSight());
+    g.userData.sightHeight = REFLEX_HEIGHT * 0.68;
+  }
+  if (id === ROCKET) {
+    const round = launcherRound();
+    g.add(round);
+    g.userData.reloadRound = round;
+  }
   return g;
 }

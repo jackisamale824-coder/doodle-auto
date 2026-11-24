@@ -749,6 +749,14 @@ kbd {
   left: -1.5px;
   top: -1.5px;
 }
+#crosshair.reflex-dot span {
+  width: 4px;
+  height: 4px;
+  left: -2px;
+  top: -2px;
+  background: #ff4633;
+  box-shadow: 0 0 0 1px #842519, 0 0 4px #ff5a3a;
+}
 #hook-reticle {
   position: absolute;
   left: 50%;

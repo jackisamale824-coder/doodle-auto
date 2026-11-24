@@ -10,20 +10,26 @@ try {
   await mkdir("output/playwright", { recursive: true });
   for (const [name, zoom] of [
     ["Longshot", 4],
-    ["Carbine AR", 2],
+    ["Carbine AR", 1],
+    ["Ink AR", 1],
   ]) {
     const page = await browser.newPage({
       viewport: { width: 1000, height: 660 },
     });
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    const scope = page.locator("#sniper-scope");
+    const overlay = zoom > 1;
+    const scope = page.locator(overlay ? "#sniper-scope" : "#crosshair");
     const waitForScope = (visible) =>
       page.waitForFunction(
-        (visible) =>
-          Number(document.querySelector("#sniper-scope").style.opacity) ===
-          Number(visible),
-        visible,
+        ({ visible, overlay }) =>
+          overlay
+            ? Number(document.querySelector("#sniper-scope").style.opacity) ===
+              Number(visible)
+            : document
+                .querySelector("#crosshair")
+                .classList.contains("reflex-dot") === visible,
+        { visible, overlay },
       );
     await page.goto(
       process.env.GAME_URL || "http://127.0.0.1:5199/?mode=county",
@@ -33,19 +39,30 @@ try {
     await page.locator(".armory-card").filter({ hasText: name }).click();
     await page.locator("#equip-kit").click();
     await page.waitForFunction(() => !!document.pointerLockElement);
-    assert.equal(await page.locator("#weapon-name").textContent(), name);
+    assert.equal(
+      await page.locator("#weapon-name").textContent(),
+      name === "Ink AR" ? "INKRIFLE" : name,
+    );
     await page.mouse.down({ button: "right" });
     await waitForScope(true);
-    assert.equal(
-      await scope.locator("#scope-label").textContent(),
-      name + " · " + zoom + "×",
-    );
-    const dot = await scope.locator("i").boundingBox();
+    if (overlay)
+      assert.equal(
+        await scope.locator("#scope-label").textContent(),
+        name + " · " + zoom + "×",
+      );
+    else
+      assert.equal(
+        await page
+          .locator("#sniper-scope")
+          .evaluate((e) => Number(e.style.opacity)),
+        0,
+      );
+    const dot = await scope.locator(overlay ? "i" : "span").boundingBox();
     const size = page.viewportSize();
     assert.ok(Math.abs(dot.x + dot.width / 2 - size.width / 2) < 1);
     assert.ok(Math.abs(dot.y + dot.height / 2 - size.height / 2) < 1);
     await page.screenshot({
-      path: "output/playwright/scope-" + zoom + "x.png",
+      path: "output/playwright/scope-" + name.replaceAll(" ", "-") + ".png",
     });
     const ammo = Number(await page.locator("#ammo").textContent());
     await page.mouse.down();
