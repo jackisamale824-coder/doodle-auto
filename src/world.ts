@@ -16,6 +16,7 @@ import {
 export type V3 = [number, number, number];
 export type PieceState = 0 | 1 | 2;
 export interface Box {
+  name?: string;
   piece?: "door" | "wall" | "roof" | "floor" | "furniture" | "fixture";
   pieceId?: number;
   buildingId?: string;

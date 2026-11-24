@@ -178,7 +178,7 @@ export class Renderer {
   }
   setQuality(high: boolean) {
     this.qualityHigh = high;
-    this.renderer.shadowMap.enabled = high && !!this.updateTides;
+    this.renderer.shadowMap.enabled = high && (this.oilYard || !!this.updateTides);
     this.renderer.shadowMap.needsUpdate = true;
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
@@ -186,6 +186,7 @@ export class Renderer {
   addCountyCar?: Awaited<ReturnType<typeof import("./county-render.ts").drawCounty>>["addCar"];
   countyCars: import("./county-car.ts").CountyCarModel[] = [];
   private county = false;
+  private oilYard = false;
   private frameCost = 0;
   private qualityHigh = true;
   private updateTides?: (time: number) => void;
@@ -194,7 +195,8 @@ export class Renderer {
     this.addCountyCar = undefined;
     const county = city.seed === "switchback-county";
     const islands = city.seed === ISLANDS;
-    const horizon = islands ? "#a6dddf" : county ? "#b4dce7" : "#f4c79e";
+    this.oilYard = !!city.arena?.model;
+    const horizon = islands ? "#a6dddf" : county ? "#b4dce7" : this.oilYard ? "#e6cdb0" : "#f4c79e";
     (this.scene.fog as T.Fog).near = islands ? 95 : 65;
     this.sky.material.uniforms.zenith.value.set(islands ? "#347fb9" : county ? "#408dcc" : "#5991b8");
     this.sky.material.uniforms.horizon.value.set(horizon);
@@ -221,17 +223,27 @@ export class Renderer {
       const sun = new T.DirectionalLight(0xffead6, 2.1);
       sun.position.set(-4, 7, 4);
       const daylight = new T.Group();
-      daylight.add(sun, new T.HemisphereLight(0xfff4df, 0xc0cbd6, 1.65));
+      if (this.oilYard) {
+        sun.position.set(-48, 72, 30);
+        sun.castShadow = true;
+        sun.shadow.mapSize.set(2048, 2048);
+        Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 44, bottom: -44, near: 25, far: 160 });
+        sun.shadow.camera.updateProjectionMatrix();
+        sun.shadow.normalBias = 0.035;
+        sun.shadow.bias = -0.00015;
+        daylight.add(new T.HemisphereLight(0xe4effc, 0xd1b89c, 1.62));
+      } else daylight.add(new T.HemisphereLight(0xfff4df, 0xc0cbd6, 1.65));
+      daylight.add(sun);
       this.cityGroup.add(daylight);
     }
     this.beaconMeshes = [];
     this.blimpMeshes = [];
     this.decor = [];
     this.updateTides = undefined;
-    this.renderer.shadowMap.enabled = islands && this.qualityHigh;
+    this.renderer.shadowMap.enabled = (islands || this.oilYard) && this.qualityHigh;
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
     if (islands) {
-      this.renderer.shadowMap.autoUpdate = false;
-      this.renderer.shadowMap.needsUpdate = true;
       this.updateTides = drawIslands(city, this.cityGroup);
       this.buildMarks(city);
       return;
@@ -708,23 +720,9 @@ export class Renderer {
   private async buildArena(city: City) {
     const arena = city.arena!;
     if (arena.model) {
-      // Reuse the exact collision triangles: no duplicate model payload or textures.
-      const mat = inkMaterial(INK, 0.025);
-      mat.uniforms.uSurface.value = 1.7;
-      for (const box of city.boxes) {
-        if (!box.mesh) continue;
-        const indexed = new T.BufferGeometry();
-        indexed.setAttribute(
-          "position",
-          new T.Float32BufferAttribute(box.mesh.vertices, 3),
-        );
-        indexed.setIndex(box.mesh.indices);
-        const geo = indexed.toNonIndexed();
-        indexed.dispose();
-        geo.computeVertexNormals();
-        const mesh = new T.Mesh(geo, mat);
-        this.cityGroup.add(mesh);
-      }
+      const { drawOilYard } = await import("./rust-view.ts");
+      await drawOilYard(city.boxes, this.cityGroup);
+      this.renderer.shadowMap.needsUpdate = true;
     }
 
     for (const prop of arena.props) {
@@ -844,6 +842,11 @@ export class Renderer {
           ) < 180;
     }
     this.inkPost.uniforms.clip.value.set(this.camera.near, this.camera.far);
+    if (this.oilYard) {
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
     this.renderer.setRenderTarget(this.inkTarget);
     this.renderer.render(this.scene, this.camera);
     this.renderer.setRenderTarget(null);
@@ -868,6 +871,8 @@ export function disposeGroup(group: T.Group) {
         mats.add(mat);
         const map = (mat as T.MeshBasicMaterial).map;
         if (map) textures.add(map);
+        const normalMap = (mat as T.MeshStandardMaterial).normalMap;
+        if (normalMap) textures.add(normalMap);
       }
   });
   geos.forEach((g) => g.dispose());

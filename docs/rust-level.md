@@ -4,7 +4,9 @@ Choose Rust in the map picker or open `/?mode=rust` to play the oil yard. The su
 
 ## Geometry and style
 
-The supplied file was about 440 MiB. The final runtime contains no textures and makes no separate GLB request. `src/generated/rust-collision.json` holds 96,266 triangles in 148 meshes: 2,263,187 bytes raw, approximately 545,187 bytes gzip. This geometry is bundled once and reused for the Three.js paper/blue-ink rendering and Rapier triangle collision. The game engine, fonts, and other assets are additional downloads.
+The supplied file was about 440 MiB. The game reuses the 96,266 triangles in the 148 meshes of `src/generated/rust-collision.json` for rendering and Rapier collision. Rust projects UVs in world metres and selects materials using the original mesh names. It loads ten WebP color and normal maps (474 KB total) when entering the yard. High graphics quality enables cached sunlight shadows.
+
+The surface maps are adapted from Poly Haven’s [Sandy Gravel](https://polyhaven.com/a/sandy_gravel), [Precast Concrete Wall](https://polyhaven.com/a/precast_concrete_wall), [Corrugated Iron](https://polyhaven.com/a/corrugated_iron), [Rusty Painted Metal](https://polyhaven.com/a/rusty_painted_metal), and [Rusty Metal 02](https://polyhaven.com/a/rusty_metal_02). [CC0 license](https://polyhaven.com/license)
 
 The earlier texture-optimized GLB was moved out of the public directory into `output/backups/rust-textured-optimized.glb`; it is not deployed. Geometry is normalized from centimetres to metres, with ground height and the map center adjusted consistently. The source mannequin is omitted.
 
