@@ -6,16 +6,67 @@
     <meta name="theme-color" content="#181c24" />
     <title>Drive Mad · Sully6 Arcade</title>
     <style>
-      html, body { height: 100%; margin: 0; background: #181c24; }
+      html, body { height: 100%; margin: 0; background: #181c24; color: #fff; }
+      body { height: 100dvh; font: 1rem/1.5 system-ui, sans-serif; }
       iframe { display: block; width: 100%; height: 100%; border: 0; }
+      main { height: 100%; display: grid; place-content: center; padding: 0 1.5rem; text-align: center; }
+      h1 { margin: 0; font-size: 1.65rem; }
+      p { margin: .5rem 0 0; color: #d1d7e1; }
+      button { justify-self: center; margin-top: 1.25rem; padding: .75rem 1.25rem; border: 0; border-radius: .5rem; background: #ffd158; color: #181c24; font: inherit; font-weight: 650; cursor: pointer; }
+      [hidden] { display: none; }
     </style>
   </head>
   <body>
-    <iframe
-      title="Drive Mad"
-      src="https://drive-mad-game-theta.vercel.app/"
-      allow="autoplay; fullscreen; gamepad"
-      allowfullscreen
-    ></iframe>
+    <main id="rotate" hidden>
+      <h1>Rotate to play</h1>
+      <p id="hint">Turn your device sideways to play Drive Mad.</p>
+      <button id="landscape" type="button" hidden>Enter landscape</button>
+    </main>
+    <template id="game">
+      <iframe
+        title="Drive Mad"
+        src="https://drive-mad-game-theta.vercel.app/"
+        allow="autoplay; fullscreen; gamepad"
+        allowfullscreen
+      ></iframe>
+    </template>
+    <script>
+      const portrait = matchMedia("(any-pointer: coarse) and (orientation: portrait)");
+      const prompt = document.querySelector("#rotate");
+      const button = document.querySelector("#landscape");
+      let frame;
+
+      function showOrientation() {
+        prompt.hidden = !portrait.matches;
+        if (portrait.matches) {
+          if (frame) {
+            frame.blur();
+            frame.hidden = true;
+            if (document.fullscreenElement === frame) document.exitFullscreen().catch(() => {});
+          }
+        } else {
+          if (!frame) {
+            frame = document.querySelector("#game").content.firstElementChild.cloneNode(true);
+            document.body.append(frame);
+          }
+          frame.hidden = false;
+        }
+      }
+
+      if (document.fullscreenEnabled && typeof screen.orientation?.lock === "function") {
+        button.hidden = false;
+        button.onclick = async () => {
+          try {
+            if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+            await screen.orientation.lock("landscape");
+          } catch {
+            button.hidden = true;
+            document.querySelector("#hint").textContent = "Enable auto-rotate, then turn your device sideways.";
+          }
+        };
+      }
+      portrait.addEventListener("change", showOrientation);
+      showOrientation();
+    </script>
   </body>
 </html>
