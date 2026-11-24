@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [cloudflare()],
   environments: {
     client: {
-      build: { rollupOptions: { input: { index: "index.html", pool: "pool/index.html" } } },
+      build: { rollupOptions: { input: { index: "index.html", pool: "pool/index.html", viceCity: "vice-city/index.html" } } },
     },
   },
   base: process.env.RELEASE_ID ? `/releases/${process.env.RELEASE_ID}/` : "/",

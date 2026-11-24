@@ -166,14 +166,15 @@ export default {
     // The Pages game host forwards to this prefix. Restore the public origin
     // before handing account requests or WebSocket upgrades to the game.
     if (url.pathname.startsWith("/play/")) {
-      if (url.pathname === "/play/vice-city/" || url.pathname === "/play/vice-city/index.html") {
-        return Response.redirect("https://quenq.com/apps/vice-city/", 302);
-      }
-      const gamePath = /^\/play\/(gta|pool|drive-mad)(\/.*)$/.exec(url.pathname);
+      const gamePath = /^\/play\/(gta|pool|drive-mad|vice-city)(\/.*)$/.exec(url.pathname);
       if (!gamePath) return new Response("Unknown game", { status: 404 });
       const [, game, path] = gamePath;
       url.hostname = game + ".sully6.com";
       url.pathname = path;
+      if (game === "vice-city") {
+        if (path === "/" || path === "/index.html") url.pathname = "/vice-city/";
+        return env.ASSETS.fetch(new Request(url, request));
+      }
       if (game === "drive-mad") {
         url.pathname = "/drive-mad" + path;
         return env.ASSETS.fetch(new Request(url, request));
