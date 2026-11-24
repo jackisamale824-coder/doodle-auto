@@ -62,10 +62,14 @@ try {
       { angle, power, x, y } = botStroke(state);
     const canvas = page.locator("#table"),
       bounds = await canvas.boundingBox();
-    const scale = Math.min(bounds.width / 992, bounds.height / 542);
+    const upright = bounds.height > bounds.width;
+    const scale = Math.min(
+      bounds.width / (upright ? 542 : 992),
+      bounds.height / (upright ? 992 : 542),
+    );
     const at = (x, y) => ({
-      x: bounds.width / 2 + (x - 450) * scale,
-      y: bounds.height / 2 + (y - 225) * scale,
+      x: bounds.width / 2 + (upright ? y - 225 : x - 450) * scale,
+      y: bounds.height / 2 + (upright ? 450 - x : y - 225) * scale,
     });
     const cue = state.balls[0],
       cx = x ?? cue.x,

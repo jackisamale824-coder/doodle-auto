@@ -434,6 +434,29 @@ dialog::backdrop {
     padding: 6px 13px;
   }
 }
+@media (max-width: 630px) and (orientation: portrait) {
+  .arena canvas {
+    aspect-ratio: 542 / 992;
+    height: min(66svh, 176vw);
+  }
+  .mast {
+    padding: 14px 0 10px;
+  }
+  .emblem {
+    display: none;
+  }
+  .identity h1 {
+    white-space: nowrap;
+    font-size: clamp(1.65rem, 7.5vw, 2.5rem);
+  }
+  nav button {
+    white-space: nowrap;
+  }
+  .console {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+}
 @media (max-height: 560px) and (orientation: landscape) {
   .mast {
     padding: 6px 0;

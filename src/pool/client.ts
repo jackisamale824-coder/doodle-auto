@@ -212,16 +212,20 @@ function simulate(now: number) {
 }
 let scale = 1,
   ox = 0,
-  oy = 0;
+  oy = 0,
+  upright = false;
 function resize() {
   redraw = true;
   const rect = canvas.getBoundingClientRect(),
     dpr = Math.min(2, devicePixelRatio || 1);
   canvas.width = Math.max(1, Math.round(rect.width * dpr));
   canvas.height = Math.max(1, Math.round(rect.height * dpr));
-  scale = Math.min(canvas.width / (W + 92), canvas.height / (H + 92));
-  ox = (canvas.width - W * scale) / 2;
-  oy = (canvas.height - H * scale) / 2;
+  upright = rect.height > rect.width;
+  const across = upright ? H : W,
+    along = upright ? W : H;
+  scale = Math.min(canvas.width / (across + 92), canvas.height / (along + 92));
+  ox = (canvas.width - across * scale) / 2;
+  oy = (canvas.height + (upright ? along : -along) * scale) / 2;
 }
 new ResizeObserver(resize).observe(canvas);
 resize();
@@ -239,7 +243,8 @@ function line(points: Point[], color: string, dashed: boolean) {
 function draw(now: number) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(scale, 0, 0, scale, ox, oy);
+  if (upright) ctx.setTransform(0, -scale, scale, 0, ox, oy);
+  else ctx.setTransform(scale, 0, 0, scale, ox, oy);
   drawTable(ctx);
   const cue = game.balls[0];
   if (active() && !placing) {
@@ -305,8 +310,12 @@ function frame(now: number) {
 function aim(e: PointerEvent) {
   if (!active()) return;
   const rect = canvas.getBoundingClientRect(),
-    x = (((e.clientX - rect.left) * canvas.width) / rect.width - ox) / scale,
-    y = (((e.clientY - rect.top) * canvas.height) / rect.height - oy) / scale;
+    horizontal =
+      (((e.clientX - rect.left) * canvas.width) / rect.width - ox) / scale,
+    vertical =
+      (((e.clientY - rect.top) * canvas.height) / rect.height - oy) / scale;
+  const x = upright ? -vertical : horizontal,
+    y = upright ? horizontal : vertical;
   const b = game.balls[0];
   if (placing) {
     if (canPlace(game, x, y)) {
