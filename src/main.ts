@@ -131,6 +131,7 @@ const timeLabel = (s: number) =>
     .padStart(2, "0")}`;
 type Mode = "contract" | "roam" | "online";
 class Game {
+  private mapExpanded = false;
   loadout = readLoadout(safeRead("dc.loadout", null)) ?? defaultLoadout;
   private respawnAt = 0;
   private armorySpawn?: V3;
@@ -626,6 +627,7 @@ class Game {
     this.carSpeed = this.carSteer = this.crashUntil = 0;
     this.physics = physics;
     this.seed = seed;
+    this.setMapExpanded(false);
     document.body.classList.toggle("county-world", seed === COUNTY);
     this.district = district;
     await this.render.build(city);
@@ -1420,8 +1422,10 @@ class Game {
         if (id !== undefined) this.setWeapon(id);
       }
       if (e.code === "KeyM") {
-        this.audio.enabled = !this.audio.enabled;
-        this.notice(this.audio.enabled ? "SOUND ON" : "SOUND OFF");
+        if (e.shiftKey) {
+          this.audio.enabled = !this.audio.enabled;
+          this.notice(this.audio.enabled ? "SOUND ON" : "SOUND OFF");
+        } else this.setMapExpanded(!this.mapExpanded);
       }
       if (e.code === "KeyH")
         this.notice(
@@ -1662,6 +1666,7 @@ class Game {
         "Switch to your last weapon",
       ],
       ["R", "Reload"],
+      ["M / Shift + M", "Toggle floating map / toggle sound"],
       ...(county
         ? [
             ["E", "Open a door or enter / exit a car"],
@@ -2680,15 +2685,76 @@ class Game {
         this.remoteRopes.delete(id);
       }
   }
+  private setMapExpanded(expanded: boolean) {
+    if (this.mapExpanded === expanded) return;
+    this.mapExpanded = expanded;
+    $("city-map-panel").classList.toggle("expanded", expanded);
+    const canvas = $<HTMLCanvasElement>("city-map");
+    canvas.width = canvas.height = expanded ? 570 : 190;
+    $("map-toggle-hint").textContent = expanded
+      ? "M · close map"
+      : "M · expand map";
+  }
+
+  private drawMapPlayers(
+    c: CanvasRenderingContext2D,
+    centerX: number,
+    centerZ: number,
+    scale: number,
+  ) {
+    const marker = (x: number, z: number, yaw: number, local: boolean) => {
+      const dx = (x - centerX) * scale,
+        dz = (z - centerZ) * scale;
+      const edge = Math.max(1, Math.abs(dx) / 89, Math.abs(dz) / 89);
+      c.save();
+      c.translate(95 + dx / edge, 95 + dz / edge);
+      c.rotate(edge > 1 ? Math.atan2(dx, -dz) : -yaw);
+      if (this.mapExpanded) c.scale(0.68, 0.68);
+      c.fillStyle = local ? "#d23c45" : "#2442ae";
+      c.strokeStyle = "#fffdf3";
+      c.lineWidth = 1.2;
+      c.lineJoin = "round";
+      c.beginPath();
+      if (local || edge > 1) {
+        c.moveTo(0, -5);
+        c.lineTo(4, 4);
+        c.lineTo(0, 2);
+        c.lineTo(-4, 4);
+        c.closePath();
+      } else c.arc(0, 0, 3.6, 0, Math.PI * 2);
+      c.fill();
+      c.stroke();
+      c.restore();
+    };
+    if (this.mode === "online" && this.network.active) {
+      for (const other of this.network.players) {
+        if (other.npc || other.id === this.network.id || other.hp <= 0)
+          continue;
+        const [x, , z] = this.network.position(other);
+        marker(x, z, other.yaw, false);
+      }
+    }
+    const p = this.player.position;
+    marker(p.x, p.z, this.player.yaw, true);
+  }
+
   drawCityMap() {
     const canvas = $<HTMLCanvasElement>("city-map"),
       c = canvas.getContext("2d")!;
+    const resolution = canvas.width / 190;
+    c.setTransform(resolution, 0, 0, resolution, 0, 0);
     if (this.seed === COUNTY) {
       const p = this.player.position;
-      const scale = this.vehicle >= 0 ? 0.82 : 1.18;
+      const scale = this.mapExpanded
+        ? 90 / this.city.bounds
+        : this.vehicle >= 0
+          ? 0.82
+          : 1.18;
+      const centerX = this.mapExpanded ? 0 : p.x,
+        centerZ = this.mapExpanded ? 0 : p.z;
       c.clearRect(0, 0, 190, 190);
       c.save();
-      c.translate(95 - p.x * scale, 95 - p.z * scale);
+      c.translate(95 - centerX * scale, 95 - centerZ * scale);
       c.scale(scale, scale);
       c.fillStyle = "#8d9eb72c";
       for (const b of this.city.plan.parcels)
@@ -2703,18 +2769,7 @@ class Game {
         c.stroke();
       }
       c.restore();
-      c.save();
-      c.translate(95, 95);
-      c.rotate(-this.player.yaw);
-      c.fillStyle = "#d23c45";
-      c.beginPath();
-      c.moveTo(0, -6);
-      c.lineTo(5, 5);
-      c.lineTo(0, 2);
-      c.lineTo(-5, 5);
-      c.closePath();
-      c.fill();
-      c.restore();
+      this.drawMapPlayers(c, centerX, centerZ, scale);
       const district = this.city.plan.blocks.find(
         (b) =>
           p.x >= b.minX - 8 &&
@@ -2738,13 +2793,14 @@ class Game {
           : "Highlands";
       return;
     }
-    const mapBounds = this.city.arena
-      ? Math.max(
-          42,
-          Math.abs(this.player.position.x) + 12,
-          Math.abs(this.player.position.z) + 12,
-        )
-      : this.city.bounds;
+    const mapBounds =
+      this.city.arena && !this.mapExpanded
+        ? Math.max(
+            42,
+            Math.abs(this.player.position.x) + 12,
+            Math.abs(this.player.position.z) + 12,
+          )
+        : this.city.bounds;
     const scale = 90 / mapBounds;
     const map = (n: number) => 95 + n * scale;
     c.clearRect(0, 0, 190, 190);
@@ -2793,18 +2849,7 @@ class Game {
       c.fill();
     }
     const p = this.player.position;
-    c.save();
-    c.translate(map(p.x), map(p.z));
-    c.rotate(-this.player.yaw);
-    c.fillStyle = "#d23c45";
-    c.beginPath();
-    c.moveTo(0, -5);
-    c.lineTo(4, 4);
-    c.lineTo(0, 2);
-    c.lineTo(-4, 4);
-    c.closePath();
-    c.fill();
-    c.restore();
+    this.drawMapPlayers(c, 0, 0, scale);
     const nearest = this.city.buildings.reduce((a, b) =>
       Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z)
         ? b

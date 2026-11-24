@@ -1420,6 +1420,35 @@ dialog .secondary-button {
 #city-map-panel small {
   font-size: 11px;
 }
+.map-player-key {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.map-player-key i {
+  width: 7px;
+  height: 7px;
+  background: #d23c45;
+  clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%);
+}
+.map-player-key i + i {
+  margin-left: 5px;
+  background: #2442ae;
+  clip-path: circle();
+}
+#city-map-panel.expanded {
+  display: flex;
+  z-index: 1;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 5px 24px #182b3640;
+}
+#city-map-panel.expanded #city-map {
+  width: min(65vmin, 540px);
+  height: min(65vmin, 540px);
+}
 @media (max-width: 700px) {
   #city-map-panel {
     display: none;

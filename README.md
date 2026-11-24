@@ -52,7 +52,8 @@ Every building has an open front entrance and internal stair flights to its roof
 | R                        | Reload (unlimited reserve ammunition)                                 |
 | Tab                      | Scoreboard / run statistics                                           |
 | Escape                   | Pause and release mouse                                               |
-| M                        | Toggle sound                                                          |
+| M                        | Toggle the floating map                                               |
+| Shift + M                | Toggle sound                                                          |
 
 Wall running starts when moving forward alongside a wall in the air. The dotted aim ring indicates a valid hook target within 65 meters. Gold markers identify rooftop objectives. Collecting marks replenishes health; green pickups also heal. Health slowly regenerates after avoiding damage.
 
