@@ -1671,20 +1671,20 @@ body.county-death dialog p {
   display: none;
 }
 
-.county-world #player-account,
-.county-world #city-map-panel:not(.expanded) :is(.map-player-key, #map-toggle-hint),
-.county-world #armory-hint,
-.county-world .inventory-tip {
+.daylight-world #player-account,
+.daylight-world #city-map-panel:not(.expanded) :is(.map-player-key, #map-toggle-hint),
+.daylight-world #armory-hint,
+.daylight-world .inventory-tip {
   display: none;
 }
-.county-world #city-map { background: transparent; }
+.daylight-world #city-map { background: transparent; }
 #hud #weapon-slots span { opacity: .88; text-transform: uppercase; }
 #hud .ammo-row > span, #hud #timer { opacity: .95; }
-.county-world #hud {
+.daylight-world #hud {
   --ink: #264650;
   --hud-panel: #f7f5e9dc;
 }
-.county-world
+.daylight-world
   #hud
   :is(
     .hud-top-left,
@@ -1700,11 +1700,11 @@ body.county-death dialog p {
     0 1px 2px #182b36,
     0 0 4px #182b36;
 }
-.county-world #hud .hud-top-left {
+.daylight-world #hud .hud-top-left {
   background: linear-gradient(90deg, #183442ce, #18344283 75%, transparent);
   padding: 7px 12px;
 }
-.county-world
+.daylight-world
   #hud
   :is(
     .district-label b,
@@ -1717,45 +1717,45 @@ body.county-death dialog p {
   color: #203e4a;
   text-shadow: none;
 }
-.county-world #hud .district-label span { padding: 1px 4px; }
-.county-world #hud :is(.district-label span, #weapon-slots .active) {
+.daylight-world #hud .district-label span { padding: 1px 4px; }
+.daylight-world #hud :is(.district-label span, #weapon-slots .active) {
   background: #c7ded8;
   opacity: 1;
 }
-.county-world #hud :is(#mission, #timer, #reload-label) {
+.daylight-world #hud :is(#mission, #timer, #reload-label) {
   color: #e2ece5;
 }
-.county-world #hud #air-charge {
+.daylight-world #hud #air-charge {
   color: #9be9df;
 }
-.county-world #hud #notoriety {
+.daylight-world #hud #notoriety {
   color: #ffdc93;
 }
-.county-world #hud .health-bar {
+.daylight-world #hud .health-bar {
   background: #183442b8;
   border-color: #a4d7c8;
 }
-.county-world #hud .health-bar i {
+.daylight-world #hud .health-bar i {
   background: #74d5b5;
 }
-.county-world #city-map-panel {
+.daylight-world #city-map-panel {
   color: #234652;
 }
 @media (max-height: 700px) {
-  .county-world #city-map {
+  .daylight-world #city-map {
     width: 115px;
     height: 115px;
   }
 }
 @media (min-width: 701px) and (max-width: 1150px) {
-  .county-world #hud .hud-bottom-center {
+  .daylight-world #hud .hud-bottom-center {
     bottom: 12px;
   }
-  .county-world #hud #weapon-slots {
+  .daylight-world #hud #weapon-slots {
     font-size: 13px;
     gap: 4px;
   }
-  .county-world #hud #weapon-slots span {
+  .daylight-world #hud #weapon-slots span {
     padding: 3px;
   }
 }

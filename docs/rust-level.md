@@ -1,6 +1,6 @@
 # Rust arena
 
-Rust is the runtime default for the public lobby, private rooms, and solo modes. The supplied `RUST.glb` provides the geometry. Its original attachment is unchanged. The procedural generator remains in `src/world.ts`; `?level=city` opens the City Archive for solo exploration, and `city:` seeds identify archived maps in private rooms. A pre-Rust snapshot is retained in `output/backups/procedural-city-preserved.tgz`.
+Choose Rust in the map picker or open `/?mode=rust` to play the oil yard. The supplied `RUST.glb` provides its geometry. Four Tides replaces City Archive in the picker. `/?level=islands`, old `?level=city` links and `city:` seeds open the islands. A pre-Rust snapshot is retained in `output/backups/procedural-city-preserved.tgz`.
 
 ## Geometry and style
 

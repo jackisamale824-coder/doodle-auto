@@ -61,7 +61,9 @@ import { COUNTY, countyLadders, countyCars, type CountyCar } from "./county.ts";
 import { CoverPeek, peekEye, validatedLean } from "./cover-peek.ts";
 import { WeaponClearance } from "./weapon-clearance.ts";
 /// <reference types="vite/client" />
-import { generateLevel } from "./levels.ts";
+import { ISLANDS, SEA_LEVEL } from "./islands.ts";
+import { drawIslandMap, islandMapScale } from "./island-view.ts";
+import { publicMapSeed, generateLevel } from "./levels.ts";
 import "./style.css";
 import * as T from "three";
 import { distance, type City, type V3 } from "./world.ts";
@@ -145,9 +147,11 @@ class Game {
   render = new Renderer(canvas);
   audio = new AudioEngine();
   private params = new URLSearchParams(location.search);
-  countySelected = this.params.get("level") !== "city" &&
+  private islandsSelected = ["islands", "city"].includes(this.params.get("level") ?? "");
+  countySelected = !this.islandsSelected &&
     (this.params.get("mode") === "county" || (location.pathname === "/" && !this.params.has("mode") && !this.params.has("room")));
-  network = new Network(this.countySelected ? "county" : "dc");
+  private selectedSeed = this.islandsSelected ? ISLANDS : this.countySelected ? COUNTY : "";
+  network = new Network(this.islandsSelected ? "islands" : this.countySelected ? "county" : "dc");
   private identity = bindPlayerAccount();
   cars: CountyCar[] = [];
   citizens?: CountyCitizens;
@@ -503,8 +507,6 @@ class Game {
   combat!: Combat;
   mode: Mode = "contract";
   soloMode: Mode = "contract";
-  private archive =
-    new URLSearchParams(location.search).get("level") === "city";
   private menuMode: "public" | "duel" | "roam" | "contract" = "public";
   private dismissDialog: () => void = () => this.closeDialog();
   private lobbies: {
@@ -546,9 +548,12 @@ class Game {
   private boardContent = "";
   private lookReady = 0;
   async init() {
-    if (new URLSearchParams(location.search).get("level") === "city")
-      this.seed = "city:notebook";
-    else this.seed = this.countySelected ? COUNTY : "rust";
+    if (this.params.get("level") === "city") {
+      const url = new URL(location.href);
+      url.searchParams.set("level", "islands");
+      history.replaceState(null, "", url);
+    }
+    this.seed = this.selectedSeed || "rust";
     this.audio.volume = settings.volume;
     this.render.setQuality(settings.quality);
     $<HTMLInputElement>("seed").value = this.seed;
@@ -556,22 +561,21 @@ class Game {
     await this.build(this.seed, 1);
     const map = this.countySelected
       ? "county"
-      : this.archive
-        ? "archive"
+      : this.islandsSelected
+        ? "islands"
         : "rust";
     $<HTMLSelectElement>("map-picker").value = map;
     $("contract-mode").hidden = this.countySelected;
     $("roam-mode").textContent = this.countySelected ? "Solo" : "Free roam";
-    $("seed-options").hidden = this.countySelected;
+    $("seed-options").hidden = !!this.selectedSeed;
     $("model-credits").hidden = !this.countySelected;
-    $("duel").hidden = $("public-mode").hidden = this.archive;
-    if (this.archive) this.menuMode = "roam";
-    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.archive ? "City Archive" : "Rust · Oil Yard");
+    if (this.islandsSelected) this.menuMode = "roam";
+    document.title = "Doodle Auto — " + (this.countySelected ? "Switchback County · Suncoast" : this.islandsSelected ? "Four Tides" : "Rust · Oil Yard");
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
     $("loading").classList.add("hidden");
-    await this.identity.enter(!this.countySelected);
+    await this.identity.enter(!this.selectedSeed);
     try {
       const restored = await this.network.bootstrap();
       if (restored) {
@@ -608,12 +612,7 @@ class Game {
     requestAnimationFrame((t) => this.loop(t));
   }
   async build(seed: string, district: number, spawn?: V3) {
-    if (
-      this.mode !== "online" &&
-      new URLSearchParams(location.search).get("level") === "city" &&
-      !seed.startsWith("city:")
-    )
-      seed = "city:" + seed;
+    if (this.mode !== "online" && this.islandsSelected) seed = ISLANDS;
     const version = ++this.buildVersion;
     const city = generateLevel(seed, district),
       physics = await Physics.create(city.boxes);
@@ -636,6 +635,9 @@ class Game {
     }
     this.remoteRopes.clear();
     this.city = city;
+    const islands = city.seed === ISLANDS;
+    document.querySelector("#city-map-panel small")!.textContent = islands ? "Gold lines mark bridges" : "solid: streets · gold: roof routes";
+    $("city-map").setAttribute("aria-label", islands ? "Five islands, bridges and player positions" : "Map with your position in red and other living players in blue");
     this.cars = seed === COUNTY ? countyCars() : [];
     this.vehicle = -1;
     this.drivePending = [];
@@ -653,6 +655,7 @@ class Game {
     this.seed = seed;
     this.setMapExpanded(false);
     document.body.classList.toggle("county-world", seed === COUNTY);
+    document.body.classList.toggle("daylight-world", seed === COUNTY || islands);
     this.district = district;
     await this.render.build(city);
     if (version !== this.buildVersion) return;
@@ -986,12 +989,13 @@ class Game {
     if (!force && !this.combat.switchWeapon(i)) return;
     this.previousWeapon = force ? undefined : before;
     disposeGroup(this.weaponMesh);
+    const daylight = this.seed === COUNTY || this.city.seed === ISLANDS;
     this.weaponMesh =
       i === FISTS
         ? buildFists(this.seed === COUNTY)
-        : buildWeapon(i, this.seed === COUNTY);
+        : buildWeapon(i, daylight);
     this.animateArms =
-      this.seed === COUNTY && i !== FISTS
+      daylight && i !== FISTS
         ? addCountyArms(this.weaponMesh, WEAPONS[i].model)
         : undefined;
     $("ammo-row").classList.toggle("hidden", i === FISTS || i === KNIFE);
@@ -1010,7 +1014,7 @@ class Game {
           slot +
           1 +
           " " +
-          (this.seed === COUNTY ? (["Rifle", "Shotgun", "Pistol", "Sniper", "Knife"][id] ?? WEAPONS[id].name) : WEAPONS[id].name);
+          (daylight ? (["Rifle", "Shotgun", "Pistol", "Sniper", this.seed === COUNTY ? "Knife" : "Fists"][id] ?? WEAPONS[id].name) : WEAPONS[id].name);
         item.classList.toggle("active", id === i);
         return item;
       }),
@@ -1099,7 +1103,7 @@ class Game {
       this.resume();
       this.notice(
         mode === "roam"
-          ? this.city.arena
+          ? this.city.seed === ISLANDS ? "COMPASS CAY" : this.city.arena
             ? "THE YARD IS YOURS"
             : "THE CITY IS YOURS"
           : mode === "online"
@@ -1257,12 +1261,16 @@ class Game {
       $("mission-progress").style.display = "none";
       if (!online) $("mode-label").textContent = "OPEN WORLD";
     }
+    if (this.city.seed === ISLANDS && !online) {
+      $("mission-title").textContent = roam ? "FOUR TIDES" : ready ? "BACK TO THE START" : "LEAVE YOUR MARK";
+      $("mission").textContent = roam ? "Follow a bridge to explore an island" : ready ? "Return to Compass Cay" : "Erase 6 rivals · Find 3 island marks";
+    }
     $("room-badge").textContent = online
       ? `${this.network.public ? "PUBLIC" : this.network.duel ? "DUEL" : "ROOM"} ${this.network.code} · ${this.network.players.filter((p) => !p.npc).length} PLAYERS · ${Math.round(this.network.rtt)} ms`
       : "";
   }
   private async prepareEntry(multiplayer: boolean, enter: () => void) {
-    if (!this.countySelected) return this.pickLoadout(enter);
+    if (!this.selectedSeed) return this.pickLoadout(enter);
     if (multiplayer && !this.identity.name) {
       if (this.busy) return;
       this.busy = true;
@@ -1282,8 +1290,8 @@ class Game {
       location.assign(
         value === "county"
           ? "/?mode=county"
-          : value === "archive"
-            ? "/?level=city"
+          : value === "islands"
+            ? "/?level=islands"
             : "/?mode=rust",
       );
     };
@@ -1584,7 +1592,7 @@ class Game {
     this.network.disconnect();
     const url = new URL("/", location.origin);
     if (this.countySelected) url.searchParams.set("mode", "county");
-    else if (this.archive) url.searchParams.set("level", "city");
+    else if (this.islandsSelected) url.searchParams.set("level", "islands");
     else url.searchParams.set("mode", "rust");
     location.assign(url.href);
   }
@@ -1603,7 +1611,7 @@ class Game {
           capacity: number;
         }) =>
           (!r.releaseId || r.releaseId === RELEASE_ID) &&
-          (r.seed === COUNTY) === this.countySelected &&
+          publicMapSeed(r.seed) === publicMapSeed(this.selectedSeed) &&
           r.players > 0 &&
           r.players < r.capacity,
       );
@@ -1630,6 +1638,11 @@ class Game {
       contract:
         "Eliminate six rivals, collect three rooftop marks, then return to spawn.",
     };
+    if (this.islandsSelected) {
+      text.public = "Join other players across the five islands.";
+      text.roam = "Start at Compass Cay and explore four islands linked by bridges.";
+      text.contract = "Eliminate six rivals, collect three island marks, then return to Compass Cay.";
+    }
     const lobby =
       (mode === "duel" || mode === "public") &&
       this.lobbies.find((r) => r.mode === (mode === "duel" ? "duel" : "play"));
@@ -1664,7 +1677,7 @@ class Game {
       const welcome = await this.network.connect(
         code ? "join" : mode,
         this.identity.name,
-        this.countySelected ? COUNTY : "",
+        this.selectedSeed,
         code ?? "",
         this.loadout,
       );
@@ -1744,10 +1757,10 @@ class Game {
   }
   showSettings(paused = false) {
     this.showDialog(
-      `<h2>Settings</h2><label for="ui-theme">Appearance</label><select id="ui-theme"><option value="system">Use system setting</option><option value="light">Light</option><option value="dark">Dark</option></select><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label>${this.countySelected ? '<button id="settings-account" class="secondary-button">Player account</button>' : ""}<button id="settings-done" class="primary-button">Done</button>`,
+      `<h2>Settings</h2><label for="ui-theme">Appearance</label><select id="ui-theme"><option value="system">Use system setting</option><option value="light">Light</option><option value="dark">Dark</option></select><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label>${this.selectedSeed ? '<button id="settings-account" class="secondary-button">Player account</button>' : ""}<button id="settings-done" class="primary-button">Done</button>`,
       () => (paused ? this.showPause() : this.closeDialog()),
     );
-    if (this.countySelected) $("settings-account").onclick = () => $("player-account").click();
+    if (this.selectedSeed) $("settings-account").onclick = () => $("player-account").click();
     const theme = $<HTMLSelectElement>("ui-theme");
     theme.value = ["light", "dark"].includes(settings.theme)
       ? settings.theme
@@ -1817,7 +1830,7 @@ class Game {
         return;
       }
       this.showDialog(
-        `<h2>Room ready</h2><p>Share this code or invite link with friends.</p><div class="room-code">${escape(welcome.code)}</div><button id="enter-room" class="primary-button">Enter game</button><button id="copy-invite" class="secondary-button">Copy invite link</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">Copy room code</button>`,
+        `<h2>Room ready</h2><p>Share this code or invite link with friends.</p><div class="room-code">${escape(welcome.code)}</div><button id="enter-room" class="primary-button">Enter game</button><button id="copy-invite" class="secondary-button">Copy invite link</button><input id="invite-link" aria-label="Shareable invite link" readonly value="${escape(location.origin + (welcome.seed === COUNTY ? "/?mode=county&room=" : publicMapSeed(welcome.seed) === ISLANDS ? "/?level=islands&room=" : "/?room=") + welcome.code)}"><button id="copy-room" class="secondary-button">Copy room code</button>`,
       );
       $("copy-invite").onclick = async () => {
         const field = $<HTMLInputElement>("invite-link");
@@ -2044,7 +2057,10 @@ class Game {
       this.feedUntil = this.time + 5;
     }
     if (m.type === "correction") {
-      this.player.position.fromArray(m.p);
+      if (m.shore && this.city.seed === ISLANDS) {
+        this.player.reset(m.p);
+        this.notice("BACK AT COMPASS CAY");
+      } else this.player.position.fromArray(m.p);
       this.player.velocity.set(0, 0, 0);
     }
     if (m.type === "grenade" && this.combat?.online && this.state !== "loading")
@@ -2348,10 +2364,10 @@ class Game {
     if (
       Math.abs(this.player.position.x) > this.city.bounds ||
       Math.abs(this.player.position.z) > this.city.bounds ||
-      this.player.position.y < -6
+      (this.city.seed === ISLANDS ? this.mode !== "online" && this.player.position.y < SEA_LEVEL : this.player.position.y < -6)
     ) {
       this.player.reset(this.city.spawns[0]);
-      this.notice("BACK INSIDE THE MARGINS");
+      this.notice(this.city.seed === ISLANDS ? "BACK AT COMPASS CAY" : "BACK INSIDE THE MARGINS");
     }
     if (this.mode === "contract" && this.seed !== COUNTY) {
       this.city.beacons.forEach((p, i) => {
@@ -2369,7 +2385,7 @@ class Game {
           this.combat.score += 300;
           this.combat.hp = Math.min(100, this.combat.hp + 25);
           this.audio.collect();
-          this.notice("ROOFTOP MARK +300", 2);
+          this.notice(this.city.seed === ISLANDS ? "ISLAND MARK +300" : "ROOFTOP MARK +300", 2);
         }
       });
       if (
@@ -2391,7 +2407,7 @@ class Game {
       const t = settings.reduced ? 0 : this.time * 0.025;
       cam.position.set(
         (this.seed === COUNTY ? -295 : 46) + Math.sin(t) * 5,
-        this.city.arena ? 26 : 29,
+        this.city.seed === ISLANDS ? 49 : this.city.arena ? 26 : 29,
         50 + Math.cos(t) * 4,
       );
       cam.lookAt(this.seed === COUNTY ? -320 : -4, 3, 0);
@@ -2826,6 +2842,12 @@ class Game {
       c = canvas.getContext("2d")!;
     const resolution = canvas.width / 190;
     c.setTransform(resolution, 0, 0, resolution, 0, 0);
+    if (this.city.seed === ISLANDS) {
+      const {x,z} = this.player.position;
+      $("neighborhood-label").textContent = drawIslandMap(c,x,z);
+      this.drawMapPlayers(c,0,0,islandMapScale);
+      return;
+    }
     if (this.seed === COUNTY) {
       const p = this.player.position;
       const scale = this.mapExpanded
@@ -3108,7 +3130,7 @@ class Game {
       ["Rivals erased", this.combat.kills],
       this.seed === COUNTY
         ? ["Wanted", `${this.wanted?.stars ?? 0} / ${MAX_WANTED} stars`]
-        : ["Rooftop marks", `${this.collected.size} / 3`],
+        : [this.city.seed === ISLANDS ? "Island marks" : "Rooftop marks", `${this.collected.size} / 3`],
       ["Distance travelled", `${Math.round(p.travel)} m`],
       this.city.arena ? ["Vaults", p.vaults] : ["Vaults / hooks", `${p.vaults} / ${p.hooks}`],
       ["Frame rate", `${this.fps} fps`],

@@ -156,6 +156,10 @@ Solo district runs and public multiplayer cities now use shared wave settings: 4
 
 NPC presence is bounded to a 100 m player radius. Solo NPCs outside it are removed and requeued; multiplayer NPCs remain active while near any living player, with distant NPC models hidden per client. Replacement spawns use clear navigation positions 20–60 m from a player, at least 20 m from every player, separated from other NPCs, and behind cover across the full body silhouette for every player within rendering range. If no hidden position is valid, spawning retries after 0.5 seconds. Requeuing does not award kills or change a wave's remaining-enemy total.
 
+### Four Tides
+
+Choose **Four Tides · The Islands** or open `/?level=islands`. Start at Compass Cay and cross the wooden bridges to Frostpine Ridge, Lantern Quay, Ember Caldera, and Shipwreck Cove. Free roam, district runs, public matches, duels, and private rooms support the islands. Falling into the sea returns you to the cay.
+
 ### Switchback County
 
 The main menu opens in **Switchback County**. Select **Solo** to start immediately, or **Public** to join a shared county. A new runner starts with a rifle, shotgun, pistol, sniper and knife. A saved custom loadout carries over. Notoriety rises when you damage the town or its residents, and civilians react more aggressively above 30%, 50% and 75%. Approach a parked car

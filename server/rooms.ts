@@ -32,6 +32,8 @@ import { initializeRapier } from "../src/rapier-init.ts";
 import type { RubblePose } from "../src/county-rubble.ts";
 import { CountyWreckage } from "../src/county-wreckage.ts";
 import { CountyStructures } from "../src/county-structures.ts";
+import { publicMapSeed } from "../src/levels.ts";
+import { ISLANDS, SEA_LEVEL } from "../src/islands.ts";
 import { COUNTY, countyCars, type CountyCar } from "../src/county.ts";
 import { insideRust, RUST_SCALE } from "../src/rust-boundary.ts";
 import { peekEye, validatedLean } from "../src/cover-peek.ts";
@@ -389,7 +391,7 @@ export class Rooms {
           ? [...this.rooms.values()].find(
               (r) =>
                 (request.type === "public" ? r.public : r.duel) &&
-                (request.seed === COUNTY) === (r.seed === COUNTY) &&
+                publicMapSeed(request.seed) === publicMapSeed(r.seed) &&
                 available(r),
             )
           : undefined;
@@ -403,9 +405,7 @@ export class Rooms {
         throw new Error("A unique directory room code is required.");
       const seed =
         request.type === "public"
-          ? request.seed === COUNTY
-            ? COUNTY
-            : "public-city-v1"
+          ? publicMapSeed(request.seed)
           : String(request.seed || "paper").slice(0, 40);
       const city = this.levelFactory(seed),
         spatial = new Spatial(city.boxes);
@@ -652,7 +652,7 @@ export class Rooms {
       if (!safe.length) throw new Error("Rust has no safe spawn points");
       return [...safe[index % safe.length]];
     }
-    if (!r.public || r.seed === COUNTY)
+    if (!r.public || r.seed === COUNTY || r.city.seed === ISLANDS)
       return [...r.city.spawns[index % r.city.spawns.length]];
     const center = r.city.spawns[0],
       near = r.city.streetNodes
@@ -1176,10 +1176,10 @@ export class Rooms {
         r = [...this.rooms.values()].find((r) =>
           m.type === "duel"
             ? r.duel &&
-              (r.seed === COUNTY) === (m.seed === COUNTY) &&
+              publicMapSeed(r.seed) === publicMapSeed(m.seed) &&
               r.players.size < (r.seed === COUNTY ? 30 : 8)
             : r.public &&
-              (r.seed === COUNTY) === (m.seed === COUNTY) &&
+              publicMapSeed(r.seed) === publicMapSeed(m.seed) &&
               r.players.size < (r.seed === COUNTY ? 30 : 16),
         );
       if (
@@ -1206,20 +1206,19 @@ export class Rooms {
         } while (this.rooms.has(code));
         const seed =
           m.type === "public"
-            ? m.seed === COUNTY
-              ? COUNTY
-              : "public-city-v1"
+            ? publicMapSeed(m.seed)
             : String(m.seed || "paper").slice(0, 40);
-        if (m.type === "public" && seed !== COUNTY && !this.publicWorld) {
+        const cacheRust = m.type === "public" && seed === "public-city-v1";
+        if (cacheRust && !this.publicWorld) {
           const city = this.levelFactory(seed);
           this.publicWorld = { city, spatial: new Spatial(city.boxes) };
         }
         const city =
-            m.type === "public" && seed !== COUNTY
+            cacheRust
               ? this.publicWorld!.city
               : this.levelFactory(seed),
           spatial =
-            m.type === "public" && seed !== COUNTY
+            cacheRust
               ? this.publicWorld!.spatial
               : new Spatial(city.boxes);
         const ai =
@@ -1466,6 +1465,13 @@ export class Rooms {
       if (p.ready === false) {
         p.ready = true;
         p.shieldUntil = now + 3000;
+      }
+      if (r.city.seed === ISLANDS && m.p[1] < SEA_LEVEL) {
+        p.p = [...r.city.spawns[0]];
+        p.anchor = null;
+        p.moveCredit = 0;
+        send(ws, {type:"correction",p:p.p,shore:true});
+        return;
       }
       p.moveCredit -= displacement;
       p.p = m.p;

@@ -4,12 +4,12 @@ import { generateRust, RUST_SCALE } from "../src/rust.ts";
 import { generateLevel } from "../src/levels.ts";
 import { Physics, Controller, idleInput } from "../src/physics.ts";
 import { Spatial } from "../server/spatial.ts";
-test("Rust is the served level and the procedural city remains explicitly available", () => {
+test("Rust is the served level and archive seeds now open Four Tides", () => {
   const rust = generateLevel("rust");
   assert.equal(rust.arena?.name, "RUST");
   assert.ok(rust.boxes.length > 100);
   assert.ok(rust.nodes.length > 100);
-  assert.equal(generateLevel("city:notebook").buildings.length, 256);
+  assert.equal(generateLevel("city:notebook").seed, "four-tides");
   assert.deepEqual(generateRust("a").boxes, generateRust("b").boxes);
 });
 test("Rust ladders climb every deck, clear the lip and agree with server collision", async () => {

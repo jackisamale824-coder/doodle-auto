@@ -1,10 +1,24 @@
 import { COUNTY, countyWorld } from "./county.ts";
-import { generateCity } from "./world.ts";
+import { ISLANDS, islandWorld } from "./islands.ts";
 import { generateRust } from "./rust.ts";
-/** Runtime default is Rust; archived procedural maps use an explicit city: seed. */
+
+export function publicMapSeed(seed: unknown) {
+  if (seed === COUNTY) return COUNTY;
+  if (
+    seed === ISLANDS ||
+    (typeof seed === "string" && seed.startsWith("city:"))
+  )
+    return ISLANDS;
+  return "public-city-v1";
+}
+
 export function generateLevel(seed = "rust", district = 1) {
-  if (seed === COUNTY) return countyWorld();
-  return seed.startsWith("city:")
-    ? generateCity(seed.slice(5) || "notebook", district)
-    : generateRust(seed, district);
+  switch (publicMapSeed(seed)) {
+    case COUNTY:
+      return countyWorld();
+    case ISLANDS:
+      return islandWorld(district);
+    default:
+      return generateRust(seed, district);
+  }
 }

@@ -1,5 +1,7 @@
 import { blimpPosition, type Blimp } from "./aerial.ts";
 import * as T from "three";
+import { ISLANDS } from "./islands.ts";
+import { drawIslands } from "./island-view.ts";
 import { daylightSky } from "./daylight.ts";
 import { type City, type Box, type V3, randomSeed } from "./world.ts";
 export const INK = "#222bc3",
@@ -176,6 +178,8 @@ export class Renderer {
   }
   setQuality(high: boolean) {
     this.qualityHigh = high;
+    this.renderer.shadowMap.enabled = high && !!this.updateTides;
+    this.renderer.shadowMap.needsUpdate = true;
     this.renderer.setPixelRatio(high ? Math.min(devicePixelRatio, 1.5) : 1);
     this.resize();
   }
@@ -184,12 +188,15 @@ export class Renderer {
   private county = false;
   private frameCost = 0;
   private qualityHigh = true;
+  private updateTides?: (time: number) => void;
   async build(city: City) {
     this.countyCars = [];
     this.addCountyCar = undefined;
     const county = city.seed === "switchback-county";
-    const horizon = county ? "#b4dce7" : "#f4c79e";
-    this.sky.material.uniforms.zenith.value.set(county ? "#408dcc" : "#5991b8");
+    const islands = city.seed === ISLANDS;
+    const horizon = islands ? "#a6dddf" : county ? "#b4dce7" : "#f4c79e";
+    (this.scene.fog as T.Fog).near = islands ? 95 : 65;
+    this.sky.material.uniforms.zenith.value.set(islands ? "#347fb9" : county ? "#408dcc" : "#5991b8");
     this.sky.material.uniforms.horizon.value.set(horizon);
     (this.scene.fog as T.Fog).color.set(horizon);
     (this.scene.background as T.Color).set(horizon);
@@ -206,13 +213,22 @@ export class Renderer {
       } else this.setQuality(this.qualityHigh);
     }
     this.inkPost.uniforms.groundAware.value =
-      city.arena || city.seed === "switchback-county" ? 1 : 0;
+      city.arena || county || islands ? 1 : 0;
     disposeGroup(this.cityGroup);
     this.cityGroup = new T.Group();
     this.scene.add(this.cityGroup);
     this.beaconMeshes = [];
     this.blimpMeshes = [];
     this.decor = [];
+    this.updateTides = undefined;
+    this.renderer.shadowMap.enabled = islands && this.qualityHigh;
+    if (islands) {
+      this.renderer.shadowMap.autoUpdate = false;
+      this.renderer.shadowMap.needsUpdate = true;
+      this.updateTides = drawIslands(city, this.cityGroup);
+      this.buildMarks(city);
+      return;
+    }
     const groups = new Map<string, Box[]>();
     for (const b of city.boxes) {
       if (
@@ -750,7 +766,10 @@ export class Renderer {
           this.cityGroup.add(ring);
         }
     }
-    city.beacons.forEach((p, i) => {
+    this.buildMarks(city);
+  }
+  private buildMarks(city: City) {
+    city.beacons.forEach((p) => {
       const g = new T.Group();
       for (let j = 0; j < 4; j++) {
         const m = new T.Mesh(
@@ -780,6 +799,7 @@ export class Renderer {
     }
   }
   draw(time: number, aerialTime = Date.now() / 1000) {
+    this.updateTides?.(time);
     for (const { model, path } of this.blimpMeshes) {
       model.position.set(...blimpPosition(path, aerialTime));
       model.visible =
@@ -829,6 +849,7 @@ export function disposeGroup(group: T.Group) {
     mats = new Set<T.Material>(),
     textures = new Set<T.Texture>();
   group.traverse((o) => {
+    if (o instanceof T.DirectionalLight) o.shadow.dispose();
     const m = o as T.Mesh;
     if ((m as T.InstancedMesh).isInstancedMesh)
       (m as T.InstancedMesh).dispose();
