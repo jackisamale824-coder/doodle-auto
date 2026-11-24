@@ -2,6 +2,8 @@
 
 # doodlesCreed
 
+The [Doodle Auto system map](https://sully6.com/system-map.html) traces a match through the browser, multiplayer server and player database, and shows how releases reach sully6.com.
+
 An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and swing through procedurally generated cities with navigable interiors and rooftops.
 
 ## Google sign-in

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How Doodle Auto works · System map</title>
+  <meta name="description" content="Follow a Doodle Auto match from the browser to the game server, player records and production release.">
+  <link rel="icon" href="/favicon.svg">
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f8f5eb;
+      --ink: #202e2b;
+      --muted: #475953;
+      --line: #a9b4a6;
+      --teal: #155c52;
+      --gold: #84570b;
+      --blue: #335777;
+      --plum: #72425c;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 1rem/1.55 system-ui, sans-serif; }
+    main { max-width: 78rem; margin: auto; padding: 1.5rem clamp(1.1rem, 4vw, 4rem) 4rem; }
+    nav, .sources { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; }
+    nav { justify-content: space-between; align-items: center; padding-bottom: .8rem; border-bottom: 1px solid var(--ink); }
+    nav strong, .flow-label, .sources { font: 600 .8rem/1.5 ui-monospace, monospace; }
+    a { color: var(--teal); text-underline-offset: .18em; }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1, h2, h3 { text-wrap: balance; }
+    h1, h2 { font-family: Georgia, serif; font-weight: 500; line-height: 1.1; }
+    h1 { font-size: clamp(2.7rem, 6.6vw, 5.2rem); margin: 2.6rem 0 .7rem; letter-spacing: -.05em; }
+    header > p { max-width: 60ch; font-size: 1.15rem; color: var(--muted); }
+    h2 { font-size: clamp(1.65rem, 3vw, 2.25rem); margin-bottom: 1.15rem; letter-spacing: -.035em; }
+    .flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: stretch; margin: 2rem 0 .7rem; }
+    .node { padding: 1.05rem; border: 1px solid var(--line); border-top: 5px solid var(--accent); border-radius: 3px; background: #fffdf6; }
+    .flow-label { color: var(--accent); }
+    .node h3 { font-size: 1.28rem; line-height: 1.18; margin: .55rem 0; }
+    .node p { font-size: .96rem; }
+    .wire { align-self: center; text-align: center; padding: 0 .35rem; color: var(--muted); }
+    .wire b { display: block; font: 1.6rem/1 monospace; }
+    .wire small { font-size: .73rem; }
+    figcaption { color: var(--muted); font-size: .9rem; }
+    section { margin-top: 2.25rem; }
+    .steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); counter-reset: step; gap: 1.4rem; }
+    .steps li { counter-increment: step; border-top: 1px solid var(--ink); padding-top: .65rem; }
+    .steps li::before { content: counter(step, decimal-leading-zero); font: .85rem ui-monospace, monospace; color: var(--teal); }
+    .steps h3 { display: inline; margin-left: .4rem; font-size: 1rem; }
+    .steps p { margin-top: .4rem; }
+    details { border-top: 1px solid var(--line); }
+    details:last-child { border-bottom: 1px solid var(--line); }
+    summary { cursor: pointer; padding: .95rem .15rem; font-weight: 650; }
+    summary::marker { color: var(--teal); }
+    .body { padding: 0 .25rem 1.25rem 1.25rem; max-width: 84ch; }
+    .body p + p, .sources { margin-top: .65rem; }
+    .sources a { overflow-wrap: anywhere; }
+    code { font-size: .92em; }
+    @media (max-width: 58rem) {
+      .flow { grid-template-columns: 1fr; }
+      .wire { display: flex; align-items: center; gap: .55rem; justify-self: start; margin-left: 1.1rem; }
+      .wire b { transform: rotate(90deg); line-height: 1.4; }
+      .node h3 { margin: .15rem 0 .25rem; }
+    }
+    @media (max-width: 42rem) { .steps { grid-template-columns: 1fr; gap: .9rem; } }
+  </style>
+</head>
+<body>
+<main>
+  <nav aria-label="Site"><strong>DOODLE AUTO / SYSTEM MAP</strong><a href="/">Open the game ↗</a></nav>
+  <header>
+    <h1>How Doodle Auto works</h1>
+    <p>Your browser moves your character immediately. In multiplayer, a game server decides what everyone shares. Sign in and your match history stays with you after the room closes.</p>
+  </header>
+  <figure aria-label="Production system and its connections">
+    <div class="flow">
+      <div class="node" style="--accent:var(--teal)"><span class="flow-label">ON YOUR DEVICE</span><h3>Game client</h3><p>Reads controls, runs local physics and draws the world, map and HUD.</p></div>
+      <div class="wire"><b aria-hidden="true">↔</b><small>Web traffic</small></div>
+      <div class="node" style="--accent:var(--gold)"><span class="flow-label">AT SULLY6.COM</span><h3>Cloudflare Worker</h3><p>Routes players to one shared game container. Its Durable Object starts the container when needed.</p></div>
+      <div class="wire"><b aria-hidden="true">↔</b><small>Forward</small></div>
+      <div class="node" style="--accent:var(--blue)"><span class="flow-label">IN THE CONTAINER</span><h3>Node game server</h3><p>Serves the game files, handles accounts and runs the live multiplayer rooms.</p></div>
+      <div class="wire"><b aria-hidden="true">↔</b><small>Records</small></div>
+      <div class="node" style="--accent:var(--plum)"><span class="flow-label">ACROSS MATCHES</span><h3>Player database</h3><p>A separate Durable Object stores accounts, session history and duel ratings in SQLite.</p></div>
+    </div>
+    <figcaption>Read from the browser toward storage. Arrows carry requests and replies. The first three boxes handle live play; the database handles player records.</figcaption>
+  </figure>
+  <section aria-labelledby="loop"><h2 id="loop">One move in a shared match</h2>
+    <ol class="steps">
+      <li><h3>You press forward</h3><p>Rapier checks local collisions. The camera moves this frame, and the client sends the new pose over its open WebSocket.</p></li>
+      <li><h3>The room checks the move</h3><p>The server checks travel distance and obstacles. It can send a correction. The room advances shared actors and game rules on a 30 Hz tick.</p></li>
+      <li><h3>Other players see you move</h3><p>The server sends snapshots. Each browser smooths remote movement between updates and draws the next frame with Three.js.</p></li>
+    </ol>
+  </section>
+  <section aria-labelledby="inside"><h2 id="inside">Inside the system</h2>
+    <details><summary>What changes between solo and multiplayer?</summary><div class="body">
+      <p><strong>Solo.</strong> The browser runs the world simulation. Free roam lets you explore. District runs add rivals and objectives. In the City Archive, clearing six rivals and collecting three rooftop marks opens the return route to spawn.</p>
+      <p><strong>Online.</strong> The menu reads the lobby list over HTTP. A WebSocket connects you to a public game, a duel or a private room by invite code. The welcome message supplies the room seed and spawn. Public Rust rooms run waves of rivals. County rooms share cars and citizens. Duels end at 15 eliminations.</p>
+      <p><strong>During play.</strong> A room owns health, ammunition, hits and score. The client can show immediate feedback while the server resolves the outcome. Compact snapshots keep players in view of one another and prioritize nearby NPC and vehicle updates between full refreshes.</p>
+      <div class="sources"><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/src/network.ts">Client connection</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/server/rooms.ts">Room simulation</a></div>
+    </div></details>
+    <details><summary>How do both sides agree on the map?</summary><div class="body">
+      <p>Browser and server call the same level builder with the same seed. The browser uses the geometry for rendering and physical movement. The server indexes it for movement checks, lines of sight and hit detection.</p>
+      <p><strong>Rust</strong> uses prepared oil-yard collision geometry and navigation points. <strong>City Archive</strong> generates streets, parcels, buildings and traversal routes from a seed. <strong>Switchback County</strong> adds roads, enterable buildings, cars, citizens and breakable structures. A joining player receives the room’s current changes, including damaged structures and rubble.</p>
+      <div class="sources"><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/src/levels.ts">Level selection</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/src/physics.ts">Player physics</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/server/spatial.ts">Server geometry</a></div>
+    </div></details>
+    <details><summary>What survives after you leave?</summary><div class="body">
+      <p><strong>On this browser.</strong> You can enter with a guest nickname saved for the tab session. Local storage remembers settings, loadout and personal best. <strong>In the room.</strong> Player positions, live vehicles, NPCs and damaged buildings belong to the running match. Starting a new room rebuilds the world.</p>
+      <p><strong>In your account.</strong> Password or Google sign-in establishes a session cookie. The server associates the connection with your profile and periodically saves online play time, kills and deaths. An eligible completed duel between two signed-in opponents updates their Elo ratings.</p>
+      <p>In production, the account API and match recorder send database commands through a private Worker entrypoint to SQLite. The same commands use a local SQLite file in development.</p>
+      <div class="sources"><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/server/player-accounts.ts">Sign-in</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/server/play-metrics.ts">Match recorder</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/server/player-store.ts">Player records</a></div>
+    </div></details>
+    <details><summary>How does a change reach sully6.com?</summary><div class="body">
+      <p><strong>Push → check → build → deploy → verify.</strong> A push to <code>main</code> starts GitHub Actions. It checks the game and Worker types, tests networking and accounts, then builds the browser assets with Vite. Cloudflare rolls out the Worker and the Docker image containing the game server and assets.</p>
+      <p>The final check compares the live client bundle with the build and connects to a County room to confirm that production sends the expected multiplayer snapshot.</p>
+      <div class="sources"><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/.github/workflows/deploy.yml">Deployment workflow</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/src/cloudflare.ts">Production routing</a><a href="https://github.com/jackisamale824-coder/doodle-auto/blob/main/scripts/verify-spatial-release.mjs">Live check</a></div>
+    </div></details>
+  </section>
+</main>
+</body>
+</html>
