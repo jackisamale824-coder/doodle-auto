@@ -108,10 +108,8 @@ const server = http.createServer(async (req, res) => {
     );
     return;
   }
-  const publicHost = req.headers["x-doodle-public-host"] ?? req.headers.host;
   const pathname = req.url?.split("?", 1)[0];
-  if (pathname === "/pool" || pathname === "/pool/" ||
-      (publicHost === "pool.sully6.com" && pathname === "/")) {
+  if (pathname === "/pool" || pathname === "/pool/") {
     req.url = "/pool/index.html";
   }
   if (vite) {
@@ -190,10 +188,10 @@ server.on("upgrade", async (req, socket, head) => {
     if (req.headers.origin) {
       try {
         const origin = new URL(req.headers.origin);
+        const publicHost = req.headers["x-doodle-public-host"] ?? req.headers.host;
         validOrigin =
-          ["http:", "https:"].includes(origin.protocol) &&
-          origin.host ===
-            (req.headers["x-doodle-public-host"] ?? req.headers.host);
+          (["http:", "https:"].includes(origin.protocol) && origin.host === publicHost) ||
+          (isPool && origin.origin === "https://pool.sully6.com" && publicHost === "sully6.com");
       } catch {
         validOrigin = false;
       }

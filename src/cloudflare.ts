@@ -116,12 +116,7 @@ export class GameContainer extends DurableObject<Env> {
 }
 
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === "/" && (request.method === "GET" || request.method === "HEAD")) {
-      if (url.hostname === "pool.sully6.com") url.pathname = "/pool/";
-      return env.ASSETS.fetch(new Request(url, request));
-    }
+  fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {
     return ctx.exports.GameContainer.getByName("shared-game-server").fetch(
       request,
     );
