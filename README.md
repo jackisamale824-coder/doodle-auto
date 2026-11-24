@@ -1,6 +1,6 @@
 # Sully6 Arcade
 
-[sully6.com](https://sully6.com/) is the game directory. Its tiles launch [Doodle Auto](https://gta.sully6.com/), [Drive Mad](https://drive-mad.sully6.com/) and [Side Pocket](https://pool.sully6.com/). Preview the directory at `/arcade/index.html` on the local dev server.
+[sully6.com](https://sully6.com/) is the game directory. Its tiles launch [Doodle Auto](https://doodle-auto.sully6.com/), [Drive Mad](https://drive-mad.sully6.com/) and [Side Pocket](https://pool.sully6.com/). Preview the directory at `/arcade/index.html` on the local dev server.
 
 Pushing to `main` runs **Deploy sully6.com**. The production `doodle-auto` Worker serves the directory and the native game clients from its static assets. Doodle Auto and Side Pocket share the existing multiplayer container. Each game hostname is a DNS-only CNAME to `sully6-games.pages.dev` and a custom domain on that Pages project. Its small forwarding function in `deploy/game-host/_worker.js` sends requests to the apex Worker's `/play/<game>/` route, including WebSocket upgrades. New game releases only require the normal push.
 
@@ -18,7 +18,7 @@ An original first-person ink-and-paper parkour shooter. Run, vault, wall-run and
 
 ## Google sign-in
 
-Create a Web application OAuth client in Google Auth Platform. Include `https://gta.sully6.com` and `https://sully6.com` in its authorized JavaScript origins. For local testing, also add `http://localhost:4173`. Set the public client ID in the GitHub repository Actions variable `GOOGLE_CLIENT_ID` before deploying, or in the server environment for local development. [Google web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
+Create a Web application OAuth client in Google Auth Platform. Include `https://doodle-auto.sully6.com` and `https://sully6.com` in its authorized JavaScript origins. For local testing, also add `http://localhost:4173`. Set the public client ID in the GitHub repository Actions variable `GOOGLE_CLIENT_ID` before deploying, or in the server environment for local development. [Google web client setup](https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid)
 
 Returning password players can open their stats and select **Link Google account** to keep their profile and Elo. Signing in with a new Google identity from the login screen creates a player with a generated racer name.
 

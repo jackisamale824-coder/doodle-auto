@@ -7,7 +7,7 @@ import {
   resumeMessage,
 } from "./multiplayer-probe.mjs";
 
-const origin = "https://gta.sully6.com";
+const origin = "https://doodle-auto.sully6.com";
 const local = await readFile("dist/index.html", "utf8");
 const asset = local.match(/src="([^"]*\/assets\/index-[^"]+\.js)"/)?.[1];
 assert.ok(asset, "Expected a built game client in dist/index.html");

@@ -157,7 +157,7 @@ export default {
     }
     if (url.pathname === "/" || url.pathname === "/index.html") {
       if (["room", "mode", "level"].some(key => url.searchParams.has(key))) {
-        return Response.redirect("https://gta.sully6.com/" + url.search, 302);
+        return Response.redirect("https://doodle-auto.sully6.com/" + url.search, 302);
       }
       url.pathname = "/arcade/";
       return env.ASSETS.fetch(new Request(url, request));
@@ -166,11 +166,17 @@ export default {
     // The Pages game host forwards to this prefix. Restore the public origin
     // before handing account requests or WebSocket upgrades to the game.
     if (url.pathname.startsWith("/play/")) {
-      const gamePath = /^\/play\/(gta|pool|drive-mad)(\/.*)$/.exec(url.pathname);
+      const gamePath = /^\/play\/(doodle-auto|gta|pool|drive-mad)(\/.*)$/.exec(url.pathname);
       if (!gamePath) return new Response("Unknown game", { status: 404 });
       const [, game, path] = gamePath;
       url.hostname = game + ".sully6.com";
       url.pathname = path;
+      // Move bookmarks and invites while existing tabs finish their game sessions.
+      if (game === "gta" && ["GET", "HEAD"].includes(request.method) &&
+          (path === "/" || path === "/index.html" || request.headers.get("Accept")?.includes("text/html"))) {
+        url.hostname = "doodle-auto.sully6.com";
+        return Response.redirect(url.href, 308);
+      }
       if (game === "drive-mad") {
         url.pathname = "/drive-mad" + path;
         return env.ASSETS.fetch(new Request(url, request));

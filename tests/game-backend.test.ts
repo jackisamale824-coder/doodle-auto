@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { fetchGameBackend } from "../src/game-backend.ts";
 
-const origin = "https://gta.sully6.com";
+const origin = "https://doodle-auto.sully6.com";
 
 test("connection reads and upgrades recover from a single failed backend attempt", async () => {
   await Promise.all(

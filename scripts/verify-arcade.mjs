@@ -12,11 +12,19 @@ const now = "?verify=" + Date.now();
 const live = await html("https://sully6.com/" + now);
 assert.ok(live.includes("<title>Sully6 Arcade</title>"), "Expected the arcade on the apex");
 const titles = new Map([
-  ["https://gta.sully6.com/", "Doodle Auto"],
+  ["https://doodle-auto.sully6.com/", "Doodle Auto"],
   ["https://drive-mad.sully6.com/", "Drive Mad"],
   ["https://pool.sully6.com/", "Side Pocket"],
 ]);
 assert.deepEqual(new Set(hosts), new Set(titles.keys()));
+for (const [from, to] of [
+  ["https://gta.sully6.com/index.html?mode=rust&room=ABC", "https://doodle-auto.sully6.com/index.html?mode=rust&room=ABC"],
+  ["https://sully6.com/?level=islands", "https://doodle-auto.sully6.com/?level=islands"],
+]) {
+  const response = await fetch(from, { redirect: "manual", signal: AbortSignal.timeout(12000) });
+  assert.ok([302, 308].includes(response.status), from);
+  assert.equal(response.headers.get("location"), to);
+}
 await Promise.all(hosts.map(async host => {
   assert.ok(live.includes(`href="${host}"`), `Missing tile for ${host}`);
   const page = await html(host + now);
