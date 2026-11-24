@@ -7,10 +7,21 @@ const browser = await chromium.launch({
   channel: process.env.BROWSER_CHANNEL || undefined,
 });
 try {
+  const touch = process.env.POOL_TOUCH === "1";
   const host = await browser.newPage({
-      viewport: { width: 1250, height: 860 },
-    }),
-    guest = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    viewport: touch
+      ? { width: 375, height: 667 }
+      : { width: 1250, height: 860 },
+    hasTouch: touch,
+    isMobile: touch,
+  });
+  const guest = await browser.newPage({
+    viewport: touch ? { width: 844, height: 390 } : { width: 390, height: 844 },
+    hasTouch: touch,
+    isMobile: touch,
+  });
+  const press = (locator, options) =>
+    touch ? locator.tap(options) : locator.click(options);
   const pages = [host, guest],
     errors = [];
   let state,
@@ -29,18 +40,29 @@ try {
   );
   await host.goto(url);
   await host.getByRole("heading", { name: "Side Pocket" }).waitFor();
-  await host.locator("#guide").click();
+  if (touch) {
+    const before = await host.locator("#table").evaluate((c) => c.toDataURL());
+    await press(host.locator("#aim-right"));
+    await host.waitForFunction(
+      (before) => document.querySelector("#table").toDataURL() !== before,
+      before,
+    );
+    await press(host.locator("#aim-left"));
+    await press(host.locator("#power"), { position: { x: 10, y: 22 } });
+    assert.ok(Number(await host.locator("#power").inputValue()) < 30);
+  }
+  await press(host.locator("#guide"));
   assert.equal(
     await host.locator("#guide").getAttribute("aria-pressed"),
     "false",
   );
-  await host.locator("#guide").click();
-  await host.locator("#rules").click();
-  await host.locator("#help .close").click();
+  await press(host.locator("#guide"));
+  await press(host.locator("#rules"));
+  await press(host.locator("#help .close"));
   if (process.env.POOL_SCREENSHOT)
     await host.screenshot({ path: process.env.POOL_SCREENSHOT });
-  await host.locator("#online").click();
-  await host.locator("#create").click();
+  await press(host.locator("#online"));
+  await press(host.locator("#create"));
   await host.waitForFunction(
     () => document.querySelector("#roomcode").textContent.length === 6,
   );
@@ -75,8 +97,8 @@ try {
       cx = x ?? cue.x,
       cy = y ?? cue.y;
     if (state.hand && x !== undefined && y !== undefined) {
-      await page.locator("#place").click();
-      await canvas.click({ position: at(cx, cy) });
+      await press(page.locator("#place"));
+      await press(canvas, { position: at(cx, cy) });
     }
     // Choose the farthest visible point along the cue to minimize pixel rounding.
     const dx = Math.cos(angle),
@@ -87,10 +109,12 @@ try {
       dy > 0 ? (475 - cy) / dy : (-25 - cy) / dy,
     );
     const point = at(cx + dx * run, cy + dy * run);
-    await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
+    if (touch)
+      await page.touchscreen.tap(bounds.x + point.x, bounds.y + point.y);
+    else await page.mouse.click(bounds.x + point.x, bounds.y + point.y);
     await page.locator("#power").fill(String(Math.round(power * 100)));
     const shots = state.shots;
-    await page.locator("#shoot").click();
+    await press(page.locator("#shoot"));
     const deadline = Date.now() + 15000;
     while (state.shots === shots && Date.now() < deadline)
       await page.waitForTimeout(80);
@@ -100,7 +124,7 @@ try {
   if (state.winner !== null) {
     for (const page of pages) {
       await page.locator("#result").waitFor();
-      await page.locator("#again").click();
+      await press(page.locator("#again"));
     }
     await host.waitForFunction(() => document.querySelector("#result").hidden);
     assert.equal(starts, 2);

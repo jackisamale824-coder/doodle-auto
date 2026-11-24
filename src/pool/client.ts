@@ -88,6 +88,8 @@ function update() {
   el("announcement").textContent = motion ? "Shot in motion" : game.message;
   el<HTMLButtonElement>("shoot").disabled = !active() || placing;
   slider.disabled = !active();
+  for (const id of ["aim-left", "aim-right"])
+    el<HTMLButtonElement>(id).disabled = !active() || placing;
   el("place").hidden = !active() || !game.hand;
   el("place").textContent = placing ? "Finish placement" : "Place cue ball";
   el("tip").textContent = placing
@@ -333,13 +335,24 @@ function aim(e: PointerEvent) {
   invalidateAim();
 }
 canvas.onpointerdown = (e) => {
-  canvas.focus();
-  if (!placing) canvas.setPointerCapture(e.pointerId);
-  aim(e);
+  if (!active() || !e.isPrimary || e.button !== 0) return;
+  canvas.focus({ preventScroll: true });
+  canvas.setPointerCapture(e.pointerId);
+  if (!placing) aim(e);
 };
 canvas.onpointermove = (e) => {
-  if (canvas.hasPointerCapture(e.pointerId)) aim(e);
+  if (e.isPrimary && !placing && canvas.hasPointerCapture(e.pointerId)) aim(e);
 };
+canvas.onpointerup = (e) => {
+  if (e.isPrimary && placing && canvas.hasPointerCapture(e.pointerId)) aim(e);
+};
+function nudge(amount: number) {
+  if (!active() || placing) return;
+  angle += amount;
+  invalidateAim();
+}
+el("aim-left").onclick = () => nudge(-0.0025);
+el("aim-right").onclick = () => nudge(0.0025);
 canvas.onkeydown = (e) => {
   if (!active()) return;
   if (e.code === "Space") {
@@ -348,8 +361,7 @@ canvas.onkeydown = (e) => {
   }
   if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     e.preventDefault();
-    angle += (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.02 : 0.0025);
-    invalidateAim();
+    nudge((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.02 : 0.0025));
   }
 };
 slider.oninput = () => {

@@ -17,7 +17,7 @@
 }
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: radial-gradient(
     ellipse at 50% 40%,
     #263c32 0%,
@@ -52,8 +52,10 @@ button:disabled {
   opacity: 0.5;
   cursor: default;
 }
-button:hover:enabled {
-  filter: brightness(1.16);
+@media (hover: hover) and (pointer: fine) {
+  button:hover:enabled {
+    filter: brightness(1.16);
+  }
 }
 [hidden] {
   display: none !important;
@@ -366,125 +368,257 @@ dialog::backdrop {
   text-align: center;
   margin: 8px;
 }
-@media (max-width: 630px) {
+/* Keep aim drags on the felt and the root steady when a gesture reaches an edge. */
+html,
+body {
+  overscroll-behavior: none;
+}
+html {
+  -webkit-text-size-adjust: 100%;
+  background-color: #10241f;
+}
+button,
+input[type="range"],
+canvas {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+button {
+  touch-action: manipulation;
+}
+button:enabled:active {
+  filter: brightness(0.87);
+  transform: scale(0.98);
+}
+input[type="range"]:active {
+  accent-color: #ffe4ab;
+}
+.fine-aim {
+  display: none;
+}
+dialog {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(
+    100dvh - 2rem - env(safe-area-inset-top, 0px) -
+      env(safe-area-inset-bottom, 0px)
+  );
+}
+body:has(dialog[open]) {
+  overflow: hidden;
+}
+#code {
+  font-size: max(1rem, 16px);
+}
+@media (any-pointer: coarse) {
+  button,
+  input[type="range"],
+  #code {
+    min-height: 44px;
+  }
+  button {
+    min-width: 44px;
+  }
+  .close {
+    padding: 0;
+    margin: -6px -6px 0 6px;
+  }
+  .fine-aim {
+    display: inline-flex;
+    align-items: center;
+    justify-self: end;
+    border: 1px solid var(--edge);
+    border-radius: 8px;
+  }
+  .fine-aim button {
+    font-size: 1.25rem;
+    color: var(--gold);
+  }
+  .fine-aim span {
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  .console {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 12px;
+  }
+  .power input {
+    margin: 0;
+  }
+}
+@media (max-width: 700px),
+  (max-height: 560px) and (orientation: landscape),
+  (any-pointer: coarse) and (max-width: 1100px) {
+  /* The table takes the space left after the scoreboard and actual shot controls. */
   body {
-    padding: 0 10px 16px;
+    padding: env(safe-area-inset-top, 0px)
+      max(10px, env(safe-area-inset-right, 0px))
+      max(4px, env(safe-area-inset-bottom, 0px))
+      max(10px, env(safe-area-inset-left, 0px));
+    background-color: #10241f;
   }
-  .emblem {
-    width: 41px;
-    height: 41px;
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(150px, 1fr) auto;
+    height: calc(
+      100dvh - env(safe-area-inset-top, 0px) -
+        max(4px, env(safe-area-inset-bottom, 0px))
+    );
+    min-width: 0;
   }
-  .eight i {
-    font-size: 19px;
-    line-height: 22px;
+  .mast {
+    gap: 4px;
+    padding: 3px 0;
   }
-  .identity {
-    gap: 10px;
+  .emblem,
+  .identity .eyebrow,
+  .seat {
+    display: none;
+  }
+  .identity h1 {
+    white-space: nowrap;
+    font-size: clamp(1.5rem, 7vw, 2.25rem);
   }
   nav {
     gap: 2px;
   }
-  nav button {
-    padding: 8px;
+  .mast nav button {
     font-size: 0.85rem;
+    white-space: nowrap;
+    padding: 6px 8px;
   }
   .match {
+    margin: 5px 1%;
     gap: 4px;
   }
-  .seat {
-    display: none;
+  .match-type .eyebrow {
+    font-size: 0.68rem;
   }
-  .player.active strong {
+  .active strong {
     color: var(--gold);
   }
-  .match-type .eyebrow {
-    font-size: 0.66rem;
+  .arena {
+    min-height: 0;
+    min-width: 0;
+    margin: 0;
+  }
+  .arena canvas {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+  }
+  .shot-panel {
+    min-width: 0;
   }
   .console {
-    grid-template-columns: 1fr auto;
-    gap: 14px;
-    padding: 14px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 8px 10px;
+    gap: 5px 8px;
   }
   .turn {
     grid-column: 1/-1;
   }
+  .console:has(.fine-aim) .power {
+    grid-column: 1;
+  }
+  .turn h2 {
+    font-size: 1.09rem;
+    line-height: 1.13;
+  }
+  .power label {
+    font-size: 0.72rem;
+  }
+  #shoot {
+    padding: 10px 17px;
+  }
   .under {
-    gap: 8px;
     flex-wrap: wrap;
+    gap: 0 8px;
+    margin: 3px 2px 0;
   }
-  .under span:first-child {
-    flex: 1 1 145px;
+  .under #tip {
+    flex: 1 1 100px;
+    font-size: 0.8rem;
   }
-  .arena {
-    margin: 7px -1.8%;
-  }
-  .arena canvas {
-    max-height: none;
+  .under button {
+    font-size: 0.8rem;
   }
   .result > div {
     padding: 12px;
   }
   .result h2 {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
   }
   .result p {
     margin: 4px;
   }
-  .result button {
-    padding: 6px 13px;
+  dialog {
+    width: min(100%, 480px);
+    padding: 16px 20px max(18px, env(safe-area-inset-bottom, 0px));
+    border-radius: 16px 16px 0 0;
+    margin: auto auto 0;
   }
 }
-@media (max-width: 630px) and (orientation: portrait) {
-  .arena canvas {
-    aspect-ratio: 542 / 992;
-    height: min(66svh, 176vw);
+@media (any-pointer: coarse) {
+  .console .turn {
+    grid-column: auto;
+  }
+}
+@media (max-width: 360px) {
+  .mast nav button {
+    padding-inline: 5px;
+  }
+  .match-type .eyebrow {
+    letter-spacing: 0.07em;
+  }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  /* Beside the table, the thumb controls leave both end pockets visible. */
+  main {
+    grid-template-columns: minmax(0, 1fr) clamp(160px, 27vw, 260px);
+    grid-template-rows: auto auto minmax(160px, 1fr);
+    grid-template-areas: "mast mast" "match tools" "arena tools";
+    column-gap: 8px;
   }
   .mast {
-    padding: 14px 0 10px;
-  }
-  .emblem {
-    display: none;
+    grid-area: mast;
   }
   .identity h1 {
-    white-space: nowrap;
-    font-size: clamp(1.65rem, 7.5vw, 2.5rem);
-  }
-  nav button {
-    white-space: nowrap;
-  }
-  .console {
-    padding: 10px 12px;
-    gap: 8px;
-  }
-}
-@media (max-height: 560px) and (orientation: landscape) {
-  .mast {
-    padding: 6px 0;
-  }
-  .emblem {
-    height: 34px;
-    width: 34px;
-  }
-  .eight i {
-    font-size: 15px;
-    line-height: 18px;
-  }
-  h1 {
-    font-size: 1.7rem;
-  }
-  .identity .eyebrow {
-    display: none;
+    font-size: 1.6rem;
   }
   .match {
-    margin: 5px 0;
+    grid-area: match;
   }
-  .arena canvas {
-    max-height: 60vh;
+  .arena {
+    grid-area: arena;
+  }
+  .shot-panel {
+    grid-area: tools;
+    align-self: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-top: 6px;
   }
   .console {
-    padding: 6px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .fine-aim {
+    align-self: start;
   }
   .under {
-    margin-top: 3px;
+    justify-content: space-between;
+  }
+  .under #tip {
+    flex-basis: 100%;
+  }
+  dialog {
+    margin: auto;
+    border-radius: 12px;
+    width: min(460px, 85%);
   }
 }

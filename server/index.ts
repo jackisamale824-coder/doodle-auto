@@ -42,6 +42,7 @@ const mime: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
 };
 const server = http.createServer(async (req, res) => {
   if (req.url?.startsWith("/api/player/")) return accounts.handle(req,res);
