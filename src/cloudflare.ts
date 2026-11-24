@@ -1,3 +1,4 @@
+import { gameShards, shardNames, type GameShard } from "./game-shards.ts";
 import { fetchGameBackend } from "./game-backend.ts";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import {
@@ -19,10 +20,11 @@ export class PlayerDatabase extends WorkerEntrypoint<Env> {
     )
       return fetch("https://www.googleapis.com/oauth2/v3/certs");
     const command = await request.json<StoreCommand>();
-    const result =
-      await this.ctx.exports.GameContainer.getByName(
-        "player-database",
-      ).playerCommand(command);
+    const shard = new URL(request.url).pathname.slice(1);
+    const matches = command.op === "open-matches" || command.op === "save-matches";
+    const database = matches && shardNames.includes(shard as GameShard)
+      ? "match-storage-" + shard : "player-database";
+    const result = await this.ctx.exports.GameContainer.getByName(database).playerCommand(command);
     return Response.json(result);
   }
 }
@@ -92,12 +94,16 @@ export class GameContainer extends DurableObject<Env> {
       this.ctx.exports.PlayerDatabase,
     );
     if (!container.running) {
+      const shard = shardNames.find(key =>
+        this.ctx.id.equals(this.ctx.exports.GameContainer.idFromName(gameShards[key].name))) ?? "shared";
       container.start({
         image: container.images.base,
         instance: "lite",
         enableInternet: false,
         env: {
-          PLAYER_STORE_URL: "http://players.internal",
+          MATCH_RECOVERY: "1",
+          ROOM_CODE_PREFIX: gameShards[shard].prefix,
+          PLAYER_STORE_URL: "http://players.internal/" + shard,
           GOOGLE_CLIENT_ID: this.env.GOOGLE_CLIENT_ID,
         },
       });
@@ -159,11 +165,45 @@ export default {
       if (game === "pool" && path === "/") url.pathname = "/pool/";
       request = new Request(url, request);
       const dynamic = path.startsWith("/api/") ||
-        ["/ws", "/pool/ws", "/lobbies", "/health"].includes(path);
+        ["/ws", "/ws/county", "/ws/islands", "/pool/ws", "/lobbies", "/health"].includes(path);
       if (!dynamic) return env.ASSETS.fetch(request);
     }
-    return fetchGameBackend(request, (attempt) =>
-      ctx.exports.GameContainer.getByName("shared-game-server").fetch(attempt),
-    );
+    const forward = (shard: GameShard, req: Request) =>
+      fetchGameBackend(req, (attempt) =>
+        ctx.exports.GameContainer.getByName(gameShards[shard].name).fetch(
+          attempt,
+        ),
+      );
+    if (url.pathname === "/lobbies" && request.method === "GET") {
+      const selected = url.searchParams.get("shard");
+      url.search = "";
+      const lobbyRequest = new Request(url, request);
+      if (shardNames.includes(selected as GameShard))
+        return forward(selected as GameShard, lobbyRequest);
+      // Old clients request the combined directory. A map-specific menu only wakes its own server.
+      const lists = await Promise.all(
+        shardNames.map(async (shard) => {
+          const response = await forward(shard, new Request(lobbyRequest));
+          if (!response.ok) {
+            await response.body?.cancel();
+            return null;
+          }
+          const data = await response
+            .json<{ lobbies: unknown[] }>()
+            .catch(() => null);
+          return Array.isArray(data?.lobbies) ? data.lobbies : null;
+        }),
+      );
+      if (lists.every((list) => list === null))
+        return new Response("Lobby directory unavailable", { status: 503 });
+      return Response.json(
+        { lobbies: lists.flatMap((list) => list ?? []) },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    const shard =
+      shardNames.find((key) => gameShards[key].socket === url.pathname) ??
+      "shared";
+    return forward(shard, request);
   },
 } satisfies ExportedHandler<Env>;

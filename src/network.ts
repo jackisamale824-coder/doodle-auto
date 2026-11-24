@@ -1,3 +1,4 @@
+import { gameShards, shardNames, shardForCode, shardForSeed } from "./game-shards.ts";
 import { RubbleRoster } from "./county-rubble-view.ts";
 import { RELEASE_ID } from "./release-info.ts";
 import { RUST_SCALE } from "./rust-boundary.ts";
@@ -61,7 +62,7 @@ export class Network {
   players: RemoteState[] = [];
   onMessage: (m: any) => void = () => {};
   private session: any = null;
-  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private cancelRetry?: () => void;
   private retryUntil = 0;
   private retryCount = 0;
   private connectionGeneration = 0;
@@ -105,7 +106,18 @@ export class Network {
     return new Promise<never>(() => {});
   }
   async bootstrap(): Promise<any | null> {
-    if (RELEASE_ID === "dev") return null;
+    if (RELEASE_ID === "dev") {
+      const saved = this.read("dc.session");
+      const invite = new URLSearchParams(location.search).get("room");
+      if (
+        !shardNames.some((key) => gameShards[key].socket === saved?.wsUrl) ||
+        (invite && invite.toUpperCase() !== saved.code)
+      )
+        return null;
+      this.session = saved;
+      this.retryUntil = Date.now() + 90000;
+      return this.restore();
+    }
     // The county entry opens the selected build. Reloading a pinned match on
     // its own release still resumes it, including after a newer deployment.
     if (this.storagePrefix === "county" || this.storagePrefix === "islands") {
@@ -158,8 +170,10 @@ export class Network {
   ) {
     this.disconnect();
     const generation = this.connectionGeneration;
-    if (RELEASE_ID === "dev")
-      return this.joinSocket("/ws", {
+    if (RELEASE_ID === "dev") {
+      const shard = type === "join" ? shardForCode(code) : shardForSeed(seed);
+      return this.joinSocket(gameShards[shard].socket, {
+        resume: 1,
         type,
         name,
         seed,
@@ -168,6 +182,7 @@ export class Network {
         compact: true,
         mapScale: RUST_SCALE,
       });
+    }
     const response = await fetch("/api/matches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -201,6 +216,7 @@ export class Network {
   }
   private async restore(): Promise<any> {
     if (!this.session) throw Error("Your match has ended.");
+    const generation = this.connectionGeneration;
     this.reconnecting = true;
     this.session.attemptId ||= crypto.randomUUID();
     this.save("dc.session", this.session);
@@ -217,10 +233,12 @@ export class Network {
         },
         this.session,
       );
+      if (generation !== this.connectionGeneration) throw Error("Connection canceled.");
       this.reconnecting = false;
       this.retryCount = 0;
       return m;
     } catch (error) {
+      if (generation !== this.connectionGeneration) throw error;
       if (
         !this.session ||
         Date.now() >= this.retryUntil ||
@@ -233,14 +251,17 @@ export class Network {
         throw error;
       }
       await new Promise<void>((resolve) => {
-        this.retryTimer = setTimeout(
+        const timer = setTimeout(
           resolve,
           Math.min(
             5000,
             250 * 2 ** this.retryCount++ * (0.8 + Math.random() * 0.4),
           ),
         );
+        this.cancelRetry = () => { clearTimeout(timer); resolve(); };
       });
+      if (generation !== this.connectionGeneration) throw Error("Connection canceled.");
+      this.cancelRetry = undefined;
       return this.restore();
     }
   }
@@ -323,6 +344,7 @@ export class Network {
           if (m.sessionId && m.resumeSecret) {
             this.session = {
               wsUrl,
+              code: m.code,
               releaseId: RELEASE_ID,
               clientUrl: admission?.clientUrl,
               sessionId: m.sessionId,
@@ -425,7 +447,7 @@ export class Network {
         }
         this.onMessage(m);
       };
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         clearTimeout(timer);
         if (!done) {
           done = true;
@@ -434,6 +456,10 @@ export class Network {
         if (this.socket !== ws) return;
         this.active = false;
         if (this.pingTimer) clearInterval(this.pingTimer);
+        if (event?.code === 4001) {
+          this.session = null;
+          this.save("dc.session", null);
+        }
         if (this.session && !this.reconnecting && done) {
           this.reconnecting = true;
           this.retryUntil = Date.now() + 90000;
@@ -475,7 +501,9 @@ export class Network {
     this.session = null;
     this.save("dc.session", null);
     this.reconnecting = false;
-    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.cancelRetry?.();
+    this.cancelRetry = undefined;
+    this.retryCount = 0;
     if (this.pingTimer) clearInterval(this.pingTimer);
     this.pingTimer = null;
     this.samples.clear();

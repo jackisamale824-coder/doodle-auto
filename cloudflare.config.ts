@@ -8,7 +8,7 @@ const gameContainer = defineContainer({
   name: "doodle-auto-game",
   image: { dockerfile: "./Dockerfile" },
   instanceType: "lite",
-  maxInstances: 1,
+  maxInstances: 3,
 });
 
 const workerName = process.env.GAME_WORKER_NAME || "doodle-auto";

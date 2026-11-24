@@ -1,3 +1,4 @@
+import { shardForSeed } from "./game-shards.ts";
 import { QuickInventory } from "./quick-inventory.ts";
 import { bindLoadoutPreview, loadoutScreen } from "./loadout-screen.ts";
 import {
@@ -1600,7 +1601,8 @@ class Game {
     if (this.checkingLobbies) return;
     this.checkingLobbies = true;
     try {
-      const response = await fetch("/lobbies", { cache: "no-store" });
+      const path = RELEASE_ID === "dev" ? "/lobbies?shard=" + shardForSeed(this.selectedSeed) : "/lobbies";
+      const response = await fetch(path, { cache: "no-store" });
       if (!response.ok) throw Error("Lobby status unavailable");
       const data = await response.json();
       this.lobbies = data.lobbies.filter(

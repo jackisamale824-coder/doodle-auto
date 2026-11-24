@@ -31,6 +31,12 @@ export class PlayMetrics {
     });
     this.record(player);
   }
+  checkpoint(player: PlayerState) {
+    return this.sessions.get(player);
+  }
+  restore(player: PlayerState, session: PlaySession) {
+    this.sessions.set(player, session);
+  }
   record(player: PlayerState) {
     const session = this.sessions.get(player);
     if (!session) return;

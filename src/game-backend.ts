@@ -7,7 +7,7 @@ export async function fetchGameBackend(
   const retry =
     request.method === "GET" &&
     request.body === null &&
-    ["/lobbies", "/api/player/profile", "/health", "/ws", "/pool/ws"].includes(
+    ["/lobbies", "/api/player/profile", "/health", "/ws", "/ws/county", "/ws/islands", "/pool/ws"].includes(
       path,
     );
   for (let attempt = 0; ; attempt++) {

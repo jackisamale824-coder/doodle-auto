@@ -57,8 +57,10 @@ export type StoreCommand =
   | { op: "login"; player: string; token: string; expires: number }
   | { op: "logout" | "identity"; token: string }
   | { op: "profile"; player: string }
-  | { op: "metrics"; batch: MetricsBatch };
-export type StoreResult<C extends StoreCommand> = C["op"] extends "google"
+  | { op: "metrics"; batch: MetricsBatch }
+  | { op: "open-matches"; owner: string }
+  | { op: "save-matches"; owner: string; revision: number; rooms: {code: string; data: string | null}[] };
+export type StoreResult<C extends StoreCommand> = C["op"] extends "open-matches" ? { data: string }[] : C["op"] extends "google"
   ? "ok" | "conflict" | "expired"
   : C["op"] extends "metrics"
     ? SessionRatings | null
@@ -80,6 +82,8 @@ export interface PlayerSql {
   atomic<T>(fn: () => T): T;
 }
 export const schema = [
+  "CREATE TABLE IF NOT EXISTS match_owner (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, revision INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS match_checkpoints (code TEXT PRIMARY KEY, expires INTEGER NOT NULL, data TEXT NOT NULL)",
   `CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY, name TEXT COLLATE NOCASE UNIQUE NOT NULL,
     salt TEXT NOT NULL, hash TEXT NOT NULL, rating INTEGER NOT NULL DEFAULT 1000,
@@ -136,6 +140,31 @@ function rate(db: PlayerSql, match: DuelResult) {
 export function executePlayerCommand(db: PlayerSql, c: StoreCommand) {
   return db.atomic(() => {
     switch (c.op) {
+      case "open-matches":
+        db.rows("INSERT OR REPLACE INTO match_owner VALUES (1,?,0)", c.owner);
+        db.rows("DELETE FROM match_checkpoints WHERE expires<=?", Date.now());
+        return db.rows<{ data: string }>("SELECT data FROM match_checkpoints");
+      case "save-matches": {
+        const owner = db.rows<{ owner: string; revision: number }>(
+          "SELECT owner,revision FROM match_owner WHERE id=1",
+        )[0];
+        if (owner?.owner !== c.owner)
+          throw Error("Game checkpoint writer superseded");
+        if (c.revision <= owner.revision) return null;
+        for (const room of c.rooms) {
+          if (room.data === null)
+            db.rows("DELETE FROM match_checkpoints WHERE code=?", room.code);
+          else
+            db.rows(
+              "INSERT OR REPLACE INTO match_checkpoints VALUES (?,?,?)",
+              room.code,
+              Date.now() + 90000,
+              room.data,
+            );
+        }
+        db.rows("UPDATE match_owner SET revision=? WHERE id=1", c.revision);
+        return null;
+      }
       case "credential":
         return (
           db.rows<Credential>(

@@ -57,7 +57,10 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { WebSocket, WebSocketServer } from "ws";
 import { Admissions } from "./admission.ts";
 import { sessionName } from "../src/session-name.ts";
-import { Sessions } from "./sessions.ts";
+import { MatchCheckpoints } from "./match-checkpoints.ts";
+import type { PlayerStore, Identity, PlaySession } from "./player-store.ts";
+import type { PieceState } from "../src/world.ts";
+import { Sessions, type Session } from "./sessions.ts";
 import { throwGrenade, type GrenadeEffect } from "../src/grenades.ts";
 import type { PlayMetrics } from "./play-metrics.ts";
 import { Spatial } from "./spatial.ts";
@@ -137,6 +140,23 @@ interface Room {
   spatial: Spatial;
   ai: Npcs | null;
   npcs: Npc[];
+}
+interface SavedRoom {
+  roomId: string;
+  code: string;
+  seed: string;
+  public: boolean;
+  duel: boolean;
+  duelEntrants?: number;
+  duelFinished?: boolean;
+  structures?: [number, PieceState][];
+  cars?: CountyCar[];
+  members: {
+    player: PlayerState;
+    identity?: Identity;
+    metrics?: PlaySession;
+    session: Omit<Session, "socket">;
+  }[];
 }
 const SNAPSHOT_CELL_SIZE = 32;
 const SNAPSHOT_CELL_REACH = NPC_RADIUS + SNAPSHOT_CELL_SIZE / 2;
@@ -259,6 +279,107 @@ export class Rooms {
     send(ws, { type: "vehicle-drive", index, seq: driver.seq, pose });
   }
   private sessions: Sessions;
+  private checkpoints?: MatchCheckpoints;
+
+  async recover(store: PlayerStore) {
+    const checkpoints = new MatchCheckpoints(store, (code) =>
+      this.serializeRoom(code),
+    );
+    const saved = await checkpoints.open();
+    await initializeRapier();
+    for (const { data } of saved) {
+      const savedRoom: SavedRoom = JSON.parse(data);
+      const members = savedRoom.members.filter(
+        (m) => m.session.expiresAt > Date.now(),
+      );
+      if (!members.length) continue;
+      const room = this.createRoom(
+        savedRoom.code,
+        savedRoom.seed,
+        savedRoom.public,
+        savedRoom.duel,
+      );
+      room.roomId = savedRoom.roomId;
+      room.duelEntrants = savedRoom.duelEntrants;
+      room.duelFinished = savedRoom.duelFinished;
+      room.structures?.restore(new Map(savedRoom.structures));
+      if (room.cars && savedRoom.cars) {
+        // Preserve parked vehicles. The fresh simulation assigns traffic and drivers.
+        savedRoom.cars.forEach((car, i) => {
+          if (room.cars![i] && !room.cars![i].driver)
+            Object.assign(room.cars![i], car, { driver: null });
+        });
+      }
+      for (const member of members) {
+        // ws's server-side constructor creates a transport with no TCP connection.
+        // It is only a membership key until the real socket proves its credential.
+        const detached = new WebSocket(null!, [], {});
+        const player = member.player;
+        player.ready = true;
+        player.shieldUntil = Math.min(player.shieldUntil ?? 0, Date.now());
+        if (member.identity)
+          this.metrics?.identities.set(detached, member.identity);
+        if (member.metrics) this.metrics?.restore(player, member.metrics);
+        room.players.set(detached, player);
+        this.memberships.set(detached, room);
+        this.sessions.attach({ ...member.session, socket: detached }, detached);
+      }
+    }
+    this.checkpoints = checkpoints;
+  }
+
+  private serializeRoom(code: string) {
+    const r = this.rooms.get(code);
+    if (!r) return null;
+    const members: SavedRoom["members"] = [];
+    const expires = Date.now() + this.sessions.resumeMs;
+    for (const [socket, player] of r.players) {
+      const session = this.sessions.bySocket(socket);
+      if (!session) continue;
+      members.push({
+        player,
+        identity: this.metrics?.identities.get(socket),
+        metrics: this.metrics?.checkpoint(player),
+        session: {
+          id: session.id,
+          secretHash: session.secretHash,
+          retry: session.retry,
+          expiresAt: Math.min(expires, session.expiresAt),
+        },
+      });
+    }
+    if (!members.length) return null;
+    return JSON.stringify({
+      roomId: r.roomId,
+      code,
+      seed: r.seed,
+      public: r.public,
+      duel: r.duel,
+      duelEntrants: r.duelEntrants,
+      duelFinished: r.duelFinished,
+      cars: r.cars,
+      structures: r.structures && [...r.structures.states],
+      members,
+    } satisfies SavedRoom);
+  }
+
+  async checkpoint(codes: Iterable<string> = this.rooms.keys()) {
+    await this.checkpoints?.save(codes);
+  }
+
+  private sendAdmission(ws: WebSocket, room: Room, packet: object) {
+    const acknowledge = () => {
+      if (this.memberships.get(ws) !== room || ws.readyState !== WebSocket.OPEN)
+        return;
+      send(ws, packet);
+      this.baselineRevision.delete(ws);
+      this.roster(room);
+    };
+    if (!this.checkpoints || !this.sessions.bySocket(ws)) return acknowledge();
+    void this.checkpoint([room.code]).then(acknowledge, () =>
+      ws.close(1013, "Match storage unavailable"),
+    );
+  }
   private closing = false;
   private tickTimes: number[] = [];
   private tickCount = 0;
@@ -450,9 +571,9 @@ export class Rooms {
       admissionRejections: this.admissionRejections,
       resumeSuccess: this.resumeSuccess,
       unexpectedDisconnects: this.unexpectedDisconnects,
-      active: this.options
-        ? sessions.filter((s) => s.expiresAt === Infinity).length
-        : this.memberships.size,
+      active:
+        this.memberships.size -
+        sessions.filter((s) => s.expiresAt !== Infinity).length,
       resumable: sessions.filter((s) => s.expiresAt !== Infinity).length,
       pending: this.admissions.count(),
       rooms: [...this.rooms.values()].map((r) => ({
@@ -484,7 +605,7 @@ export class Rooms {
     return true;
   }
   private disconnect(ws: WebSocket) {
-    if (!this.options) {
+    if (!this.sessions.bySocket(ws)) {
       this.leave(ws);
       return;
     }
@@ -499,6 +620,39 @@ export class Rooms {
         this.unexpectedDisconnects++;
       this.sessions.detach(ws);
     }
+  }
+  private createRoom(
+    code: string,
+    seed: string,
+    isPublic: boolean,
+    duel: boolean,
+  ) {
+    const cacheRust = isPublic && seed === "public-city-v1";
+    if (cacheRust && !this.publicWorld) {
+      const city = this.levelFactory(seed);
+      this.publicWorld = { city, spatial: new Spatial(city.boxes) };
+    }
+    const city = cacheRust ? this.publicWorld!.city : this.levelFactory(seed),
+      spatial = cacheRust ? this.publicWorld!.spatial : new Spatial(city.boxes);
+    const ai = isPublic && seed !== COUNTY ? new Npcs(city, spatial) : null;
+    const r: Room = {
+      effects: [],
+      cars: seed === COUNTY ? countyCars() : undefined,
+      roomId: randomUUID(),
+      code,
+      seed,
+      city,
+      spatial,
+      ai,
+      npcs: ai?.actors ?? [],
+      public: isPublic,
+      duel,
+      players: new Map(),
+      created: Date.now(),
+    };
+    this.initializeStructures(r);
+    this.rooms.set(code, r);
+    return r;
   }
   private initializeStructures(room: Room) {
     if (room.ai) room.ai.effects = room.effects;
@@ -586,8 +740,15 @@ export class Rooms {
   private resume(ws: WebSocket, m: any) {
     this.prune();
     const prior = this.sessions.records.get(m.sessionId);
-    if (prior && this.metrics?.identities.get(prior.socket)?.id !== this.metrics?.identities.get(ws)?.id) {
-      send(ws, { type: "error", message: "Sign in to the original account to resume." });
+    if (
+      prior &&
+      this.metrics?.identities.get(prior.socket)?.id !==
+        this.metrics?.identities.get(ws)?.id
+    ) {
+      send(ws, {
+        type: "error",
+        message: "Sign in to the original account to resume.",
+      });
       return;
     }
     const result = this.sessions.resume(m.sessionId, m.secret, m.attemptId);
@@ -615,19 +776,19 @@ export class Rooms {
       p.ready = true;
       p.shieldUntil = Date.now();
     }
-    session.socket = ws;
+    this.sessions.attach(session, ws);
     session.expiresAt = Infinity;
     r.players.set(ws, p);
     this.memberships.set(ws, r);
     if (m.compact === true) this.compact.add(ws);
     if (m.spatialSnapshots === 1) this.spatialSnapshots.add(ws);
-    if (previous !== ws) previous.close(4001, "Session resumed elsewhere");
+    if (previous !== ws && previous.readyState === WebSocket.OPEN)
+      previous.close(4001, "Session resumed elsewhere");
     this.resumeSuccess++;
-    send(ws, {
+    this.sendAdmission(ws, r, {
       type: "resumed",
       ...this.sessionSnapshot(r, p, session.id, secret),
     });
-    this.roster(r);
   }
   lobbies() {
     return [...this.rooms.values()]
@@ -671,12 +832,18 @@ export class Rooms {
       dt = Math.min(0.1, (stamp - this.lastTick) / 1000),
       now = Date.now();
     this.lastTick = stamp;
-    this.prune();
+    if (this.tickCount % 3 === 0) this.prune();
     for (const r of this.rooms.values()) {
+      if (
+        r.players.size &&
+        ![...r.players.keys()].some((ws) => ws.readyState === WebSocket.OPEN)
+      )
+        continue;
       for (let i = r.effects.length - 1; i >= 0; i--)
         if (r.effects[i].expires <= now) r.effects.splice(i, 1);
       if (this.metrics && this.tickCount % 300 === 0) {
-        for (const [socket,player] of r.players) if (socket.readyState === WebSocket.OPEN) this.metrics.record(player);
+        for (const [socket, player] of r.players)
+          if (socket.readyState === WebSocket.OPEN) this.metrics.record(player);
       }
       r.wreckage?.step(dt);
       if (this.tickCount % 2 === 0 && r.rubbleUpdates?.size) {
@@ -964,7 +1131,9 @@ export class Rooms {
       if (r.duel && !r.duelFinished && attacker.kills >= 15) {
         r.duelFinished = true;
         if (r.duelEntrants === 2 && r.players.size === 2 && victim !== attacker)
-          this.metrics?.finish(r.roomId, attacker, victim, () => this.roster(r));
+          this.metrics?.finish(r.roomId, attacker, victim, () =>
+            this.roster(r),
+          );
       }
       void this.metrics?.flush();
       this.broadcast(r, {
@@ -1104,14 +1273,23 @@ export class Rooms {
     r.players.delete(ws);
     this.memberships.delete(ws);
     const session = this.sessions.bySocket(ws);
-    if (session) this.sessions.records.delete(session.id);
+    this.sessions.remove(ws);
     if (!r.players.size && !this.admissions.count(r.roomId)) {
       r.wreckage?.dispose();
       this.rooms.delete(r.code);
     } else this.roster(r);
+    if (session)
+      void this.checkpoint([r.code]).catch(() =>
+        console.warn("Match removal checkpoint pending"),
+      );
   }
   handle(ws: WebSocket, m: any) {
-    if (!m || typeof m.type !== "string") return;
+    if (!m || typeof m.type !== "string" || ws.readyState !== WebSocket.OPEN)
+      return;
+    if (!this.options && m.type === "resume" && !this.memberships.has(ws)) {
+      this.resume(ws, m);
+      return;
+    }
     if (this.options && !this.memberships.has(ws)) {
       if (m.releaseId !== this.options.releaseId) {
         this.admissionRejections++;
@@ -1158,10 +1336,20 @@ export class Rooms {
       m.type === "duel"
     ) {
       if (this.memberships.has(ws)) return;
+      if (this.memberships.size >= 256) {
+        send(ws, {
+          type: "error",
+          message: "Game server is full. Please try again shortly.",
+        });
+        return;
+      }
       const identity = this.metrics?.identities.get(ws);
       const name = identity?.name ?? sessionName(m.name);
       if (!name) {
-        send(ws, { type: "error", message: "Enter a nickname or sign in to play." });
+        send(ws, {
+          type: "error",
+          message: "Enter a nickname or sign in to play.",
+        });
         return;
       }
       if (Date.now() - (this.lastJoin.get(ws) ?? 0) < 3000) {
@@ -1202,46 +1390,18 @@ export class Rooms {
         this.createCredit--;
         let code = "";
         do {
-          code = randomBytes(4).toString("hex").slice(0, 5).toUpperCase();
+          code = (
+            (process.env.ROOM_CODE_PREFIX ?? "") +
+            randomBytes(4).toString("hex")
+          )
+            .slice(0, 5)
+            .toUpperCase();
         } while (this.rooms.has(code));
         const seed =
           m.type === "public"
             ? publicMapSeed(m.seed)
             : String(m.seed || "paper").slice(0, 40);
-        const cacheRust = m.type === "public" && seed === "public-city-v1";
-        if (cacheRust && !this.publicWorld) {
-          const city = this.levelFactory(seed);
-          this.publicWorld = { city, spatial: new Spatial(city.boxes) };
-        }
-        const city =
-            cacheRust
-              ? this.publicWorld!.city
-              : this.levelFactory(seed),
-          spatial =
-            cacheRust
-              ? this.publicWorld!.spatial
-              : new Spatial(city.boxes);
-        const ai =
-          m.type === "public" && seed !== COUNTY
-            ? new Npcs(city, spatial)
-            : null;
-        r = {
-          effects: [],
-          cars: seed === COUNTY ? countyCars() : undefined,
-          roomId: randomUUID(),
-          code,
-          seed,
-          city,
-          spatial,
-          ai,
-          npcs: ai?.actors ?? [],
-          public: m.type === "public",
-          duel: m.type === "duel",
-          players: new Map(),
-          created: Date.now(),
-        };
-        this.initializeStructures(r);
-        this.rooms.set(code, r);
+        r = this.createRoom(code, seed, m.type === "public", m.type === "duel");
       } else if (m.type === "join")
         r = this.rooms.get(String(m.code).trim().toUpperCase());
       if (!r) {
@@ -1295,15 +1455,21 @@ export class Rooms {
       };
       if (loadout || r.seed === COUNTY) p.armorySpawn = [...p.p];
       if (r.duel) r.duelEntrants = (r.duelEntrants ?? 0) + 1;
-      this.metrics?.join(ws,p,r.duel ? "duel" : r.public ? "public" : "private",r.seed);
+      this.metrics?.join(
+        ws,
+        p,
+        r.duel ? "duel" : r.public ? "public" : "private",
+        r.seed,
+      );
       void this.metrics?.flush();
       this.lastJoin.set(ws, Date.now());
       if (m.compact === true) this.compact.add(ws);
       if (m.spatialSnapshots === 1) this.spatialSnapshots.add(ws);
       r.players.set(ws, p);
       this.memberships.set(ws, r);
-      const credentials = this.options ? this.sessions.create(ws) : undefined;
-      send(ws, {
+      const credentials =
+        this.options || m.resume === 1 ? this.sessions.create(ws) : undefined;
+      this.sendAdmission(ws, r, {
         ...(credentials
           ? this.sessionSnapshot(
               r,
@@ -1325,7 +1491,6 @@ export class Rooms {
         duel: r.duel,
         tickRate: 30,
       });
-      this.roster(r);
       return;
     }
     const r = this.memberships.get(ws),
@@ -1470,12 +1635,15 @@ export class Rooms {
         p.p = [...r.city.spawns[0]];
         p.anchor = null;
         p.moveCredit = 0;
-        send(ws, {type:"correction",p:p.p,shore:true});
+        send(ws, { type: "correction", p: p.p, shore: true });
         return;
       }
       p.moveCredit -= displacement;
       p.p = m.p;
-      if (p.armorySpawn && (vehicle || distance(p.p, p.armorySpawn) > ARMORY_RADIUS))
+      if (
+        p.armorySpawn &&
+        (vehicle || distance(p.p, p.armorySpawn) > ARMORY_RADIUS)
+      )
         p.armorySpawn = undefined;
       if (vehicle) {
         vehicle.p = [...p.p];

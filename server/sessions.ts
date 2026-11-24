@@ -11,6 +11,7 @@ export interface Session {
 }
 export class Sessions {
   readonly records = new Map<string, Session>();
+  private sockets = new WeakMap<WebSocket, Session>();
   constructor(readonly resumeMs = 90_000) {}
   create(socket: WebSocket) {
     const secret = randomBytes(32).toString("base64url");
@@ -20,11 +21,22 @@ export class Sessions {
       secretHash: hash(secret),
       expiresAt: Infinity,
     };
-    this.records.set(session.id, session);
+    this.attach(session, socket);
     return { session, secret };
   }
   bySocket(socket: WebSocket) {
-    return [...this.records.values()].find((s) => s.socket === socket);
+    return this.sockets.get(socket);
+  }
+  attach(session: Session, socket: WebSocket) {
+    this.sockets.delete(session.socket);
+    session.socket = socket;
+    this.sockets.set(socket, session);
+    this.records.set(session.id, session);
+  }
+  remove(socket: WebSocket) {
+    const s = this.sockets.get(socket);
+    if (s) this.records.delete(s.id);
+    this.sockets.delete(socket);
   }
   detach(socket: WebSocket) {
     const s = this.bySocket(socket);

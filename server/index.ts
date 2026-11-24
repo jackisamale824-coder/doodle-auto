@@ -91,7 +91,7 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
-  if (req.url === "/lobbies") {
+  if (req.url?.split("?", 1)[0] === "/lobbies") {
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Cache-Control", "no-store");
     res.end(JSON.stringify({ lobbies: rooms.lobbies() }));
@@ -158,8 +158,10 @@ const wss = new WebSocketServer({
   perMessageDeflate: false,
 });
 const pool = createPoolServer();
-let admissionCredit = 24,
-  admissionAt = Date.now();
+// Keep a full County room's burst independent of pool traffic. Pending account
+// lookups count toward capacity until ownership transfers to the WebSocket server.
+const gtaAdmissions = { credit: 32, at: Date.now(), pending: 0 };
+const poolAdmissions = { credit: 24, at: Date.now(), pending: 0 };
 const rooms = new Rooms(
   wss,
   generateLevel,
@@ -172,18 +174,21 @@ const rooms = new Rooms(
     : undefined,
   metrics,
 );
+if (process.env.MATCH_RECOVERY === "1" && !process.env.RELEASE_ID)
+  await rooms.recover(playerStore);
+const matchCheckpoint = setInterval(() => {
+  void rooms.checkpoint().catch(() => console.warn("Match checkpoint pending"));
+}, 5000);
 rooms.vehicleModel = await loadCountyFleet(
   production ? distRoot : path.join(root, "public"),
 );
 server.on("upgrade", async (req, socket, head) => {
-  if (req.url === "/ws" || req.url === "/pool/ws") {
+  if (["/ws", "/ws/county", "/ws/islands", "/pool/ws"].includes(req.url ?? "")) {
     const isPool = req.url === "/pool/ws";
     const now = Date.now();
-    admissionCredit = Math.min(
-      24,
-      admissionCredit + (now - admissionAt) * 0.008,
-    );
-    admissionAt = now;
+    const admissions = isPool ? poolAdmissions : gtaAdmissions;
+    admissions.credit = Math.min(isPool ? 24 : 32, admissions.credit + (now - admissions.at) * 0.008);
+    admissions.at = now;
     // Browser origins must match this host; non-browser clients get the same game limits.
     let validOrigin = true;
     if (req.headers.origin) {
@@ -197,19 +202,24 @@ server.on("upgrade", async (req, socket, head) => {
         validOrigin = false;
       }
     }
-    if (!validOrigin || (isPool ? pool : wss).clients.size >= 256 || admissionCredit < 1) {
+    if (!validOrigin) {
       socket.end(
         "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
       );
       return;
     }
-    admissionCredit--; // ws sets TCP_NODELAY on upgraded sockets.
+    if ((isPool ? pool : wss).clients.size + admissions.pending >= 256 || admissions.credit < 1) {
+      socket.end("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+      return;
+    }
+    admissions.credit--; // ws sets TCP_NODELAY on upgraded sockets.
 
     if (isPool) {
       pool.handleUpgrade(req, socket, head, ws => pool.emit("connection", ws));
       return;
     }
 
+    admissions.pending++;
     try {
       const user = await accounts.identity(req);
       if (socket.destroyed) return;
@@ -219,23 +229,30 @@ server.on("upgrade", async (req, socket, head) => {
       });
     } catch {
       socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n");
+    } finally {
+      admissions.pending--;
     }
   } else if (production) socket.destroy();
 });
 const port = Number(process.env.PORT || 4173),
   host = process.env.HOST || "0.0.0.0";
 server.listen(port, host, () =>
-  console.log(`doodlesCreed running on http://${host}:${port}`),
+  console.log(`doodlesCreed running on http://${host}:${(server.address() as import("node:net").AddressInfo).port}`),
 );
+let stopping = false;
 for (const signal of ["SIGINT", "SIGTERM"] as const)
-  process.on(signal, () => {
+  process.on(signal, async () => {
+    if (stopping) return;
+    stopping = true;
+    clearInterval(matchCheckpoint);
     clearInterval(checkpoint);
+    server.close();
+    await rooms.checkpoint().catch(() => console.warn("Final match checkpoint unavailable"));
     rooms.dispose();
-    void metrics.flush();
+    await metrics.flush();
     wss.clients.forEach((ws) => ws.close());
     wss.close();
     pool.clients.forEach(ws => ws.close());
     pool.close();
-    server.close();
     vite?.close();
   });
