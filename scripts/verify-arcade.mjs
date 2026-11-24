@@ -15,7 +15,6 @@ const titles = new Map([
   ["https://doodle-auto.sully6.com/", "Doodle Auto"],
   ["https://drive-mad.sully6.com/", "Drive Mad"],
   ["https://pool.sully6.com/", "Side Pocket"],
-  ["https://revenge.sully6.com/", "Murder"],
 ]);
 assert.deepEqual(new Set(hosts), new Set(titles.keys()));
 for (const [from, to] of [
@@ -30,9 +29,6 @@ await Promise.all(hosts.map(async host => {
   assert.ok(live.includes(`href="${host}"`), `Missing tile for ${host}`);
   const page = await html(host + now);
   assert.ok(page.includes("<title>" + titles.get(host)), `Wrong game at ${host}`);
-  if (host === "https://revenge.sully6.com/") {
-    assert.match(page, /<iframe\b[^>]*\bsrc="https:\/\/games\.poki\.com\/458768\/murder"/);
-  }
   if (host === "https://drive-mad.sully6.com/") {
     assert.match(page, /<iframe\b[^>]*\bsrc="https:\/\/drive-mad-game-theta\.vercel\.app\/"/);
   }
