@@ -47,6 +47,7 @@ import { actorHit, HIT_MULTIPLIER } from "./actor-hit.ts";
 import type { RemoteState } from "./network.ts";
 import {
   CountyDriveWorld,
+  MAX_PENDING_DRIVE_STEPS,
   driveInput,
   type DrivePose,
 } from "./county-driving.ts";
@@ -2224,7 +2225,11 @@ class Game {
         from = pose.p;
       const car = this.cars[this.vehicle];
       const online = this.mode === "online";
-      if (!online || !this.driveAuthority || this.drivePending.length < 120) {
+      if (
+        !online ||
+        !this.driveAuthority ||
+        this.drivePending.length < MAX_PENDING_DRIVE_STEPS
+      ) {
         const impact = this.driveWorld!.advance(
           pose,
           car.kind,

@@ -18,6 +18,7 @@ import {
 import {
   CountyDriveWorld,
   DRIVE_DT,
+  MAX_PENDING_DRIVE_STEPS,
   type DrivePose,
 } from "../src/county-driving.ts";
 import { CountyCitizens, type CountyCitizen } from "../src/county-citizens.ts";
@@ -150,21 +151,22 @@ const send = (ws: WebSocket, m: unknown) => {
   if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 32768)
     ws.send(JSON.stringify(m));
 };
+interface CountyDriver {
+  index: number;
+  pose: DrivePose;
+  seq: number;
+  pending: { seq: number; input: number }[];
+  credit: number;
+  last: number;
+  crashUntil: number;
+}
+
 export class Rooms {
   vehicleModel?: (car: CountyCar) => Object3D;
   rooms = new Map<string, Room>();
   memberships = new Map<WebSocket, Room>();
   private admissions = new Admissions();
-  private drivers = new WeakMap<
-    PlayerState,
-    {
-      pose: DrivePose;
-      seq: number;
-      credit: number;
-      last: number;
-      crashUntil: number;
-    }
-  >();
+  private drivers = new WeakMap<PlayerState, CountyDriver>();
   private drive(
     ws: WebSocket,
     r: Room,
@@ -190,10 +192,11 @@ export class Rooms {
     if (
       !packet ||
       !Number.isSafeInteger(packet.seq) ||
-      packet.seq <= driver.seq ||
+      packet.seq <= (driver.pending.at(-1)?.seq ?? driver.seq) ||
       !Array.isArray(packet.inputs) ||
       !packet.inputs.length ||
       packet.inputs.length > 12 ||
+      driver.pending.length + packet.inputs.length > MAX_PENDING_DRIVE_STEPS ||
       !packet.inputs.every(
         (v: unknown) =>
           typeof v === "number" && Number.isInteger(v) && v >= 0 && v < 18,
@@ -201,15 +204,30 @@ export class Rooms {
       !Number.isSafeInteger(packet.seq + packet.inputs.length)
     )
       return;
-    const now = performance.now(),
-      pose = driver.pose;
+    for (let i = 0; i < packet.inputs.length; i++)
+      driver.pending.push({ seq: packet.seq + i, input: packet.inputs[i] });
+    this.advanceDrive(ws, r, p, car, driver, performance.now());
+  }
+
+  private advanceDrive(
+    ws: WebSocket,
+    r: Room,
+    p: PlayerState,
+    car: CountyCar,
+    driver: CountyDriver,
+    now: number,
+  ) {
+    const { index, pose } = driver;
     driver.credit = Math.min(
       0.18,
       driver.credit + Math.max(0, now - driver.last) / 1000,
     );
     driver.last = now;
-    for (const input of packet.inputs) {
-      if (driver.credit + 1e-8 < DRIVE_DT) break;
+    // A burst can contain more steps than the current time budget.
+    // Leave the rest queued for the room tick and acknowledge only simulated steps.
+    let count = 0;
+    while (count < driver.pending.length && driver.credit + 1e-8 >= DRIVE_DT) {
+      const { seq, input } = driver.pending[count++];
       driver.credit -= DRIVE_DT;
       const from = pose.p;
       const impact = r.driving!.advance(
@@ -225,8 +243,10 @@ export class Rooms {
       }
       if (from !== pose.p)
         this.countyCarContact(r, p, index, from, pose.p, pose.yaw, pose.speed);
+      driver.seq = seq;
     }
-    driver.seq = packet.seq + packet.inputs.length - 1;
+    if (!count) return;
+    driver.pending.splice(0, count);
     p.p = car.p = pose.p;
     p.yaw = car.yaw = pose.yaw;
     p.lastMove = Date.now();
@@ -586,6 +606,9 @@ export class Rooms {
       send(ws, { type: "error", message: "Session ended." });
       return;
     }
+    const driver = this.drivers.get(p);
+    // The resumed client starts from the acknowledged pose.
+    if (driver) driver.pending.length = 0;
     this.memberships.delete(previous);
     r.players.delete(previous);
     if (p.ready === false) {
@@ -709,6 +732,16 @@ export class Rooms {
       );
       if (npcRosterBefore !== r.npcs.map((p) => p.id).join(",")) this.roster(r);
       for (const [ws, p] of r.players) {
+        const driver = this.drivers.get(p);
+        if (
+          driver?.pending.length &&
+          p.hp > 0 &&
+          ws.readyState === WebSocket.OPEN
+        ) {
+          const car = r.cars?.[driver.index];
+          if (car?.driver === p.id)
+            this.advanceDrive(ws, r, p, car, driver, performance.now());
+        }
         if (p.ready === false && now - p.lastMove > 60000)
           ws.close(1008, "Loading timeout");
         if (
@@ -1367,6 +1400,8 @@ export class Rooms {
           this.drivers.delete(p);
           if (m.driveVersion === 1)
             this.drivers.set(p, {
+              index: m.index,
+              pending: [],
               pose: { p: [...car.p], yaw: car.yaw, speed: 0, steer: 0 },
               seq: 0,
               credit: 0.05,

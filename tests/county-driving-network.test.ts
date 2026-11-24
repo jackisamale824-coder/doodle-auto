@@ -70,7 +70,28 @@ test("County drivers advance only from timed, owned input; a real crash is broad
     rooms.handle(socket, first);
     assert.deepEqual(car.p, firstP);
     assert.ok(Math.hypot(firstP[0] - start[0], firstP[2] - start[2]) < 0.2);
-    let seq = 13;
+    // Two batches in one burst exceed even a full 180 ms drive budget.
+    // The tail must run on later ticks, once each, without more input.
+    const second = {
+      ...state,
+      drive: { seq: 13, inputs: Array(12).fill(input) },
+    };
+    rooms.handle(socket, second);
+    rooms.handle(socket, second);
+    const expected = { p: start, yaw, speed: 0, steer: 0 };
+    for (let i = 0; i < 24; i++)
+      r.driving!.advance(expected, car.kind, input, undefined, car);
+    assert.notDeepEqual(car.p, expected.p);
+    const deadline = Date.now() + 2000;
+    while (!messages.some((m) => m.type === "vehicle-drive" && m.seq === 24)) {
+      assert.ok(
+        Date.now() < deadline,
+        "queued driving steps were never acknowledged",
+      );
+      await delay(10);
+    }
+    assert.deepEqual(car.p, expected.p);
+    let seq = 25;
     for (
       let i = 0;
       i < 80 &&

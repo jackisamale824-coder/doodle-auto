@@ -9,6 +9,7 @@ import type { Box, V3 } from "./world.ts";
 
 import { VEHICLE_DIMENSIONS as dimensions } from "./county-vehicle-dimensions.ts";
 export const DRIVE_DT = 1 / 120;
+export const MAX_PENDING_DRIVE_STEPS = 120;
 export interface DrivePose {
   p: V3;
   yaw: number;

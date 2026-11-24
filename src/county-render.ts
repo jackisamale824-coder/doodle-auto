@@ -7,7 +7,20 @@ import { assetUrl } from "./release-info.ts";
 import { inkMaterial } from "./render.ts";
 import { elevation, countyCars } from "./county.ts";
 import { drawCountyRoads } from "./county-roads.ts";
-import { randomSeed, type City } from "./world.ts";
+import { randomSeed, type City, type V3 } from "./world.ts";
+
+// Keep each instance batch small enough for Three.js to cull streets outside the view.
+function countyCells<T>(items: T[], position: (item: T) => V3) {
+  const cells = new Map<string, T[]>();
+  for (const item of items) {
+    const [x, , z] = position(item);
+    const key = Math.floor(x / 96) + "," + Math.floor(z / 96);
+    const cell = cells.get(key);
+    if (cell) cell.push(item);
+    else cells.set(key, [item]);
+  }
+  return cells.values();
+}
 
 export async function drawCounty(city: City, group: T.Group) {
   const loader = new GLTFLoader(),
@@ -86,13 +99,16 @@ export async function drawCounty(city: City, group: T.Group) {
   const lightPositions = drawCountyRoads(group, city.plan.streets);
   const rng = randomSeed("county-landscape");
   const matrix = new T.Object3D();
-  const lamps = new T.InstancedMesh(lamp, mat, lightPositions.length);
-  lightPositions.forEach((p, i) => {
-    matrix.position.fromArray(p);
-    matrix.updateMatrix();
-    lamps.setMatrixAt(i, matrix.matrix);
-  });
-  group.add(lamps);
+  for (const positions of countyCells(lightPositions, (p) => p)) {
+    const lamps = new T.InstancedMesh(lamp, mat, positions.length);
+    positions.forEach((p, i) => {
+      matrix.position.fromArray(p);
+      matrix.updateMatrix();
+      lamps.setMatrixAt(i, matrix.matrix);
+    });
+    lamps.computeBoundingSphere();
+    group.add(lamps);
+  }
   const trunkGeo = new T.CylinderGeometry(0.14, 0.24, 4.2, 8);
   const trunkMat = new T.MeshBasicMaterial({ color: 0x8b6749 });
   const frond = new T.BufferGeometry(),
@@ -120,13 +136,8 @@ export async function drawCounty(city: City, group: T.Group) {
     color: 0xffffff,
     side: T.DoubleSide,
   });
-  const cells = new Map<string, typeof city.boxes>();
-  for (const tree of city.boxes.filter((b) => b.kind === "county-tree")) {
-    const cell = Math.floor(tree.p[0] / 96) + "," + Math.floor(tree.p[2] / 96);
-    if (!cells.has(cell)) cells.set(cell, []);
-    cells.get(cell)!.push(tree);
-  }
-  for (const trees of cells.values()) {
+  const palms = city.boxes.filter((b) => b.kind === "county-tree");
+  for (const trees of countyCells(palms, (tree) => tree.p)) {
     const trunks = new T.InstancedMesh(trunkGeo, trunkMat, trees.length),
       leaves = new T.InstancedMesh(frond, leafMat, trees.length * 8);
     trees.forEach(({ p }, i) => {
