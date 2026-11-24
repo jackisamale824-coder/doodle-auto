@@ -5,7 +5,7 @@ export default defineConfig({
   define: { __RELEASE_ID__: JSON.stringify(process.env.RELEASE_ID || "dev") },
   build: {
     rollupOptions: {
-      input: { index: "index.html", pool: "pool/index.html", viceCity: "vice-city/index.html" },
+      input: { index: "index.html", pool: "pool/index.html" },
       output: {
         manualChunks: {
           three: ["three"],

@@ -32,7 +32,6 @@ button { font: inherit; cursor: pointer; color: inherit }
 .card { --accent: #ffd066; display: flex; flex-direction: column; color: inherit; text-decoration: none; border: 2px solid var(--ink); background: var(--paper); border-radius: 21px; overflow: hidden; box-shadow: 0 5px 0 var(--ink); transition: transform .16s, box-shadow .16s }
 .card.ridge { --accent: #ffb99a }
 .card.pool { --accent: #99e6cc }
-.card.vice { --accent: #ffa4cf }
 .art { aspect-ratio: 1.44; overflow: hidden; background: var(--accent); border-bottom: 2px solid var(--ink) }
 .art img { display: block; width: 100%; height: 100%; object-fit: cover }
 .caption { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: clamp(16px,1.6vw,24px) }
