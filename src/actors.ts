@@ -1,7 +1,7 @@
 import {
   WEAPONS,
   KNIFE,
-  FLASH,
+  isGrenade,
   SMOKE,
   SMG,
   MAMMOTH,
@@ -597,7 +597,7 @@ export function buildWeapon(id: number, county = false) {
     blade.rotation.x = -Math.PI / 2;
     blade.position.z = -0.29;
     g.add(blade);
-  } else if (id === FLASH || id === SMOKE) {
+  } else if (isGrenade(id)) {
     const body = new T.Mesh(
       new T.CylinderGeometry(0.078, 0.078, 0.19, 12),
       inkMaterial(id === SMOKE ? "#789080" : "#d3ad58", 0.08),

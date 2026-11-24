@@ -10,6 +10,7 @@ import {
   loadoutSlots,
   KNIFE,
   FLASH,
+  ROCKET,
   isUtility,
   isGrenade,
 } from "./weapon-balance.ts";
@@ -785,7 +786,12 @@ class Game {
     if (this.combat.online)
       for (const effect of this.network.effects)
         this.showNetworkGrenade(effect);
-    if (this.citizens) this.citizens.effects = this.combat.effects;
+    if (this.citizens) {
+      this.citizens.effects = this.combat.effects;
+      this.combat.blastCitizens = () => this.citizens!.actors;
+      this.combat.onBlastCitizen = (actor, damage) =>
+        this.injureCitizen(actor as CountyCitizen, damage);
+    }
     this.combat.onSurfaceHit = (index, damage) =>
       this.structures?.damage(index, damage);
     if (this.citizens)
@@ -947,7 +953,11 @@ class Game {
     };
     this.combat.onFire = () => {
       this.armorySpawn = undefined;
-      if (this.casings && !isUtility(this.combat.weapon)) {
+      if (
+        this.casings &&
+        !isUtility(this.combat.weapon) &&
+        this.combat.weapon !== ROCKET
+      ) {
         const port = this.weaponMesh.localToWorld(
           new T.Vector3(0.07, 0.04, 0.13),
         );
@@ -1892,6 +1902,12 @@ class Game {
     this.combat.addGrenade({
       ...effect,
       expires: effect.expires - this.network.serverOffset,
+      flight: effect.flight && {
+        ...effect.flight,
+        start: effect.flight.start - this.network.serverOffset,
+        arrival: effect.flight.arrival - this.network.serverOffset,
+        impact: effect.flight.impact - this.network.serverOffset,
+      },
     });
   }
   applyResume(m: any) {
@@ -3065,6 +3081,7 @@ class Game {
     const eye = p.eye.toArray();
     const now = Date.now();
     const veil = c.effects.reduce((opacity, effect) => {
+      if (effect.flight) return opacity;
       const flash = effect.weapon === FLASH;
       const d = distance(eye, effect.p);
       return Math.max(

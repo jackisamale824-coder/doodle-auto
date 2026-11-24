@@ -8,7 +8,9 @@ export const BURST_AR = 5,
   MAMMOTH = 9,
   KNIFE = 10,
   FLASH = 11,
-  SMOKE = 12;
+  SMOKE = 12,
+  FRAG = 13,
+  ROCKET = 14;
 
 function weapon(
   name: string,
@@ -47,20 +49,24 @@ export const WEAPONS = [
   weapon("Knife", "Melee", 2, 0, 0.45, 65, 0, 0),
   weapon("Flashbang", "Throwable", 2, 1, 0.65, 0, 0, 0, 0),
   weapon("Smoke Grenade", "Throwable", 2, 1, 0.65, 0, 0, 0, 0),
+  weapon("Frag Grenade", "Throwable", 2, 1, 0.7, 85, 0, 0, 0),
+  weapon("Rocket Launcher", "Launcher", 0, 1, 0.9, 105, 2.25, 0, 0),
 ];
 export const BURST_RECOVERY = 0.34;
 export const RELOAD_SECONDS = WEAPONS.map((w) => w.reload);
 export const MAGAZINES = WEAPONS.map((w) => w.mag);
-export const isGrenade = (id: number) => id === FLASH || id === SMOKE;
+export const isGrenade = (id: number) =>
+  id === FLASH || id === SMOKE || id === FRAG;
+export const isBlastWeapon = (id: number) => id === FRAG || id === ROCKET;
 export const isUtility = (id: number) => id === KNIFE || isGrenade(id);
 export const loadoutSlots = [
   {
     key: "primary",
     name: "Primary",
-    options: [0, BURST_AR, HEAVY_AR, CARBINE, 1, 3],
+    options: [0, BURST_AR, HEAVY_AR, CARBINE, 1, 3, ROCKET],
   },
   { key: "secondary", name: "Secondary", options: [2, SMG, MAMMOTH] },
-  { key: "utility", name: "Equipment", options: [KNIFE, FLASH, SMOKE] },
+  { key: "utility", name: "Equipment", options: [KNIFE, FLASH, SMOKE, FRAG] },
 ] as const;
 export type Loadout = Record<(typeof loadoutSlots)[number]["key"], number>;
 export const ARMORY_RADIUS = 6;

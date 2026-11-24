@@ -38,3 +38,4 @@ https://github.com/AetherRadar/operation-steel-tide
 https://github.com/cktang88/3d-fps
 
 Mammoth Pistol, Knife, Flashbang and Smoke Grenade are original Doodle Auto models.
+Frag Grenade and Rocket Launcher are original cartoon props created for Doodle Auto.

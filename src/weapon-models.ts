@@ -6,7 +6,7 @@ import {
   KNIFE,
   MAMMOTH,
   SMG,
-  SMOKE,
+  isGrenade,
   WEAPONS,
 } from "./weapon-balance.ts";
 import { disposeGroup } from "./render.ts";
@@ -128,7 +128,7 @@ function template(id: number) {
       });
       const model = WEAPONS[id].model;
       const scale =
-        id === FLASH || id === SMOKE
+        isGrenade(id)
           ? 0.29 / size.y
           : (id === KNIFE
               ? 0.49
@@ -140,7 +140,7 @@ function template(id: number) {
       holder.scale.setScalar(scale);
       const socket = scene.userData.muzzle as number[] | undefined;
       if (id === KNIFE) holder.position.z = -0.05;
-      else if (id === FLASH || id === SMOKE)
+      else if (isGrenade(id))
         holder.position.y = -box.getCenter(point).y * scale;
       else {
         holder.position.set(

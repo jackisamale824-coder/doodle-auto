@@ -3,6 +3,8 @@ import {
   MAMMOTH,
   SMOKE,
   HEAVY_AR,
+  FRAG,
+  ROCKET,
   SMG,
   FLASH,
 } from "../src/weapon-balance.ts";
@@ -32,6 +34,65 @@ async function client(port: number) {
   await new Promise((r) => ws.on("open", r));
   return ws;
 }
+test("both peers see the same explosive flight and the room applies splash once at impact", async () => {
+  const wss = new WebSocketServer({ port: 0 });
+  await new Promise((resolve) => wss.on("listening", resolve));
+  const rooms = new Rooms(wss),
+    port = (wss.address() as { port: number }).port;
+  const a = await client(port),
+    b = await client(port);
+  try {
+    const welcome = next(a, "welcome");
+    a.send(
+      JSON.stringify({
+        type: "create",
+        name: "Shark",
+        seed: "paper",
+        loadout: { primary: ROCKET, secondary: 2, utility: FRAG },
+      }),
+    );
+    const { code } = await welcome,
+      joined = next(b, "welcome");
+    b.send(JSON.stringify({ type: "join", code, name: "Fin" }));
+    await joined;
+    const room = rooms.rooms.get(code)!;
+    const [[socket, shooter], [, target]] = [...room.players];
+    for (const weapon of [ROCKET, FRAG]) {
+      shooter.p = [0, 65, 0];
+      shooter.yaw = 0;
+      shooter.pitch = 0;
+      shooter.weapon = weapon;
+      shooter.lastShot = 0;
+      target.p = [0, 65, -8];
+      target.hp = 100;
+      target.shieldUntil = 0;
+      const events = Promise.all([next(a, "grenade"), next(b, "grenade")]);
+      rooms.handle(socket, { type: "fire" });
+      const [one, two] = await events;
+      assert.equal(one.effect.weapon, weapon);
+      assert.deepEqual(one.effect, two.effect);
+      assert.equal(shooter.mags[weapon], 0);
+      assert.equal(target.hp, 100);
+      const effect = room.effects.find((e) => e.weapon === weapon)!;
+      // Move a second player into the splash without putting them on the shot line.
+      target.p = [effect.p[0] + 2, effect.p[1] - 0.8, effect.p[2]];
+      effect.flight!.impact = Date.now() - 1;
+      rooms.tick();
+      const after = target.hp;
+      assert.ok(after > 0 && after < 100);
+      rooms.tick();
+      assert.equal(target.hp, after);
+      rooms.handle(socket, { type: "reload" });
+      assert.equal(shooter.reloadUntil > 0, weapon === ROCKET);
+      shooter.reloadUntil = 0;
+    }
+  } finally {
+    a.close();
+    b.close();
+    rooms.dispose();
+    wss.close();
+  }
+});
 test("real websocket clients join the same city and invalid rooms return a useful error", async () => {
   const wss = new WebSocketServer({ port: 0 });
   await new Promise((r) => wss.on("listening", r));

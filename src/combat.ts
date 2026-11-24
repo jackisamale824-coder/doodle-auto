@@ -1,5 +1,11 @@
 import {
   throwGrenade,
+  launchBlast,
+  blastDamage,
+  blastRadius,
+  projectileRay,
+  contactDirection,
+  type BlastTarget,
   obscured,
   SMOKE_RADIUS,
   type GrenadeEffect,
@@ -11,6 +17,8 @@ import {
   BURST_RECOVERY,
   KNIFE,
   FLASH,
+  ROCKET,
+  isBlastWeapon,
   isGrenade,
   isUtility,
   WEAPONS,
@@ -76,9 +84,81 @@ export class Combat {
   onPunchContact = (_move: number) => {};
   burstLeft = 0;
   effects: GrenadeEffect[] = [];
+  private flights = new Map<
+    GrenadeEffect,
+    T.Mesh<T.BufferGeometry, T.MeshBasicMaterial>
+  >();
+  blastCitizens: () => BlastTarget[] = () => [];
+  onBlastCitizen = (_target: BlastTarget, _damage: number) => {};
+  private worldProbe = (o: V3, d: V3, n: number) =>
+    this.player.physics.ray(new T.Vector3(...o), new T.Vector3(...d), n);
+  private resolveLocalBlast(effect: GrenadeEffect) {
+    for (const bot of this.bots) {
+      if (bot.hp <= 0) continue;
+      const damage = blastDamage(
+        effect,
+        bot.p.toArray(),
+        1.76,
+        this.worldProbe,
+      );
+      if (!damage) continue;
+      bot.hp = Math.max(0, bot.hp - damage);
+      bot.model.react("body", 1, damage);
+      this.hitTime = 0.15;
+      this.hitRegion = "body";
+      if (!bot.hp) {
+        this.kills++;
+        this.score += 100;
+        this.killTime = 0.25;
+        bot.model.fall(0);
+        this.audio.npcEliminated();
+        this.onNotice("ERASED +100");
+      }
+    }
+    for (const citizen of this.blastCitizens()) {
+      if (citizen.hp <= 0) continue;
+      const damage = blastDamage(
+        effect,
+        citizen.p,
+        citizen.height,
+        this.worldProbe,
+      );
+      if (damage) {
+        this.onBlastCitizen(citizen, damage);
+        this.hitTime = 0.15;
+        this.hitRegion = "body";
+      }
+    }
+    const dir = contactDirection(effect);
+    const vehicle = this.vehicleShot?.(effect.p, dir, 0.25);
+    if (vehicle) vehicle.strike();
+    else {
+      const piece = this.worldProbe(effect.p, dir, 0.25)?.box?.pieceId;
+      if (piece !== undefined)
+        this.onSurfaceHit(piece, WEAPONS[effect.weapon].damage);
+    }
+  }
   addGrenade(effect: GrenadeEffect, now = Date.now()) {
     if (effect.expires <= now) return;
     this.effects.push(effect);
+    if (effect.flight) {
+      const rocket = effect.weapon === ROCKET;
+      const mesh = new T.Mesh(
+        rocket
+          ? new T.ConeGeometry(0.14, 0.52, 16)
+          : new T.IcosahedronGeometry(0.16, 2),
+        new T.MeshBasicMaterial({ color: rocket ? "#e54a3a" : "#726f42" }),
+      );
+      mesh.position.fromArray(effect.flight.path[0]);
+      if (rocket)
+        mesh.quaternion.setFromUnitVectors(
+          new T.Vector3(0, 1, 0),
+          new T.Vector3(...contactDirection(effect)),
+        );
+      this.flights.set(effect, mesh);
+      this.scene.add(mesh);
+      return;
+    }
     const smoke = effect.weapon !== FLASH;
     const mesh = new T.Mesh(
       new T.IcosahedronGeometry(smoke ? SMOKE_RADIUS : 0.65, 2),
@@ -310,6 +390,34 @@ export class Combat {
     const origin = this.shotOrigin(),
       forward = this.player.forward;
     this.onFire(origin.toArray() as V3, forward.toArray() as V3);
+    if (isBlastWeapon(this.weapon)) {
+      if (!this.online) {
+        const targets: BlastTarget[] = [
+          ...this.blastCitizens(),
+          ...this.bots.map((b) => ({
+            p: b.p.toArray() as V3,
+            hp: b.hp,
+            height: 1.76,
+            yaw: b.model.group.rotation.y - Math.PI,
+          })),
+        ];
+        const ray = projectileRay((o, d, n) => {
+          const wall = this.worldProbe(o, d, n);
+          return this.vehicleShot?.(o, d, wall?.distance ?? n) ?? wall;
+        }, targets);
+        this.addGrenade(
+          launchBlast(
+            this.weapon,
+            origin.toArray(),
+            forward.toArray(),
+            ray,
+            Date.now(),
+            "local",
+          ),
+        );
+      }
+      return true;
+    }
     if (isGrenade(this.weapon)) {
       if (!this.online)
         this.addGrenade(
@@ -506,6 +614,42 @@ export class Combat {
   }
   update(dt: number, time: number, camera: T.Camera) {
     const effectTime = Date.now();
+    for (const [effect, mesh] of this.flights) {
+      const flight = effect.flight!;
+      if (effectTime < flight.impact) {
+        const t =
+          T.MathUtils.clamp(
+            (effectTime - flight.start) / (flight.arrival - flight.start),
+            0,
+            1,
+          ) *
+          (flight.path.length - 1);
+        const i = Math.min(flight.path.length - 2, Math.floor(t));
+        mesh.position
+          .fromArray(flight.path[i])
+          .lerp(new T.Vector3(...flight.path[i + 1]), t - i);
+        continue;
+      }
+      this.flights.delete(effect);
+      mesh.removeFromParent();
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+      if (!this.online) this.resolveLocalBlast(effect);
+      this.burst(new T.Vector3(...effect.p), "#ffbd42", 14);
+      const pop = new T.Mesh(
+        new T.IcosahedronGeometry(blastRadius(effect.weapon) * 0.65, 1),
+        new T.MeshBasicMaterial({
+          color: "#ff9a35",
+          transparent: true,
+          opacity: 0.48,
+          depthWrite: false,
+        }),
+      );
+      pop.position.fromArray(effect.p);
+      this.scene.add(pop);
+      this.flashes.push({ mesh: pop, life: 0.18, max: 0.18 });
+      pop.name = "ink-blast";
+    }
     for (let i = this.effects.length - 1; i >= 0; i--)
       if (this.effects[i].expires <= effectTime) this.effects.splice(i, 1);
     this.punchClock += dt * 1000;
@@ -771,6 +915,12 @@ export class Combat {
     for (let i = this.flashes.length - 1; i >= 0; i--) {
       const f = this.flashes[i];
       f.life -= dt;
+      if (f.mesh.name === "ink-blast") {
+        f.mesh.scale.setScalar(0.45 + 1.1 * (1 - f.life / f.max));
+        (
+          f.mesh as T.Mesh<T.BufferGeometry, T.MeshBasicMaterial>
+        ).material.opacity = 0.58 * Math.max(0, f.life / f.max);
+      }
       if (f.life <= 0) {
         this.scene.remove(f.mesh);
         const mesh = f.mesh as T.Mesh;
@@ -793,6 +943,12 @@ export class Combat {
       }
   }
   dispose() {
+    for (const mesh of this.flights.values()) {
+      mesh.removeFromParent();
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+    this.flights.clear();
     this.shotTrails.dispose();
     this.bots.forEach((b) => b.model.dispose());
     for (const p of this.projectiles) {

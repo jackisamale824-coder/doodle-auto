@@ -1,6 +1,8 @@
 import "./loadout-screen.css";
 import {
   FLASH,
+  FRAG,
+  ROCKET,
   KNIFE,
   SMOKE,
   WEAPONS,
@@ -81,13 +83,17 @@ export function bindLoadoutPreview(
     kind.textContent = `${slot.name} / ${weapon.tag}`;
     art.src = icon(id);
     stat.textContent =
-      id === KNIFE
-        ? "Close range"
-        : id === FLASH
-          ? "Blinds nearby players"
-          : id === SMOKE
-            ? "Blocks sightlines"
-            : `${weapon.mag} ${weapon.mag === 1 ? "round" : "rounds"} per magazine`;
+      id === FRAG
+        ? "One throw · area damage"
+        : id === ROCKET
+          ? "One rocket per reload · impact blast"
+          : id === KNIFE
+            ? "Close range"
+            : id === FLASH
+              ? "Blinds nearby players"
+              : id === SMOKE
+                ? "Blocks sightlines"
+                : `${weapon.mag} ${weapon.mag === 1 ? "round" : "rounds"} per magazine`;
   }
   for (const input of radios) {
     input.labels?.[0].addEventListener("pointerenter", () => inspect(input));

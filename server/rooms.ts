@@ -49,6 +49,7 @@ import {
   readLoadout,
   inventory,
   isGrenade,
+  isBlastWeapon,
   isUtility,
   type Loadout,
 } from "../src/weapon-balance.ts";
@@ -61,7 +62,14 @@ import { MatchCheckpoints } from "./match-checkpoints.ts";
 import type { PlayerStore, Identity, PlaySession } from "./player-store.ts";
 import type { PieceState } from "../src/world.ts";
 import { Sessions, type Session } from "./sessions.ts";
-import { throwGrenade, type GrenadeEffect } from "../src/grenades.ts";
+import {
+  throwGrenade,
+  launchBlast,
+  projectileRay,
+  blastDamage,
+  contactDirection,
+  type GrenadeEffect,
+} from "../src/grenades.ts";
 import type { PlayMetrics } from "./play-metrics.ts";
 import { Spatial } from "./spatial.ts";
 import { Npcs, type Npc } from "./npcs.ts";
@@ -839,8 +847,69 @@ export class Rooms {
         ![...r.players.keys()].some((ws) => ws.readyState === WebSocket.OPEN)
       )
         continue;
-      for (let i = r.effects.length - 1; i >= 0; i--)
-        if (r.effects[i].expires <= now) r.effects.splice(i, 1);
+      for (let i = r.effects.length - 1; i >= 0; i--) {
+        const effect = r.effects[i],
+          flight = effect.flight;
+        if (flight && !flight.resolved && now >= flight.impact) {
+          flight.resolved = true;
+          const shooter = [...r.players].find(([, p]) => p.id === flight.owner);
+          if (shooter) {
+            const [socket, attacker] = shooter;
+            for (const target of [...r.players.values(), ...r.npcs]) {
+              if (
+                target === attacker ||
+                target.hp <= 0 ||
+                now < target.shieldUntil ||
+                target.ready === false
+              )
+                continue;
+              const damage = blastDamage(
+                effect,
+                target.p,
+                target.height,
+                r.spatial.ray.bind(r.spatial),
+              );
+              if (damage) {
+                this.hurt(r, target, attacker, damage);
+                send(socket, {
+                  type: "hit",
+                  region: "body",
+                  head: false,
+                  damage,
+                  kill: target.hp === 0,
+                  npc: !!target.npc,
+                });
+              }
+            }
+            const dir = contactDirection(effect);
+            const car =
+              r.cars &&
+              this.vehicleModel &&
+              nearestVehicleSurface(
+                r.cars,
+                effect.p,
+                dir,
+                0.25,
+                this.vehicleModel,
+              );
+            if (car) {
+              if (damageVehicle(r.cars![car.index], car.hit))
+                this.broadcast(r, {
+                  type: "vehicle-impact",
+                  index: car.index,
+                  part: car.hit.part,
+                  point: effect.p,
+                  direction: dir,
+                });
+            } else {
+              const piece = r.spatial.ray(effect.p, dir, 0.25)?.box.pieceId;
+              if (piece !== undefined)
+                r.structures?.damage(piece, WEAPONS[effect.weapon].damage);
+            }
+          }
+        }
+        if (effect.expires <= now) r.effects.splice(i, 1);
+      }
       if (this.metrics && this.tickCount % 300 === 0) {
         for (const [socket, player] of r.players)
           if (socket.readyState === WebSocket.OPEN) this.metrics.record(player);
@@ -1792,6 +1861,30 @@ export class Rooms {
             r.spatial.ray.bind(r.spatial),
           ),
         );
+      if (isBlastWeapon(p.weapon)) {
+        const targets = [...r.players.values(), ...r.npcs].filter(
+          (other) =>
+            other !== p && other.ready !== false && now >= other.shieldUntil,
+        );
+        const ray = projectileRay((o, d, n) => {
+          const wall = r.spatial.ray(o, d, n);
+          const car =
+            r.cars &&
+            this.vehicleModel &&
+            nearestVehicleSurface(
+              r.cars,
+              o,
+              d,
+              wall?.distance ?? n,
+              this.vehicleModel,
+            );
+          return car?.hit ?? wall;
+        }, targets);
+        const effect = launchBlast(p.weapon, origin, dir, ray, now, p.id);
+        r.effects.push(effect);
+        this.broadcast(r, { type: "grenade", effect });
+        return;
+      }
       if (isGrenade(p.weapon)) {
         const effect = throwGrenade(
           p.weapon,
