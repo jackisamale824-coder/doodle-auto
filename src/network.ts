@@ -27,6 +27,8 @@ export interface RemoteState {
   npc?: boolean;
   lean?: number;
 }
+class UpgradeFailed extends Error {}
+
 export class Network {
   constructor(private storagePrefix = "dc") {}
   effects: GrenadeEffect[] = [];
@@ -62,6 +64,7 @@ export class Network {
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private retryUntil = 0;
   private retryCount = 0;
+  private connectionGeneration = 0;
   reconnecting = false;
   private read(key: string) {
     try {
@@ -122,7 +125,7 @@ export class Network {
     if (pending) {
       await this.matchingClient(pending);
       this.save("dc.pendingAdmission", null);
-      return this.open(
+      return this.joinSocket(
         pending.wsUrl,
         {
           type: "admit",
@@ -154,8 +157,9 @@ export class Network {
     loadout?: Loadout,
   ) {
     this.disconnect();
+    const generation = this.connectionGeneration;
     if (RELEASE_ID === "dev")
-      return this.open("/ws", {
+      return this.joinSocket("/ws", {
         type,
         name,
         seed,
@@ -178,10 +182,12 @@ export class Network {
     if (!response.ok)
       throw Error("Couldn’t join the city. Please try again shortly.");
     const admission = { ...(await response.json()), loadout };
+    if (generation !== this.connectionGeneration)
+      throw Error("Connection canceled.");
     this.save("dc.pendingAdmission", admission);
     await this.matchingClient(admission);
     this.save("dc.pendingAdmission", null);
-    return this.open(
+    return this.joinSocket(
       admission.wsUrl,
       {
         type: "admit",
@@ -238,6 +244,24 @@ export class Network {
       return this.restore();
     }
   }
+  private async joinSocket(wsUrl: string, handshake: any, admission?: any) {
+    const generation = this.connectionGeneration;
+    for (let attempt = 0; ; attempt++) {
+      if (generation !== this.connectionGeneration)
+        throw Error("Connection canceled.");
+      try {
+        return await this.open(wsUrl, handshake, admission);
+      } catch (error) {
+        if (
+          !(error instanceof UpgradeFailed) ||
+          attempt >= 2 ||
+          generation !== this.connectionGeneration
+        ) throw error;
+        const delay = (400 + Math.random() * 200) * 2 ** attempt;
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
   private open(wsUrl: string, handshake: any, admission?: any) {
     return new Promise<any>((resolve, reject) => {
       const url = new URL(wsUrl, location.origin);
@@ -252,6 +276,9 @@ export class Network {
       const ws = new WebSocket(url.href);
       this.socket = ws;
       let done = false;
+      let opened = false;
+      const transportError = (message: string) =>
+        opened ? Error(message) : new UpgradeFailed(message);
       const fail = (error: Error) => {
         if (!done) {
           done = true;
@@ -261,12 +288,15 @@ export class Network {
         }
       };
       const timer = setTimeout(
-        () => fail(Error("Connection timed out. Please try again.")),
-        8000,
+        () => fail(transportError("Connection timed out. Please try again.")),
+        handshake.type === "resume" ? 8000 : 18000,
       );
-      ws.onopen = () =>
+      ws.onopen = () => {
+        if (done || this.socket !== ws) return;
+        opened = true;
         ws.send(JSON.stringify({ ...handshake, spatialSnapshots: 1 }));
-      ws.onerror = () => fail(Error("Could not reach your match."));
+      };
+      ws.onerror = () => fail(transportError("Could not reach your match."));
       ws.onmessage = (e) => {
         if (this.socket !== ws) return;
         let m;
@@ -399,7 +429,7 @@ export class Network {
         clearTimeout(timer);
         if (!done) {
           done = true;
-          reject(Error("Connection closed before joining."));
+          reject(transportError("Connection closed before joining."));
         }
         if (this.socket !== ws) return;
         this.active = false;
@@ -439,6 +469,7 @@ export class Network {
     return false;
   }
   disconnect() {
+    this.connectionGeneration++;
     if (this.socket?.readyState === WebSocket.OPEN)
       this.socket.send(JSON.stringify({ type: "leave" }));
     this.session = null;

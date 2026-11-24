@@ -175,3 +175,53 @@ test("entering County on a new release skips obsolete driving sessions and ticke
   assert.equal(storage.has("county.session"), false);
   assert.equal(storage.has("county.pendingAdmission"), false);
 });
+
+function mockAdmission() {
+  Object.assign(globalThis, {
+    fetch: async () =>
+      Response.json({
+        releaseId: "test-a",
+        wsUrl: "/ws/example",
+        joinTicket: "ticket",
+      }),
+  });
+}
+
+test("initial upgrade retries before sending one admission", async () => {
+  mockAdmission();
+  const network = new Network();
+  const count = Socket.instances.length;
+  const joining = network.connect("join", "Runner", "", "ABCDE");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const first = Socket.instances.at(-1)!;
+  first.close();
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  const second = Socket.instances.at(-1)!;
+  assert.equal(Socket.instances.length, count + 2);
+  assert.deepEqual(first.sent, []);
+  second.onopen!();
+  second.receive({ type: "welcome", id: "runner", code: "ABCDE" });
+  await joining;
+  assert.equal(second.sent.length, 1);
+  assert.equal(second.sent[0].joinTicket, "ticket");
+  network.disconnect();
+});
+
+test("disconnect cancels pending upgrades and a sent admission is never replayed", async () => {
+  mockAdmission();
+  for (const opened of [false, true]) {
+    const network = new Network();
+    const count = Socket.instances.length;
+    const joining = assert.rejects(
+      network.connect("join", "Runner", "", "ABCDE"),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const first = Socket.instances.at(-1)!;
+    if (opened) first.onopen!();
+    first.close();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (!opened) network.disconnect();
+    await joining;
+    assert.equal(Socket.instances.length, count + 1);
+  }
+});

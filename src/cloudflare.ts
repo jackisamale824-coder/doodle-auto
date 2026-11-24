@@ -1,3 +1,4 @@
+import { fetchGameBackend } from "./game-backend.ts";
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import {
   executePlayerCommand,
@@ -63,16 +64,29 @@ export class GameContainer extends DurableObject<Env> {
       request.headers.get("cf-connecting-ip") || "unknown",
     );
     forwarded.headers.delete("host");
-    return this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
+    try {
+      const response = await this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
+      if ([502, 503, 504].includes(response.status)) this.ready = false;
+      return response;
+    } catch (error) {
+      this.ready = false;
+      throw error;
+    }
   }
 
   private async startAndWaitForPort(): Promise<void> {
     const container = this.ctx.container!;
     if (container.running && this.ready) {
-      await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
-      return;
+      try {
+        await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
+        return;
+      } catch (error) {
+        this.ready = false;
+        throw error;
+      }
     }
 
+    this.ready = false;
     await container.interceptOutboundHttp(
       "players.internal",
       this.ctx.exports.PlayerDatabase,
@@ -90,12 +104,12 @@ export class GameContainer extends DurableObject<Env> {
     }
 
     await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
-    const port = container.getTcpPort(PORT);
+    const deadline = Date.now() + 15000;
     let lastError: unknown;
 
-    for (let attempt = 0; attempt < 100; attempt++) {
+    while (container.running && Date.now() < deadline) {
       try {
-        const response = await port.fetch("http://container/health", {
+        const response = await container.getTcpPort(PORT).fetch("http://container/health", {
           signal: AbortSignal.timeout(1000),
         });
         await response.body?.cancel();
@@ -148,8 +162,8 @@ export default {
         ["/ws", "/pool/ws", "/lobbies", "/health"].includes(path);
       if (!dynamic) return env.ASSETS.fetch(request);
     }
-    return ctx.exports.GameContainer.getByName("shared-game-server").fetch(
-      request,
+    return fetchGameBackend(request, (attempt) =>
+      ctx.exports.GameContainer.getByName("shared-game-server").fetch(attempt),
     );
   },
 } satisfies ExportedHandler<Env>;

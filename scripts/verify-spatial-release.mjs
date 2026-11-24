@@ -14,6 +14,15 @@ assert.ok(
   "Production is still serving a different client bundle",
 );
 
+const [lobbies, account] = await Promise.all(["/lobbies", "/api/player/profile"].map(async path => {
+  const response = await fetch(origin + path, { signal: AbortSignal.timeout(20000) });
+  assert.equal(response.status, 200, path);
+  return response.json();
+}));
+assert.ok(Array.isArray(lobbies.lobbies));
+assert.equal(account.profile, null, "Expected anonymous profile");
+assert.equal(typeof account.googleEnabled, "boolean");
+
 const ws = new WebSocket(new URL("/ws", origin.replace("https:", "wss:")), { origin });
 try {
   await new Promise((resolve, reject) => {
@@ -53,7 +62,7 @@ try {
   console.log(
     "Verified production bundle",
     asset,
-    "and spatial multiplayer snapshots.",
+    "with lobby, guest profile and spatial multiplayer snapshots.",
   );
 } finally {
   if (ws.readyState === WebSocket.OPEN)

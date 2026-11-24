@@ -39,7 +39,7 @@ jobs:
       - run: npm ci
       - run: npm run check && npm run check:cloudflare
       - run: npx --no-install tsx --test tests/spatial-snapshots.test.ts tests/session-resume.test.ts tests/player-accounts.test.ts tests/google-login.test.ts
-      - run: npx --no-install tsx --test tests/pool.test.ts tests/release-build.test.ts
+      - run: npx --no-install tsx --test tests/pool.test.ts tests/release-build.test.ts tests/client-release.test.ts tests/game-backend.test.ts
       - run: npm run build:app
       - name: Deploy game container and Worker
         env:
