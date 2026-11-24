@@ -16,7 +16,7 @@ const dir = await mkdtemp(join(tmpdir(), "doodle-recovery-"));
 let child, origin;
 const clients = [];
 async function start() {
-  child = spawn(process.execPath, ["--import", "tsx", "server/index.ts"], {
+  child = spawn(process.execPath, ["output/game-server.mjs"], {
     env: {
       ...process.env,
       NODE_ENV: "production",

@@ -10,6 +10,7 @@ import {
 
 const PORT = 4173;
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+const OCCUPIED_TIMEOUT_MS = 15 * 60 * 1000;
 const OCCUPANCY_CHECK_MS = 30_000;
 
 // Only the container's outbound intercept can invoke this entrypoint.
@@ -69,8 +70,10 @@ export class GameContainer extends DurableObject<Env> {
     forwarded.headers.delete("host");
     try {
       const response = await this.ctx.container!.getTcpPort(PORT).fetch(forwarded);
-      if (response.status === 101 && (await this.ctx.storage.getAlarm()) === null)
+      if (response.status === 101 && (await this.ctx.storage.getAlarm()) === null) {
+        await this.ctx.container!.setInactivityTimeout(OCCUPIED_TIMEOUT_MS);
         await this.ctx.storage.setAlarm(Date.now() + OCCUPANCY_CHECK_MS);
+      }
       if ([502, 503, 504].includes(response.status)) this.ready = false;
       return response;
     } catch (error) {
@@ -89,23 +92,14 @@ export class GameContainer extends DurableObject<Env> {
     });
     if (!response.ok) throw Error("Unable to check game server occupancy");
     const {connections, rooms} = await response.json<{connections?: number; rooms: number}>();
-    if ((connections ?? rooms) > 0) {
-      await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
-      await this.ctx.storage.setAlarm(Date.now() + OCCUPANCY_CHECK_MS);
-    }
+    const occupied = (connections ?? rooms) > 0;
+    await container.setInactivityTimeout(occupied ? OCCUPIED_TIMEOUT_MS : INACTIVITY_TIMEOUT_MS);
+    if (occupied) await this.ctx.storage.setAlarm(Date.now() + OCCUPANCY_CHECK_MS);
   }
 
   private async startAndWaitForPort(): Promise<void> {
     const container = this.ctx.container!;
-    if (container.running && this.ready) {
-      try {
-        await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
-        return;
-      } catch (error) {
-        this.ready = false;
-        throw error;
-      }
-    }
+    if (container.running && this.ready) return;
 
     this.ready = false;
     await container.interceptOutboundHttp(
@@ -117,7 +111,7 @@ export class GameContainer extends DurableObject<Env> {
         this.ctx.id.equals(this.ctx.exports.GameContainer.idFromName(gameShards[key].name))) ?? "shared";
       container.start({
         image: container.images.base,
-        instance: "lite",
+        instance: "basic",
         enableInternet: false,
         env: {
           MATCH_RECOVERY: "1",
@@ -126,9 +120,9 @@ export class GameContainer extends DurableObject<Env> {
           GOOGLE_CLIENT_ID: this.env.GOOGLE_CLIENT_ID,
         },
       });
+      await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
     }
 
-    await container.setInactivityTimeout(INACTIVITY_TIMEOUT_MS);
     const deadline = Date.now() + 15000;
     let lastError: unknown;
 

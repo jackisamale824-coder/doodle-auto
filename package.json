@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "tsc --noEmit && vite build",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --format=esm --packages=external --outfile=output/game-server.mjs",
     "build:app": "vite build --config vite.app.config.ts",
     "start": "NODE_ENV=production tsx server/index.ts",
     "test": "tsx --test tests/*.test.ts",

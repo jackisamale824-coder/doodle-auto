@@ -7,7 +7,7 @@ import * as entrypoint from "./src/cloudflare.ts" with { type: "cf-worker" };
 const gameContainer = defineContainer({
   name: "doodle-auto-game",
   image: { dockerfile: "./Dockerfile" },
-  instanceType: "lite",
+  instanceType: "basic",
   maxInstances: 3,
 });
 
