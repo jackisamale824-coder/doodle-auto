@@ -2,6 +2,10 @@ import * as T from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import {
+  BURST_AR,
+  CARBINE,
+  HEAVY_AR,
+  ROCKET,
   FLASH,
   KNIFE,
   MAMMOTH,
@@ -10,6 +14,20 @@ import {
   WEAPONS,
 } from "./weapon-balance.ts";
 import { disposeGroup } from "./render.ts";
+
+// Height of the front post or optical axis in camera space at the 0.68 view scale.
+const viewSightHeight: Record<number, number> = {
+  0: 0.09,
+  1: 0.029,
+  2: 0.028,
+  3: 0.083,
+  [BURST_AR]: 0.119,
+  [HEAVY_AR]: 0.071,
+  [CARBINE]: 0.083,
+  [SMG]: 0.069,
+  [MAMMOTH]: 0.042,
+  [ROCKET]: 0.054,
+};
 
 const colors = [
   "548399",
@@ -143,9 +161,11 @@ function template(id: number) {
       else if (isGrenade(id))
         holder.position.y = -box.getCenter(point).y * scale;
       else {
+        // The Heavy AR has no muzzle socket. Its model-space barrel center is at y = 0.0045.
+        const muzzleY = socket?.[1] ?? (id === HEAVY_AR ? 0.0045 : 0.16);
         holder.position.set(
           -(socket?.[0] ?? 0) * scale,
-          [0.018, 0.023, 0.006, 0.015][model] - (socket?.[1] ?? 0.16) * scale,
+          [0.018, 0.023, 0.006, 0.015][model] - muzzleY * scale,
           (id === MAMMOTH
             ? -0.4
             : id === SMG
@@ -196,6 +216,7 @@ export function mountWeaponModel(host: T.Group, id: number, pose: "view" | "hand
         host.userData.weaponModel = id;
         return;
       }
+      if (pose === "view") host.userData.sightHeight = viewSightHeight[id];
       const parts: T.Object3D[] = [];
       const shell = host.getObjectByName("shell");
       if (shell) parts.push(shell);

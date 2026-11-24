@@ -11,6 +11,7 @@ import {
   KNIFE,
   FLASH,
   ROCKET,
+  scopeMagnification,
   isUtility,
   isGrenade,
 } from "./weapon-balance.ts";
@@ -76,7 +77,7 @@ import { buildWeapon, Doodle } from "./actors.ts";
 import { Combat, WEAPONS } from "./combat.ts";
 import { AudioEngine } from "./audio.ts";
 import { animateWeaponParts } from "./weapon-motion.ts";
-import { ViewMotion, sensitivityScale } from "./motion.ts";
+import { ViewMotion, scopedFov, sensitivityScale } from "./motion.ts";
 import { NEIGHBORHOODS } from "./city-plan.ts";
 import { blimpPosition, blimpVelocity } from "./aerial.ts";
 import { NPC_RADIUS } from "./npc-presence.ts";
@@ -1021,6 +1022,10 @@ class Game {
       this.aiming = false;
       this.equippedAt = this.time;
     }
+    const zoom = scopeMagnification(i);
+    $("scope-label").textContent = zoom
+      ? WEAPONS[i].name + " · " + zoom + "×"
+      : "";
     this.render.camera.add(this.weaponMesh);
     $("weapon-name").textContent =
       this.seed === COUNTY && i === FISTS ? "KNIFE" : i === 0 ? "INKRIFLE" : WEAPONS[i].name;
@@ -1562,6 +1567,8 @@ class Game {
       }
       if (
         e.button === 2 &&
+        this.vehicle < 0 &&
+        !this.seatPending &&
         this.combat.weapon !== FISTS &&
         !isUtility(this.combat.weapon)
       )
@@ -2459,6 +2466,7 @@ class Game {
       return;
     }
     if (this.deathBody && this.state === "dead") {
+      $("sniper-scope").style.opacity = "0";
       this.updateActors(dt);
       const focus = this.deathBody.pelvis.getWorldPosition(new T.Vector3());
       const offset = new T.Vector3(1.25, 1.65, 2.7).applyAxisAngle(
@@ -2482,14 +2490,18 @@ class Game {
     const motion = settings.reduced ? 0 : 1;
     const v = this.viewMotion;
     v.trackHeight(p.eye.y, p.grounded, p.resetRevision, 0);
+    const canAim = this.vehicle < 0 && !this.seatPending && this.combat.hp > 0;
+    const aiming =
+      canAim && this.aiming && !p.traversing && this.combat.reloadTime <= 0;
+    const zoom = scopeMagnification(this.combat.weapon);
     v.update(
       dt,
-      this.aiming && !p.traversing && this.combat.reloadTime <= 0,
+      aiming,
       p.speed,
       p.grounded,
       settings.reduced,
       settings.fov,
-      this.combat.weapon === 3 ? 22 : 57,
+      zoom ? scopedFov(settings.fov, zoom) : 57,
     );
     const steady = (1 - v.ads * 0.85) * (1 - v.fireWeight * 0.7) * motion;
     const recoil = v.kick * (1 - v.ads * 0.5) * motion;
@@ -2498,7 +2510,7 @@ class Game {
       p.eye.toArray() as V3,
       p.yaw,
       p.pitch,
-      this.aiming && !p.traversing && this.combat.reloadTime <= 0,
+      aiming,
       (o, d, n) =>
         this.physics.ray(new T.Vector3(...o), new T.Vector3(...d), n),
     );
@@ -2563,9 +2575,10 @@ class Game {
     cam.fov = v.fov;
     cam.updateProjectionMatrix();
     const scoped =
-      this.combat.weapon === 3 ? T.MathUtils.smoothstep(v.ads, 0.65, 0.98) : 0;
+      canAim && zoom ? T.MathUtils.smoothstep(v.ads, 0.55, 0.94) : 0;
     $("sniper-scope").style.opacity = String(scoped);
     $("crosshair").style.opacity = String(1 - scoped);
+    $("crosshair").style.setProperty("--spread-opacity", String(1 - v.ads));
     this.weaponMesh.visible =
       this.vehicle < 0 && this.combat.hp > 0 && scoped < 0.98;
     if (this.combat.weapon === FISTS) {
@@ -2600,7 +2613,8 @@ class Game {
         0.3 * (1 - v.ads) + v.swayX * steady + reload.x * reloadScale,
         T.MathUtils.lerp(
           -0.3,
-          WEAPONS[this.combat.weapon].model === 0 ? -0.0816 : -0.046,
+          -(this.weaponMesh.userData.sightHeight ??
+            [0.0816, 0.046, 0.046, 0.095][WEAPONS[this.combat.weapon].model]),
           v.ads,
         ) +
           v.bob * 0.35 +
@@ -3108,7 +3122,8 @@ class Game {
     $("notice").style.opacity = this.time < this.noticeUntil ? "1" : "0";
     $("feed").style.opacity = this.time < this.feedUntil ? "1" : "0";
     const hit = p.grappleHit();
-    $("hook-reticle").style.opacity = hit && hit.distance > 2 ? "0.65" : "0";
+    $("hook-reticle").style.opacity =
+      hit && hit.distance > 2 ? String(0.65 * (1 - this.viewMotion.ads)) : "0";
     $("grapple-status").textContent = p.anchor
       ? `${Math.round(p.ropeLength)}m · ${this.input.reel ? "REELING" : "HOLD Q TO REEL"}`
       : hit && hit.distance > 2

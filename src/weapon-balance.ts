@@ -52,6 +52,11 @@ export const WEAPONS = [
   weapon("Frag Grenade", "Throwable", 2, 1, 0.7, 85, 0, 0, 0),
   weapon("Rocket Launcher", "Launcher", 0, 1, 0.9, 105, 2.25, 0, 0),
 ];
+export function scopeMagnification(id: number) {
+  if (id === 3) return 4;
+  if (id === CARBINE) return 2;
+  return 0;
+}
 export const BURST_RECOVERY = 0.34;
 export const RELOAD_SECONDS = WEAPONS.map((w) => w.reload);
 export const MAGAZINES = WEAPONS.map((w) => w.mag);

@@ -4,7 +4,8 @@ import { Scene, Vector3, PerspectiveCamera } from "three";
 import { Combat } from "../src/combat.ts";
 import { Controller, Physics } from "../src/physics.ts";
 import { AudioEngine } from "../src/audio.ts";
-import { ViewMotion } from "../src/motion.ts";
+import { scopeMagnification, CARBINE, WEAPONS } from "../src/weapon-balance.ts";
+import { ViewMotion, scopedFov, sensitivityScale } from "../src/motion.ts";
 import { WebSocket, WebSocketServer } from "ws";
 import { Rooms } from "../server/rooms.ts";
 
@@ -42,16 +43,28 @@ test("sniper selects, hits a distant NPC, enforces its cycle and reloads five ro
     ph.dispose();
   }
 });
-test("scope blends to 22 degrees, reverses smoothly, and sniper recoil stays finite", () => {
-  const v = new ViewMotion();
-  v.shot(3);
-  assert.ok(Number.isFinite(v.kick));
-  v.update(1 / 60, true, 0, true, false, 82, 22);
-  assert.ok(v.fov > 22 && v.fov < 82);
-  for (let i = 0; i < 30; i++) v.update(1 / 60, true, 0, true, false, 82, 22);
-  assert.ok(Math.abs(v.fov - 22) < 0.01);
-  v.update(1 / 60, false, 0, true, false, 82, 22);
-  assert.ok(v.fov > 22 && v.fov < 82);
+test("scoped optics preserve their magnification at every field of view", () => {
+  for (const [weapon, zoom] of [
+    [3, 4],
+    [CARBINE, 2],
+  ]) {
+    assert.equal(scopeMagnification(weapon), zoom);
+    for (const hip of [65, 82, 105]) {
+      const target = scopedFov(hip, zoom);
+      assert.ok(Math.abs(sensitivityScale(target, hip) - 1 / zoom) < 1e-10);
+      const v = new ViewMotion();
+      v.shot(WEAPONS[weapon].model);
+      assert.ok(Number.isFinite(v.kick));
+      v.update(1 / 60, true, 0, true, false, hip, target);
+      assert.ok(v.fov > target && v.fov < hip);
+      for (let i = 0; i < 30; i++)
+        v.update(1 / 60, true, 0, true, false, hip, target);
+      assert.ok(Math.abs(v.fov - target) < 0.01);
+      v.update(1 / 60, false, 0, true, false, hip, target);
+      assert.ok(v.fov > target && v.fov < hip);
+    }
+  }
+  assert.equal(scopeMagnification(2), 0);
 });
 function next(ws: WebSocket, type: string): Promise<any> {
   return new Promise((resolve, reject) => {

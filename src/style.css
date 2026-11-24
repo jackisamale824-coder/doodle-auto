@@ -711,6 +711,7 @@ kbd {
   height: 0;
 }
 #crosshair i {
+  opacity: var(--spread-opacity, 1);
   position: absolute;
   background: var(--red);
   box-shadow: 0 0 2px var(--paper);
@@ -1518,34 +1519,35 @@ dialog .secondary-button {
   opacity: 0;
   display: grid;
   place-items: center;
-  z-index: 2;
+  z-index: -1;
 }
 .scope-glass {
   position: relative;
   width: 76vmin;
   height: 76vmin;
-  border: 3px solid #2929a3;
+  border: 3px solid #202931;
   border-radius: 50%;
   box-shadow:
-    0 0 0 150vmax rgba(15, 17, 40, 0.96),
-    inset 0 0 24px rgba(41, 41, 163, 0.24);
+    0 0 0 150vmax rgba(10, 14, 18, 0.97),
+    inset 0 0 24px rgba(16, 24, 30, 0.38);
 }
 .scope-glass::before,
 .scope-glass::after {
   content: "";
   position: absolute;
-  background: #2929a3;
+  background: #202931;
+  box-shadow: 0 0 1px #fff8;
 }
 .scope-glass::before {
   width: 1px;
   height: 100%;
-  left: 50%;
+  left: calc(50% - 0.5px);
   top: 0;
 }
 .scope-glass::after {
   height: 1px;
   width: 100%;
-  top: 50%;
+  top: calc(50% - 0.5px);
   left: 0;
 }
 .scope-glass i {
@@ -1554,7 +1556,8 @@ dialog .secondary-button {
   top: calc(50% - 2px);
   width: 4px;
   height: 4px;
-  background: #c83c43;
+  background: #f05343;
+  box-shadow: 0 0 0 1px #341b1b;
   border-radius: 50%;
   z-index: 1;
 }
@@ -1566,7 +1569,7 @@ dialog .secondary-button {
   height: 20%;
   background: repeating-linear-gradient(
     to bottom,
-    #2929a3 0 1px,
+    #202931 0 1px,
     transparent 1px 18px
   );
 }
@@ -1575,7 +1578,8 @@ dialog .secondary-button {
   top: 82%;
   width: 100%;
   text-align: center;
-  color: #2929a3;
+  color: #25333d;
+  text-transform: uppercase;
   font:
     16px "Patrick Hand",
     cursive;

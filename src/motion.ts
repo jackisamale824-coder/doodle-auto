@@ -2,6 +2,8 @@
 const damp = (rate: number, dt: number) => Math.exp(-rate * dt);
 export const sensitivityScale = (fov: number, hip: number) =>
   Math.tan((fov * Math.PI) / 360) / Math.tan((hip * Math.PI) / 360);
+export const scopedFov = (hip: number, magnification: number) =>
+  (360 / Math.PI) * Math.atan(Math.tan((hip * Math.PI) / 360) / magnification);
 export class ViewMotion {
   ads = 0;
   fov = 82;
