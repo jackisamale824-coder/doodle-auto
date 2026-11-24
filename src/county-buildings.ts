@@ -6,7 +6,15 @@ const ink = 0x475a82,
   slate = 0x8295ad,
   linen = 0xe9e8dd,
   white = 0xf8f7eb;
-const wood = 0xb1a999;
+const wood = 0xaa7951;
+const facades: Record<Facade, number[]> = {
+  shops: [0xe99b75, 0x7fc6ae, 0xf0c66d, 0x78b2be],
+  homes: [0x94c9b0, 0xf0b694, 0xeacb83, 0x91bacc],
+  works: [0xb57859, 0xad8771, 0x839b98, 0xcd9269],
+  civic: [0xe3bc87, 0xd1ac8a, 0xcda988, 0xe0bc95],
+  glass: [0x72b0c1, 0x78b4b0, 0x86b7cc, 0x73a0ae],
+  clock: [0xe9b971, 0xe3ae7b, 0xdca675, 0xedc189],
+};
 function tile(
   draw: (c: CanvasRenderingContext2D) => void,
   transparent = false,
@@ -342,7 +350,12 @@ export function countyBuildings(group: T.Group, pieces: CountyPiece[]) {
           const mat = material("surface-" + box.frontage, () =>
             surface(box.frontage),
           );
-          part(white, x, y, z, w, h, d, mat);
+          const variant =
+            Array.from(box.buildingId).reduce(
+              (hash, ch) => (hash * 31 + ch.charCodeAt(0)) >>> 0,
+              0,
+            ) % 4;
+          part(facades[box.frontage][variant], x, y, z, w, h, d, mat);
           break;
         }
         case "window": {

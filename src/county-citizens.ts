@@ -1,3 +1,4 @@
+import { vehicleHandling } from "./county-vehicle-damage.ts";
 import type { Npc } from "../server/npcs.ts";
 import { movementYaw } from "./actor-hit.ts";
 import type { Street } from "./city-plan.ts";
@@ -502,15 +503,21 @@ export class CountyCitizens {
       Math.sin(desired - car.yaw),
       Math.cos(desired - car.yaw),
     );
-    const yaw = car.yaw + Math.max(-2.5 * dt, Math.min(2.5 * dt, turn));
+    const handling = vehicleHandling(car);
     const reversing = now < r.reverseUntil;
     const gear = reversing ? -1 : 1;
-    const dx = -Math.sin(yaw) * gear,
-      dz = -Math.cos(yaw) * gear;
     const pace =
       (reversing ? 2.2 : ram ? 14 : r.pace) *
+      handling.speed *
       Math.max(0.31, 1 - Math.abs(turn) * 0.58);
     const step = Math.min(len, pace * dt);
+    const yaw =
+      car.yaw +
+      Math.max(-2.5 * dt, Math.min(2.5 * dt, turn)) +
+      (gear * step * Math.tan(handling.pull * 0.6)) /
+        VEHICLE_DIMENSIONS[car.kind][3];
+    const dx = -Math.sin(yaw) * gear,
+      dz = -Math.cos(yaw) * gear;
     const next: V3 = [car.p[0] + dx * step, 0.08, car.p[2] + dz * step];
     const [, length] = VEHICLE_DIMENSIONS[car.kind];
     const nose: V3 = [next[0] + dx * length, next[1], next[2] + dz * length];

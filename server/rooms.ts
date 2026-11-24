@@ -1,3 +1,9 @@
+import {
+  nearestVehicleSurface,
+  damageVehicle,
+} from "../src/county-vehicle-damage.ts";
+import type { Object3D } from "three";
+import { KNIFE_DAMAGE } from "../src/county-knife.ts";
 import { NPC_RADIUS } from "../src/npc-presence.ts";
 import {
   FISTS,
@@ -118,6 +124,7 @@ const send = (ws: WebSocket, m: unknown) => {
     ws.send(JSON.stringify(m));
 };
 export class Rooms {
+  vehicleModel?: (car: CountyCar) => Object3D;
   rooms = new Map<string, Room>();
   memberships = new Map<WebSocket, Room>();
   private admissions = new Admissions();
@@ -701,9 +708,44 @@ export class Rooms {
               actors,
               r.spatial.ray.bind(r.spatial),
             );
-            if (result) {
+            const reach = Math.min(
+              PUNCHES[p.swing.move].reach,
+              result?.hit.distance ?? Infinity,
+            );
+            const eye: V3 = [p.p[0], p.p[1] + p.height - 0.16, p.p[2]];
+            const direction: V3 = [
+              -Math.sin(p.yaw) * Math.cos(p.pitch),
+              Math.sin(p.pitch),
+              -Math.cos(p.yaw) * Math.cos(p.pitch),
+            ];
+            const vehicle =
+              r.cars &&
+              this.vehicleModel &&
+              nearestVehicleSurface(
+                r.cars,
+                eye,
+                direction,
+                r.spatial.ray(eye, direction, reach)?.distance ?? reach,
+                this.vehicleModel,
+              );
+            if (vehicle) {
+              if (
+                vehicle.hit.part >= 16 &&
+                damageVehicle(r.cars![vehicle.index], vehicle.hit)
+              )
+                this.broadcast(r, {
+                  type: "vehicle-impact",
+                  index: vehicle.index,
+                  part: vehicle.hit.part,
+                  point: vehicle.hit.point.toArray(),
+                  direction,
+                });
+            } else if (result) {
               const { actor, hit } = result,
-                damage = PUNCHES[p.swing.move].damage;
+                damage =
+                  r.seed === COUNTY
+                    ? KNIFE_DAMAGE
+                    : PUNCHES[p.swing.move].damage;
               this.hurt(
                 r,
                 actor,
@@ -1441,7 +1483,17 @@ export class Rooms {
         }
         const maxRange = p.weapon === 3 ? 220 : 90;
         const surface = r.spatial.ray(origin, d, maxRange);
-        let nearest = surface?.distance ?? maxRange,
+        const vehicleHit =
+          r.cars &&
+          this.vehicleModel &&
+          nearestVehicleSurface(
+            r.cars,
+            origin,
+            d,
+            surface?.distance ?? maxRange,
+            this.vehicleModel,
+          );
+        let nearest = vehicleHit?.hit.distance ?? surface?.distance ?? maxRange,
           victim: PlayerState | undefined,
           head = false,
           region: HitRegion = "body",
@@ -1466,7 +1518,16 @@ export class Rooms {
           }
         }
         endpoint = origin.map((v, i) => v + d[i] * nearest) as V3;
-        if (!victim && surface?.box.pieceId !== undefined)
+        if (!victim && vehicleHit) {
+          if (damageVehicle(r.cars![vehicleHit.index], vehicleHit.hit))
+            this.broadcast(r, {
+              type: "vehicle-impact",
+              index: vehicleHit.index,
+              part: vehicleHit.hit.part,
+              point: endpoint,
+              direction: d,
+            });
+        } else if (!victim && surface?.box.pieceId !== undefined)
           r.structures?.damage(surface.box.pieceId, damages[p.weapon]);
         if (victim) {
           const damage = Math.round(damages[p.weapon] * HIT_MULTIPLIER[region]);

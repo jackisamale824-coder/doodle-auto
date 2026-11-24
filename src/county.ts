@@ -171,6 +171,10 @@ export interface CountyCar {
   yaw: number;
   kind: VehicleKind;
   driver: string | null;
+  damage?: number;
+  wear?: number;
+  dents?: import("./county-vehicle-damage.ts").PanelDent[];
+  dentVersion?: number;
 }
 export function parkedCars(lots = planCounty().lots): CountyCar[] {
   const rand = randomSeed(COUNTY + "-parking");

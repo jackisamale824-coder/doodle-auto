@@ -185,6 +185,8 @@ export class Renderer {
     const county = city.seed === "switchback-county";
     if (county !== this.county) {
       this.county = county;
+      this.inkPost.uniforms.ink.value.set(county ? "#26364b" : INK);
+      (this.scene.fog as T.Fog).color.set(county ? "#b4dce7" : SKY);
       this.frameCost = 0.025;
       this.camera.far = county ? 285 : 700;
       this.camera.updateProjectionMatrix();
@@ -208,6 +210,7 @@ export class Renderer {
       if (
         county &&
         (b.piece ||
+          b.kind === "ground" ||
           b.kind === "building" ||
           b.kind === "road" ||
           b.kind === "county-tree")
@@ -254,9 +257,11 @@ export class Renderer {
             : kind === "metal"
               ? 0.16
               : 0;
+      const fillMaterial = inkMaterial(county ? "#344959" : INK, fill);
+      if (county) fillMaterial.uniforms.uPaper.value.set("#d6bda3");
       const inst = new T.InstancedMesh(
           unit.clone(),
-          inkMaterial(INK, fill),
+          fillMaterial,
           boxes.length,
         ),
         matrix = new T.Matrix4(),

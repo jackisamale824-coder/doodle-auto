@@ -3,7 +3,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { assetUrl } from "./release-info.ts";
-import { VEHICLES, type VehicleKind } from "./county.ts";
+import { VEHICLES, type CountyCar, type VehicleKind } from "./county.ts";
 
 function panel(
   width: number,
@@ -75,19 +75,49 @@ export async function loadFleet() {
   const paint = new T.ShaderMaterial({
     vertexColors: true,
     uniforms: { coat: { value: new T.Color(0xf5f4ec) } },
-    vertexShader: `uniform vec3 coat; varying vec3 tint; varying vec3 n; void main(){tint=mix(pow(color.rgb,vec3(2.2)),coat,color.a);n=normalize(mat3(modelMatrix)*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader: `varying vec3 tint;varying vec3 n;void main(){float sun=dot(normalize(n),normalize(vec3(-.5,1.,.45)));float band=smoothstep(-.2,-.12,sun)*.11+smoothstep(.48,.56,sun)*.13;gl_FragColor=vec4(mix(vec3(.13,.18,.39),tint,.76+band),1.);
- #include <colorspace_fragment>
- }`,
+    vertexShader: `uniform vec3 coat;
+    varying vec3 tint, worldNormal, worldPosition, panelPosition;
+    #ifdef PANEL_DAMAGE
+    uniform int count; uniform vec3 points[16], normals[16];
+    #endif
+    void main(){
+      tint=mix(pow(color.rgb,vec3(2.2)),coat,color.a);
+      panelPosition=position;
+      vec3 p=position;
+      #ifdef PANEL_DAMAGE
+      for(int i=0;i<16;i++){if(i>=count)break;
+        p-=normals[i]*.055*(1.-smoothstep(.015,.17,distance(position,points[i])))*max(0.,dot(normal,normals[i]));}
+      #endif
+      worldNormal=normalize(mat3(modelMatrix)*normal);
+      worldPosition=(modelMatrix*vec4(p,1.)).xyz;
+      gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.);
+    }`,
+    fragmentShader: `varying vec3 tint,worldNormal,worldPosition,panelPosition;
+    #ifdef PANEL_DAMAGE
+    uniform int count; uniform vec3 points[16];
+    #endif
+    void main(){
+      vec3 n=normalize(worldNormal),l=normalize(vec3(-.55,1.,.35)),v=normalize(cameraPosition-worldPosition);
+      vec3 paint=tint*(.53+.54*max(0.,dot(n,l))) + vec3(.40,.35,.26)*pow(max(0.,dot(n,normalize(l+v))),48.);
+      #ifdef PANEL_DAMAGE
+      for(int i=0;i<16;i++){if(i>=count)break;
+        float r=distance(panelPosition,points[i]);paint=mix(paint,vec3(.085,.072,.06),1.-smoothstep(.018,.048,r));}
+      #endif
+      gl_FragColor=vec4(paint,1.);
+      #include <colorspace_fragment>
+    }`,
   });
   const glass = new T.MeshBasicMaterial({
-    color: 0xa7c9e3,
+    color: 0x73b1c4,
     transparent: true,
-    opacity: 0.16,
+    opacity: 0.28,
     depthWrite: false,
     side: T.FrontSide,
   });
-  const paints = [0xf5f4ec, 0xcbd9e9, 0x98afcc, 0xe2e7ee].map((hex) => {
+  const paints = [
+    0x1c9b9c, 0xf4b42b, 0xb84a44, 0x4379b3, 0xd47346, 0x537b58, 0x975c82,
+    0xe7d3ae,
+  ].map((hex) => {
     const material = paint.clone();
     material.uniforms.coat.value.setHex(hex);
     return material;
@@ -125,6 +155,15 @@ export async function loadFleet() {
     ctx.fillText("TAXI", 96, 45);
   });
   const templates = new Map<VehicleKind, T.Group>();
+  const shadow = panel(64, 64, (ctx) => {
+    const shade = ctx.createRadialGradient(32, 32, 5, 32, 32, 32);
+    shade.addColorStop(0, "rgba(30,34,42,.55)");
+    shade.addColorStop(1, "rgba(30,34,42,0)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, 64, 64);
+  });
+  shadow.transparent = true;
+  shadow.depthWrite = false;
   await Promise.all(
     VEHICLES.map(async (kind) => {
       const { scene } = await loader.loadAsync(
@@ -164,6 +203,13 @@ export async function loadFleet() {
             scene.getObjectByName(tier)!.add(label);
           }
       }
+      const footprint = new T.Mesh(
+        new T.PlaneGeometry(2.4, kind === "delivery" ? 5.6 : 4.8),
+        shadow,
+      );
+      footprint.rotation.x = -Math.PI / 2;
+      footprint.position.y = 0.075;
+      scene.add(footprint);
       templates.set(kind, scene);
     }),
   );
@@ -189,10 +235,17 @@ export class CountyCarModel extends T.Group {
   private turn = 0;
   private steering: T.Object3D;
   private wheels: T.Object3D[];
-  private tires = new Map<string, T.Object3D[]>();
-  private flatTires = new Set<string>();
-  private destroyed = false;
-  private tirePullValue = 0;
+  private glass: {
+    mesh: T.Mesh;
+    original: T.BufferGeometry;
+    panes: number[];
+  }[] = [];
+  private damage = 0;
+  private dentVersion = 0;
+  private panelMaterials = new Map<T.Mesh, T.ShaderMaterial>();
+  private smoke?: T.Group;
+  private smokeStrength = 0;
+  private sparksAt = 0;
   private fragments: {
     mesh: T.Mesh;
     velocity: T.Vector3;
@@ -224,81 +277,102 @@ export class CountyCarModel extends T.Group {
       model.getObjectByName("near_wheel_" + name)!,
     );
     model.traverse((o) => {
-      if (o.name.includes("_wheel_")) {
-        const corner = o.name.match(/_(fl|fr|rl|rr)$/)?.[1];
-        if (corner) {
-          if (!this.tires.has(corner)) this.tires.set(corner, []);
-          this.tires.get(corner)!.push(o);
-        }
-      }
+      if (o instanceof T.Mesh && o.userData.paneBits)
+        this.glass.push({
+          mesh: o,
+          original: o.geometry,
+          panes: o.userData.paneBits,
+        });
     });
     this.add(model);
     this.levels.forEach((o, i) => (o.visible = i === 2));
   }
-  get tirePull() {
-    return this.tirePullValue;
+  get collisionModel() {
+    return this.levels[0];
   }
-  damageShot(
-    origin: T.Vector3,
-    direction: T.Vector3,
-    point: T.Vector3,
-  ): "tire" | "glass" | null {
-    this.updateMatrixWorld(true);
-    const distance = origin.distanceTo(point),
-      raycaster = new T.Raycaster(origin, direction.clone().normalize());
-    raycaster.far = distance + 0.55;
-    const visible = (object: T.Object3D) => {
-      for (let parent: T.Object3D | null = object; parent && parent !== this; ) {
-        if (!parent.visible) return false;
-        parent = parent.parent;
+  setDamage(car: CountyCar) {
+    const mask = car.damage ?? 0;
+    if (mask !== this.damage) {
+      for (const [i, wheel] of this.wheels.entries()) {
+        wheel.scale.y = mask & (1 << i) ? 0.42 : 1;
+        wheel.position.y = this.radius * wheel.scale.y;
       }
-      return true;
-    };
-    const part = raycaster
-      .intersectObject(this, true)
-      .find(
-        (hit) =>
-          visible(hit.object) &&
-          hit.distance <= distance + 0.55 &&
-          (/_wheel_(fl|fr|rl|rr)$/.test(hit.object.name) ||
-            hit.object.name.includes("_glass_")),
-      )?.object;
-    const wheel = part?.name.match(/_wheel_(fl|fr|rl|rr)$/);
-    const glass = part?.name.includes("_glass_");
-    if (!wheel && !glass) return null;
-    if (this.destroyed) return wheel ? "tire" : "glass";
-    this.destroyed = true;
-    const localPoint = this.worldToLocal(point.clone()),
-      pulledLeft = wheel ? wheel[1].endsWith("l") : localPoint.x < 0;
-    this.tirePullValue = pulledLeft ? 0.11 : -0.11;
-    for (const [corner, tires] of this.tires) {
-      this.flatTires.add(corner);
-      for (const tire of tires) {
-        tire.scale.y *= 0.42;
-        if (visible(tire))
-          this.spawnFragments(
-            tire.getWorldPosition(new T.Vector3()),
-            direction,
-            0x333943,
-            3,
-          );
+      for (const { mesh, original, panes } of this.glass) {
+        if (!panes.some((bit) => bit & (mask ^ this.damage))) continue;
+        if (mesh.geometry !== original) mesh.geometry.dispose();
+        mesh.geometry = original;
+        mesh.userData.paneBits = panes;
+        if (!panes.some((bit) => bit & mask)) continue;
+        const geometry = new T.BufferGeometry();
+        geometry.attributes = { ...original.attributes };
+        const indices: number[] = [],
+          remaining: number[] = [];
+        panes.forEach((bit, face) => {
+          if (mask & bit) return;
+          remaining.push(bit);
+          for (let i = 0; i < 3; ++i)
+            indices.push(original.index!.getX(face * 3 + i));
+        });
+        geometry.setIndex(indices);
+        mesh.geometry = geometry;
+        mesh.userData.paneBits = remaining;
+      }
+      this.damage = mask;
+    }
+    if (this.dentVersion === (car.dentVersion ?? 0)) return;
+    this.dentVersion = car.dentVersion ?? 0;
+    for (const material of this.panelMaterials.values())
+      material.uniforms.count.value = 0;
+    for (const dent of car.dents ?? []) {
+      for (const tier of this.levels) {
+        const panel = tier.getObjectByName(tier.name + "_" + dent.panel);
+        if (
+          !(panel instanceof T.Mesh) ||
+          !(panel.material instanceof T.ShaderMaterial)
+        )
+          continue;
+        let material = this.panelMaterials.get(panel);
+        if (!material) {
+          material = panel.material.clone() as T.ShaderMaterial;
+          material.defines = { ...material.defines, PANEL_DAMAGE: 1 };
+          material.uniforms.count = { value: 0 };
+          for (const key of ["points", "normals"])
+            material.uniforms[key] = {
+              value: Array.from({ length: 16 }, () => new T.Vector3()),
+            };
+          this.panelMaterials.set(panel, material);
+          panel.material = material;
+        }
+        const i = material.uniforms.count.value++;
+        material.uniforms.points.value[i].fromArray(dent.point);
+        material.uniforms.normals.value[i].fromArray(dent.normal);
       }
     }
-    const windows: T.Object3D[] = [];
-    this.traverse((object) => {
-      if (!object.name.includes("_glass_")) return;
-      if (visible(object)) windows.push(object);
-      object.visible = false;
-    });
-    if (windows.length) {
-      for (const window of windows) {
-        const center = new T.Box3()
-          .setFromObject(window)
-          .getCenter(new T.Vector3());
-        this.spawnFragments(center, direction, 0xc9efff, 5);
-      }
-    } else this.spawnFragments(point, direction, 0xc9efff, 12);
-    return wheel ? "tire" : "glass";
+    this.smokeStrength = Math.min(1, Math.max(0, ((car.wear ?? 0) - 2) / 14));
+    if (this.smokeStrength && !this.smoke) {
+      this.smoke = new T.Group();
+      const geo = new T.IcosahedronGeometry(1, 0);
+      for (let i = 0; i < 4; i++)
+        this.smoke.add(
+          new T.Mesh(
+            geo,
+            new T.MeshBasicMaterial({
+              color: 0x5e6266,
+              transparent: true,
+              depthWrite: false,
+            }),
+          ),
+        );
+      this.add(this.smoke);
+    }
+  }
+  showImpact(part: number, point: T.Vector3, direction: T.Vector3) {
+    this.spawnFragments(
+      point,
+      direction,
+      part >= 16 ? 0xc9efff : part ? 0x333943 : 0xb5a184,
+      part >= 16 ? 8 : 3,
+    );
   }
   private spawnFragments(
     point: T.Vector3,
@@ -306,12 +380,13 @@ export class CountyCarModel extends T.Group {
     color: number,
     count: number,
   ) {
-    const position = this.worldToLocal(point.clone()),
+    const host = this.parent ?? this;
+    const position = host.worldToLocal(point.clone()),
       away = direction
         .clone()
-        .applyAxisAngle(new T.Vector3(0, 1, 0), -this.rotation.y)
+
         .negate();
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < count && this.fragments.length < 42; i++) {
       const material = new T.MeshBasicMaterial({
           color,
           transparent: true,
@@ -324,12 +399,14 @@ export class CountyCarModel extends T.Group {
         );
       mesh.position
         .copy(position)
-        .add(new T.Vector3(
-          (Math.random() - 0.5) * 0.14,
-          (Math.random() - 0.5) * 0.14,
-          (Math.random() - 0.5) * 0.14,
-        ));
-      this.add(mesh);
+        .add(
+          new T.Vector3(
+            (Math.random() - 0.5) * 0.14,
+            (Math.random() - 0.5) * 0.14,
+            (Math.random() - 0.5) * 0.14,
+          ),
+        );
+      host.add(mesh);
       this.fragments.push({
         mesh,
         velocity: away
@@ -357,7 +434,7 @@ export class CountyCarModel extends T.Group {
       fragment.mesh.rotation.z += dt * 4;
       fragment.material.opacity = Math.min(0.9, fragment.life * 1.2);
       if (fragment.life > 0) continue;
-      this.remove(fragment.mesh);
+      fragment.mesh.removeFromParent();
       fragment.mesh.geometry.dispose();
       fragment.material.dispose();
       this.fragments.splice(i, 1);
@@ -407,6 +484,41 @@ export class CountyCarModel extends T.Group {
       o.visible = i === level;
       this.hinges[i].rotation.y = this.doorSide * 1.12 * openness;
     });
+    if (distance < 30 && speed > 4 && this.damage & 15 && now > this.sparksAt) {
+      this.sparksAt = now + 0.12;
+      for (const [i, wheel] of this.wheels.entries())
+        if (this.damage & (1 << i)) {
+          const point = wheel.getWorldPosition(new T.Vector3());
+          point.y -= this.radius * 0.4;
+          this.spawnFragments(
+            point,
+            new T.Vector3(
+              Math.sin(this.rotation.y),
+              0,
+              Math.cos(this.rotation.y),
+            ),
+            0xffbc53,
+            1,
+          );
+        }
+    }
+    if (this.smoke) {
+      this.smoke.visible = this.smokeStrength > 0 && distance < 65;
+      if (this.smoke.visible)
+        this.smoke.children.forEach((puff, i) => {
+          const phase = (now * 0.9 + i / 4) % 1;
+          puff.position.set(
+            0.12 * Math.sin(now + i) * phase,
+            this.seat.y + phase * 1.5,
+            this.wheels[0].position.z + phase * 0.45,
+          );
+          puff.scale.setScalar(
+            (0.07 + 0.23 * phase) * (0.6 + this.smokeStrength),
+          );
+          ((puff as T.Mesh).material as T.MeshBasicMaterial).opacity =
+            (1 - phase) * this.smokeStrength * 0.65;
+        });
+    }
     this.updateFragments(dt);
   }
 }

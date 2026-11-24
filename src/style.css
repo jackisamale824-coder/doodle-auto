@@ -1593,3 +1593,96 @@ dialog .help-grid span {
 dialog .error:empty {
   display: none;
 }
+
+body.county-death #hud {
+  visibility: hidden;
+}
+body.county-death dialog {
+  margin: auto 1rem 1rem auto;
+  max-width: min(20rem, 90vw);
+}
+body.county-death dialog::backdrop {
+  background: rgba(18, 30, 38, 0.15);
+  backdrop-filter: none;
+}
+body.county-death dialog .modal-kicker,
+body.county-death dialog p {
+  display: none;
+}
+
+.county-world #hud {
+  --ink: #264650;
+  --hud-panel: #f7f5e9dc;
+}
+.county-world
+  #hud
+  :is(
+    .hud-top-left,
+    .hud-top-right,
+    .hud-bottom-left,
+    .hud-bottom-center,
+    .hud-bottom-right,
+    .escape-tip,
+    #compass
+  ) {
+  color: #fff4da;
+  text-shadow:
+    0 1px 2px #182b36,
+    0 0 4px #182b36;
+}
+.county-world #hud .hud-top-left {
+  background: linear-gradient(90deg, #183442ce, #18344283 75%, transparent);
+  padding: 7px 12px;
+}
+.county-world
+  #hud
+  :is(
+    .district-label b,
+    .district-label span,
+    #weapon-slots .active,
+    #room-badge
+  ) {
+  color: #203e4a;
+  text-shadow: none;
+}
+.county-world #hud :is(.district-label span, #weapon-slots .active) {
+  background: #c7ded8;
+  opacity: 1;
+}
+.county-world #hud :is(#mission, #timer, #reload-label) {
+  color: #e2ece5;
+}
+.county-world #hud #air-charge {
+  color: #9be9df;
+}
+.county-world #hud #notoriety {
+  color: #ffd88c;
+}
+.county-world #hud .health-bar {
+  background: #183442b8;
+  border-color: #a4d7c8;
+}
+.county-world #hud .health-bar i {
+  background: #74d5b5;
+}
+.county-world #city-map-panel {
+  color: #234652;
+}
+@media (max-height: 700px) {
+  .county-world #city-map {
+    width: 115px;
+    height: 115px;
+  }
+}
+@media (min-width: 701px) and (max-width: 1150px) {
+  .county-world #hud .hud-bottom-center {
+    bottom: 12px;
+  }
+  .county-world #hud #weapon-slots {
+    font-size: 13px;
+    gap: 4px;
+  }
+  .county-world #hud #weapon-slots span {
+    padding: 3px;
+  }
+}

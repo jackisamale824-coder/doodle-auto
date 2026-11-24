@@ -1,19 +1,32 @@
+import { countyHand } from "./county-hands.ts";
+import { buildKnife, knifePose } from "./county-knife.ts";
 import * as T from "three";
 import { handMesh } from "./hand-model.ts";
 import { guardRaise, punchPose } from "./fists.ts";
 import { inkMaterial, INK } from "./render.ts";
 
-export function buildFists() {
+export function buildFists(knifeEquipped = false) {
   const group = new T.Group();
-  group.name = "fists";
+  group.name = knifeEquipped ? "knife-view" : "fists";
   const paper = inkMaterial(INK, 0.05, true),
     blue = inkMaterial(INK, 0.45, true);
   const sphere = new T.SphereGeometry(1, 16, 12);
   for (const side of [-1, 1]) {
     const hand = new T.Group();
-    hand.add(handMesh(side, paper, true));
-    const sleeve = new T.Mesh(sphere, blue);
-    const cuff = new T.Mesh(sphere, paper);
+    hand.add(knifeEquipped ? countyHand(side) : handMesh(side, paper, true));
+    if (knifeEquipped && side === 1) {
+      const knife = buildKnife();
+      knife.rotation.set(-0.92, 0.35, 0.65);
+      hand.add(knife);
+    }
+    const sleeve = new T.Mesh(
+      sphere,
+      knifeEquipped ? new T.MeshBasicMaterial({ color: 0x386673 }) : blue,
+    );
+    const cuff = new T.Mesh(
+      sphere,
+      knifeEquipped ? new T.MeshBasicMaterial({ color: 0x334851 }) : paper,
+    );
     group.add(sleeve, cuff);
     hand.name = side === -1 ? "left-fist" : "right-fist";
     group.add(hand);
@@ -37,7 +50,10 @@ export function animateFists(
     const hand = group.getObjectByName(
       side === -1 ? "left-fist" : "right-fist",
     )!;
-    const pose = punchPose(move, age, side);
+    const pose =
+      group.name === "knife-view"
+        ? knifePose(move, age, side)
+        : punchPose(move, age, side);
     const lowered = 1 - guardRaise(equipAge, side, move, age);
     wrist.set(
       side * (0.215 + lowered * 0.09) + pose.x,
@@ -47,6 +63,11 @@ export function animateFists(
         0.006 * Math.sin(time * 2.5 + side * 0.4),
       -0.43 + lowered * 0.16 - pose.z,
     );
+    if (group.name === "knife-view") {
+      wrist.x += side * 0.04;
+      wrist.y -= 0.055;
+      wrist.z -= 0.035;
+    }
     hand.position.copy(wrist);
     hand.rotation.set(
       0.29 + lowered * 0.74 - pose.z * 0.7,

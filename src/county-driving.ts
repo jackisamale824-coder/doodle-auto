@@ -1,3 +1,4 @@
+import { vehicleHandling } from "./county-vehicle-damage.ts";
 import { Box3, Matrix4, Quaternion, Vector3 } from "three";
 import { OBB } from "three/examples/jsm/math/OBB.js";
 import { elevation, LIMIT } from "./county-plan.ts";
@@ -185,24 +186,24 @@ export class CountyDriveWorld {
     input: number,
     damage?: (box: Box, amount: number) => void,
     own?: CountyCar,
-    tirePull = 0,
   ) {
     const dt = DRIVE_DT,
       wheelbase = dimensions[kind][3];
     const throttle = (input % 3) - 1,
       side = (Math.floor(input / 3) % 3) - 1,
       brake = input >= 9;
+    const handling = vehicleHandling(own);
     const drag = brake ? 6 : throttle ? 0.12 : 0.72;
     let speed = clamp(
       (state.speed + throttle * (state.speed * throttle < 0 ? 29 : 17) * dt) *
         Math.exp(-drag * dt),
-      -12,
-      40,
+      -12 * handling.speed,
+      40 * handling.speed,
     );
     if (Math.abs(speed) < 0.025 && !throttle) speed = 0;
     // Steering lock narrows at speed; yaw curvature follows the bicycle model.
     const maxSteer = 0.6 / (1 + 0.0027 * speed * speed);
-    const steerTarget = clamp(-side * maxSteer + tirePull, -0.75, 0.75);
+    const steerTarget = clamp(-side * maxSteer + handling.pull, -0.75, 0.75);
     state.steer += (steerTarget - state.steer) * (1 - Math.exp(-8 * dt));
     state.speed = speed;
     if (!speed) return false;

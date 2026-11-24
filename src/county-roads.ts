@@ -1,7 +1,7 @@
 import * as T from "three";
 import type { Street } from "./city-plan.ts";
 import { alongStreet, ruralRoad } from "./county-plan.ts";
-import type { V3 } from "./world.ts";
+import { randomSeed, type V3 } from "./world.ts";
 
 // The shoulders, crossings, light poles and lanes all use the same surveyed
 // centerlines as parked vehicles and pedestrian navigation.
@@ -147,17 +147,37 @@ export function drawCountyRoads(group: T.Group, streets: Street[]) {
     circle(asphalt, p, width / 2, 0.048);
   }
   for (const [positions, tint] of [
-    [shoulders, 0xe0ded3],
-    [asphalt, 0xc9d0da],
+    [shoulders, 0xd6bba0],
+    [asphalt, 0x565e69],
     [paint, 0xfbf9f1],
-    [center, 0xe9ddbf],
+    [center, 0xf3c056],
   ] as const) {
     const geometry = new T.BufferGeometry();
     geometry.setAttribute(
       "position",
       new T.Float32BufferAttribute(positions, 3),
     );
-    group.add(new T.Mesh(geometry, new T.MeshBasicMaterial({ color: tint })));
+    const material = new T.MeshBasicMaterial({ color: tint });
+    if (positions === asphalt) {
+      const random = randomSeed("county-asphalt");
+      const grains = new Uint8Array(64 * 64 * 4);
+      for (let i = 0; i < grains.length; i += 4) {
+        grains[i] = grains[i + 1] = grains[i + 2] = 222 + random() * 33;
+        grains[i + 3] = 255;
+      }
+      const map = new T.DataTexture(grains, 64, 64);
+      map.wrapS = map.wrapT = T.RepeatWrapping;
+      map.generateMipmaps = true;
+      map.minFilter = T.LinearMipMapLinearFilter;
+      map.magFilter = T.LinearFilter;
+      map.needsUpdate = true;
+      material.map = map;
+      const uv = [];
+      for (let i = 0; i < positions.length; i += 3)
+        uv.push(positions[i] * 0.48, positions[i + 2] * 0.48);
+      geometry.setAttribute("uv", new T.Float32BufferAttribute(uv, 2));
+    }
+    group.add(new T.Mesh(geometry, material));
   }
   return lamps;
 }

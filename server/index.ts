@@ -5,6 +5,7 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+import { loadCountyFleet } from "./county-fleet.ts";
 import { Rooms } from "./rooms.ts";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const production = process.env.NODE_ENV === "production";
@@ -155,6 +156,9 @@ const rooms = new Rooms(
         workerEpoch: process.env.WORKER_EPOCH!,
       }
     : undefined,
+);
+rooms.vehicleModel = await loadCountyFleet(
+  production ? distRoot : path.join(root, "public"),
 );
 server.on("upgrade", (req, socket, head) => {
   if (req.url === "/ws") {

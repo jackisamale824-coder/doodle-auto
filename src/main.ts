@@ -1,3 +1,10 @@
+import { addCountyArms } from "./county-hands.ts";
+import { CountyCasings } from "./county-casings.ts";
+import { KNIFE_DAMAGE } from "./county-knife.ts";
+import {
+  damageVehicle,
+  nearestVehicleSurface,
+} from "./county-vehicle-damage.ts";
 import {
   FISTS,
   PUNCHES,
@@ -269,7 +276,6 @@ class Game {
         pending.input,
         undefined,
         this.cars[this.vehicle],
-        this.render.countyCars[this.vehicle]?.tirePull ?? 0,
       );
       pending.pose = { ...pose };
     }
@@ -292,6 +298,10 @@ class Game {
     return this.rubbleView?.roster.clusters;
   }
   private structures?: CountyStructures;
+  private animateArms?: ReturnType<typeof addCountyArms>;
+  private casings?: CountyCasings;
+  private deathBody?: Doodle;
+  private deadActors = new WeakSet<Doodle>();
   private debris?: CountyDebris;
   private restoringStructures = false;
   private aimedDoor() {
@@ -432,6 +442,7 @@ class Game {
         model.position.fromArray(c.p);
         model.rotation.y = c.yaw;
       }
+      model.setDamage(c);
       model.update(
         c.driver,
         performance.now() / 1000,
@@ -509,7 +520,9 @@ class Game {
     $("duel").hidden = $("public-mode").hidden = this.archive;
     if (this.archive) this.menuMode = "roam";
     if (this.countySelected)
-      document.title = "doodlesCreed — Switchback County · Suncoast";
+      document.querySelector("h1")!.textContent = "Doodle Auto";
+    if (this.countySelected)
+      document.title = "Doodle Auto — Switchback County · Suncoast";
     this.paintLobbyOptions();
     this.state = "menu";
     this.bind();
@@ -559,6 +572,7 @@ class Game {
       physics.dispose();
       return;
     }
+    this.clearDeathBody();
     this.ragdolls?.dispose();
     this.combat?.dispose();
     this.rubbleView?.clear();
@@ -588,9 +602,14 @@ class Game {
     this.carSpeed = this.carSteer = this.crashUntil = 0;
     this.physics = physics;
     this.seed = seed;
+    document.body.classList.toggle("county-world", seed === COUNTY);
     this.district = district;
     await this.render.build(city);
     if (version !== this.buildVersion) return;
+    this.casings =
+      seed === COUNTY
+        ? new CountyCasings(this.render.cityGroup, physics)
+        : undefined;
     this.debris =
       seed === COUNTY ? new CountyDebris(this.render.cityGroup) : undefined;
     this.rubbleView =
@@ -682,12 +701,28 @@ class Game {
       this.audio,
       this.mode === "contract" && seed !== COUNTY,
     );
-    this.combat.vehicleShot = (index, origin, direction, point) =>
-      this.render.countyCars[index]?.damageShot(
-        new T.Vector3(...origin),
-        new T.Vector3(...direction),
-        new T.Vector3(...point),
-      ) ?? null;
+    if (seed === COUNTY)
+      this.combat.vehicleShot = (origin, direction, range) => {
+        const result = nearestVehicleSurface(
+          this.cars,
+          origin,
+          direction,
+          range,
+          (_, i) => this.render.countyCars[i]?.collisionModel,
+        );
+        if (!result) return;
+        const { index, hit } = result;
+        return {
+          distance: hit.distance,
+          strike: () => {
+            if (!damageVehicle(this.cars[index], hit)) return;
+            const model = this.render.countyCars[index];
+            model.setDamage(this.cars[index]);
+            model.showImpact(hit.part, hit.point, new T.Vector3(...direction));
+            this.audio.hit();
+          },
+        };
+      };
     this.combat.online = this.mode === "online";
     this.combat.onSurfaceHit = (index, damage) =>
       this.structures?.damage(index, damage);
@@ -759,7 +794,7 @@ class Game {
     this.combat.onPunchContact = (move) => {
       if (this.vehicle >= 0 || this.seatPending || this.player.traversing)
         return;
-      const amount = PUNCHES[move].damage,
+      const amount = this.seed === COUNTY ? KNIFE_DAMAGE : PUNCHES[move].damage,
         p = this.player;
       const targets = [
         ...(this.citizens?.actors ?? [])
@@ -784,6 +819,32 @@ class Game {
         (o, d, n) =>
           this.physics.ray(new T.Vector3(...o), new T.Vector3(...d), n),
       );
+      if (this.seed === COUNTY) {
+        const range = Math.min(
+          PUNCHES[move].reach,
+          result?.hit.distance ?? Infinity,
+        );
+        const wall = this.physics.ray(p.eye, p.forward, range, true);
+        const car = nearestVehicleSurface(
+          this.cars,
+          p.eye.toArray(),
+          p.forward.toArray(),
+          wall?.distance ?? range,
+          (_, i) => this.render.countyCars[i]?.collisionModel,
+        );
+        if (car) {
+          if (
+            car.hit.part >= 16 &&
+            damageVehicle(this.cars[car.index], car.hit)
+          ) {
+            const model = this.render.countyCars[car.index];
+            model.setDamage(this.cars[car.index]);
+            model.showImpact(car.hit.part, car.hit.point, p.forward);
+            this.audio.hit();
+          }
+          return;
+        }
+      }
       if (!result) return;
       const { actor, hit } = result;
       const model = actor.bot?.model ?? this.remotes.get(actor.citizen!.id);
@@ -815,6 +876,17 @@ class Game {
       if ((actor.citizen ?? actor.bot)!.hp <= 0) this.audio.npcEliminated();
     };
     this.combat.onFire = () => {
+      if (this.casings) {
+        const port = this.weaponMesh.localToWorld(
+          new T.Vector3(0.07, 0.04, 0.13),
+        );
+        this.casings.eject(
+          this.combat.weapon,
+          port,
+          this.player.yaw,
+          this.player.velocity,
+        );
+      }
       this.viewMotion.shot(this.combat.weapon);
       if (this.citizens) this.notoriety = notorietyAfter(this.notoriety, 2);
       if (this.mode === "online") {
@@ -837,14 +909,24 @@ class Game {
   setWeapon(i: number, force = false) {
     if (!force && !this.combat.switchWeapon(i)) return;
     disposeGroup(this.weaponMesh);
-    this.weaponMesh = i === FISTS ? buildFists() : buildWeapon(i);
+    this.weaponMesh =
+      i === FISTS
+        ? buildFists(this.seed === COUNTY)
+        : buildWeapon(i, this.seed === COUNTY);
+    this.animateArms =
+      this.seed === COUNTY && i !== FISTS
+        ? addCountyArms(this.weaponMesh, i)
+        : undefined;
     $("ammo-row").classList.toggle("hidden", i === FISTS);
     if (i === FISTS) {
       this.aiming = false;
       this.equippedAt = this.time;
     }
     this.render.camera.add(this.weaponMesh);
-    $("weapon-name").textContent = WEAPONS[i].name;
+    $("weapon-name").textContent =
+      i === FISTS && this.seed === COUNTY ? "KNIFE" : WEAPONS[i].name;
+    $("weapon-slots").children[FISTS].textContent =
+      this.seed === COUNTY ? "5 KNIFE" : "5 FISTS";
     [...$("weapon-slots").children].forEach((el, n) =>
       el.classList.toggle("active", n === i),
     );
@@ -929,6 +1011,7 @@ class Game {
     $("main-menu").onclick = () => this.mainMenu();
   }
   mainMenu() {
+    this.clearDeathBody();
     this.network.disconnect();
     this.state = "menu";
     this.mode = this.soloMode;
@@ -1388,8 +1471,15 @@ class Game {
         ? [["Q / E", "Hook or release. Hold to reel in."]]
         : []),
       ["LMB / RMB", "Fire / aim"],
-      ["1–5 / Wheel", "Switch weapon · 5 equips fists"],
-      ["LMB with fists", "Punch · hold for jab, cross and hook"],
+      [
+        "1–5 / Wheel",
+        county
+          ? "Switch weapon · 5 equips the knife"
+          : "Switch weapon · 5 equips fists",
+      ],
+      county
+        ? ["LMB with knife", "One-hit slash · hold to chain swings"]
+        : ["LMB with fists", "Punch · hold for jab, cross and hook"],
       ["R", "Reload"],
       ...(county
         ? [
@@ -1550,6 +1640,7 @@ class Game {
     this.accumulator = 0;
     if (player.hp <= 0) this.finish(false);
     else {
+      this.clearDeathBody();
       this.state = "paused";
       this.showPause(
         "BACK IN YOUR MATCH",
@@ -1574,6 +1665,16 @@ class Game {
     this.restoringStructures = false;
   }
   onNetwork(m: any) {
+    if (
+      m.type === "vehicle-impact" &&
+      this.mode === "online" &&
+      this.seed === COUNTY
+    )
+      this.render.countyCars[m.index]?.showImpact(
+        m.part,
+        new T.Vector3(...m.point),
+        new T.Vector3(...m.direction),
+      );
     if (m.type === "vehicle-drive") this.reconcileDrive(m);
     if (this.mode === "online" && this.state !== "loading") {
       if (m.type === "structure") this.structures?.set(m.index, m.state);
@@ -1688,6 +1789,7 @@ class Game {
       this.combat.reloadTime = Math.max(0, m.reloadRemaining / 1000);
     }
     if (m.type === "respawn") {
+      this.clearDeathBody();
       this.combat.cancelPunch();
       this.player.reset(m.p);
       this.notoriety = 0;
@@ -1739,7 +1841,49 @@ class Game {
     if (sent && pending.length)
       this.sentDriveSequence = pending[pending.length - 1].seq;
   }
+  private clearDeathBody() {
+    if (this.deathBody) {
+      this.ragdolls?.remove(this.deathBody);
+      this.deathBody.dispose();
+      this.deathBody = undefined;
+    }
+    document.body.classList.remove("county-death");
+  }
+  private placeDeathBody(
+    model: Doodle,
+    position: V3,
+    yaw: number,
+    height: number,
+  ) {
+    model.group.position.fromArray(position);
+    model.group.rotation.y = yaw + Math.PI;
+    model.group.scale.y = height / 1.76;
+    const car = this.cars.find(
+      (c) =>
+        Math.hypot(c.p[0] - position[0], c.p[2] - position[2]) < 0.35 &&
+        Math.abs(c.p[1] - position[1]) < 0.5,
+    );
+    if (car) {
+      model.group.position.x -= Math.cos(car.yaw) * 1.65;
+      model.group.position.z += Math.sin(car.yaw) * 1.65;
+    }
+    this.ragdolls?.playerDeath(model, yaw, this.render.camera.position);
+  }
   finish(win = false, winner = "") {
+    if (win) this.clearDeathBody();
+    else if (this.seed === COUNTY && !this.deathBody) {
+      this.deathBody = new Doodle("#347a75");
+      this.render.scene.add(this.deathBody.group);
+      this.placeDeathBody(
+        this.deathBody,
+        this.player.position.toArray(),
+        this.player.yaw,
+        this.player.height,
+      );
+      this.weaponMesh.visible = false;
+      if (this.rope) this.rope.visible = false;
+      document.body.classList.add("county-death");
+    }
     this.state = win ? "complete" : "dead";
     this.keys.clear();
     this.firing = false;
@@ -1749,7 +1893,7 @@ class Game {
     localStorage.setItem("dc.best", JSON.stringify(best));
     const online = this.mode === "online";
     this.showDialog(
-      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : online ? "RESPAWN" : "TRY ANOTHER LINE"} <span>↗</span></button>`}<button id="finish-menu" class="secondary-button">Main menu</button>`,
+      `<div class="modal-kicker">${win ? "A PAGE WORTH KEEPING" : "THERE’S ALWAYS ANOTHER BLANK PAGE"}</div><h2>${win ? (online ? escape(winner) + " wins." : "District, signed.") : this.deathBody ? "You died" : "Erased. Not forgotten."}</h2><p>${win ? "You left your mark on the city." : online ? "Catch your breath. You can rejoin the fight in a moment." : this.city.arena ? "Keep moving, climb the tower, and use cover to break the crossfire." : "Try a rooftop route, keep moving, and use your grapple to get above the crossfire."}</p><div class="result-stats"><div><b>${this.combat.kills}</b><span>RIVALS ERASED</span></div><div><b>${this.combat.score}</b><span>STYLE POINTS</span></div><div><b>${timeLabel(this.elapsed)}</b><span>TIME IN DISTRICT</span></div></div>${online && win ? "" : `<button id="retry" class="primary-button">${win ? "DRAW THE NEXT DISTRICT" : online ? "RESPAWN" : "TRY ANOTHER LINE"} <span>↗</span></button>`}<button id="finish-menu" class="secondary-button">Main menu</button>`,
     );
     if ($("retry")) {
       if (online) {
@@ -1814,7 +1958,6 @@ class Game {
             ? undefined
             : (box, amount) => this.structures!.damage(box.pieceId!, amount),
           car,
-          this.render.countyCars[this.vehicle]?.tirePull ?? 0,
         );
         this.applyDrivePose(pose);
         if (online) {
@@ -1846,7 +1989,11 @@ class Game {
       this.aiming = false;
     } else if (!this.seatPending) {
       if (this.seed === COUNTY)
-        this.physics.setVehicleColliders(this.cars, this.vehicle);
+        this.physics.setVehicleColliders(
+          this.cars,
+          this.vehicle,
+          this.render.countyCars,
+        );
       this.player.update(dt, input);
     }
     const nearGround =
@@ -1949,6 +2096,27 @@ class Game {
       cam.fov = 58;
       cam.updateProjectionMatrix();
       this.weaponMesh.visible = false;
+      return;
+    }
+    if (this.deathBody && this.state === "dead") {
+      this.updateActors(dt);
+      const focus = this.deathBody.pelvis.getWorldPosition(new T.Vector3());
+      const offset = new T.Vector3(1.25, 1.65, 2.7).applyAxisAngle(
+        T.Object3D.DEFAULT_UP,
+        p.yaw,
+      );
+      const distance = offset.length();
+      offset.normalize();
+      const hit = this.physics.ray(focus, offset, distance);
+      cam.position
+        .copy(focus)
+        .addScaledVector(
+          offset,
+          hit ? Math.max(0.06, hit.distance - 0.16) : distance,
+        );
+      cam.lookAt(focus);
+      cam.fov = 60;
+      cam.updateProjectionMatrix();
       return;
     }
     const motion = settings.reduced ? 0 : 1;
@@ -2064,6 +2232,7 @@ class Game {
         reloadProgress,
         recoil,
       );
+      this.animateArms?.(reload, reloadProgress);
       const reloadScale = settings.reduced ? 0.35 : 1;
       const vaultPose = Math.sin(Math.PI * p.traversalProgress);
       // One camera-local pose: stride, restrained look sway, then shared shot impulse.
@@ -2112,6 +2281,10 @@ class Game {
       this.render.scene.add(this.rope);
     }
     this.rope.update(p, this.render.camera, dt);
+    this.updateActors(dt);
+  }
+  private updateActors(dt: number) {
+    const cam = this.render.camera;
     const states: RemoteState[] =
       this.citizens?.actors ??
       (this.mode === "online" ? this.network.players : []);
@@ -2126,7 +2299,7 @@ class Game {
         !state.npc ||
         this.player.position.distanceToSquared(new T.Vector3(...state.p)) <=
           NPC_RADIUS * NPC_RADIUS;
-      if (!nearby || seated.has(state.id)) {
+      if (!nearby || (seated.has(state.id) && state.hp > 0)) {
         if (model) model.group.visible = false;
         continue;
       }
@@ -2139,6 +2312,21 @@ class Game {
         model.group.position.fromArray(state.p);
         this.render.scene.add(model.group);
         this.remotes.set(state.id, model);
+      }
+      if (!state.npc && this.ragdolls) {
+        if (state.hp <= 0) {
+          if (!this.deadActors.has(model)) {
+            this.placeDeathBody(
+              model,
+              state.p,
+              state.yaw,
+              state.height ?? 1.76,
+            );
+            this.deadActors.add(model);
+          }
+          continue;
+        }
+        if (this.deadActors.delete(model)) this.ragdolls.remove(model);
       }
       if (state.reaction) model.reactToPunch(state.reaction, now);
       model.group.visible = state.hp > 0;
@@ -2176,6 +2364,7 @@ class Game {
           state.weapon === FISTS,
           state.swing?.move ?? 0,
           state.swing ? (now - state.swing.start) / 1000 : 1,
+          this.seed === COUNTY,
         );
       const desiredYaw = state.yaw + Math.PI;
       const turn = Math.atan2(
@@ -2435,7 +2624,9 @@ class Game {
     $("mag-size").textContent = String(gun.mag);
     $("reload-label").textContent =
       c.weapon === FISTS
-        ? "LMB · PUNCH"
+        ? this.seed === COUNTY
+          ? "LMB · SLASH"
+          : "LMB · PUNCH"
         : c.reloadTime > 0
           ? "RELOADING…"
           : c.mags[c.weapon] === 0
@@ -2540,6 +2731,7 @@ class Game {
         this.syncCars(frameSeconds);
         this.render.cityGroup.userData.updateDoors?.(dt);
         this.debris?.update(dt);
+        this.casings?.update(dt);
       }
       this.updateVisuals(dt);
       this.combat.renderShots(dt);

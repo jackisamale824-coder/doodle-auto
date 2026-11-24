@@ -1,3 +1,4 @@
+import { buildKnife, knifePose } from "./county-knife.ts";
 import { handMesh } from "./hand-model.ts";
 import {
   guardRaise,
@@ -278,7 +279,19 @@ export class Doodle {
   private fists = false;
   private fistMove = 0;
   private fistAge = 1;
-  setFistPose(equipped: boolean, move: number, age: number) {
+  private knife?: T.Group;
+  setFistPose(
+    equipped: boolean,
+    move: number,
+    age: number,
+    knifeEquipped = false,
+  ) {
+    if (knifeEquipped && equipped && !this.knife) {
+      this.knife = buildKnife();
+      this.knife.rotation.x = 1.35;
+      this.leftHand.add(this.knife);
+    }
+    if (this.knife) this.knife.visible = knifeEquipped && equipped;
     if (equipped && !this.fists) this.equipAge = 0;
     this.fists = equipped;
     this.fistMove = move;
@@ -376,7 +389,11 @@ export class Doodle {
         [this.rightArm, this.rightElbow, 1],
       ] as const) {
         // The avatar faces local +Z, the first-person camera faces -Z.
-        const pose = punchPose(this.fistMove, this.fistAge, -side);
+        const pose = (this.knife?.visible ? knifePose : punchPose)(
+          this.fistMove,
+          this.fistAge,
+          -side,
+        );
         const raise = guardRaise(
           this.equipAge,
           -side,
@@ -498,11 +515,19 @@ export class Doodle {
     disposeGroup(this.group);
   }
 }
-export function buildWeapon(index: number) {
+export function buildWeapon(index: number, county = false) {
   const g = new T.Group();
   g.name = "weapon-no-hands";
   const paper = inkMaterial(INK, 0, true),
     dark = inkMaterial(INK, 0.45, true);
+  if (county) {
+    paper.uniforms.uInk.value.set("#253749");
+    paper.uniforms.uPaper.value.set(
+      ["#598186", "#b77e51", "#64839a", "#849064"][index],
+    );
+    dark.uniforms.uInk.value.set("#162734");
+    dark.uniforms.uPaper.value.set("#455765");
+  }
   const box = (
     size: [number, number, number],
     pos: [number, number, number],
@@ -626,8 +651,8 @@ export function buildWeapon(index: number) {
         points.push(...at(j / 8).toArray(), ...at((j + 1) / 8).toArray());
     }
     const material = new LineMaterial({
-      color: INK,
-      linewidth: 2.35,
+      color: county ? "#253749" : INK,
+      linewidth: county ? 1 : 2.35,
       alphaToCoverage: true,
     });
     const ink = new LineSegments2(

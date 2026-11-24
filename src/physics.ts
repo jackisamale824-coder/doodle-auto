@@ -105,7 +105,11 @@ export class Physics {
     }
     return { grounded: this.controller.computedGrounded(), wall, moved: m };
   }
-  setVehicleColliders(cars: readonly CountyCar[], occupied = -1) {
+  setVehicleColliders(
+    cars: readonly CountyCar[],
+    occupied = -1,
+    models?: readonly { position: Vector3; rotation: { y: number } }[],
+  ) {
     if (this.vehicleColliders.length !== cars.length) {
       for (const collider of this.vehicleColliders)
         this.world.removeCollider(collider, true);
@@ -117,6 +121,9 @@ export class Physics {
     let changed = false;
     cars.forEach((car, i) => {
       const [halfWidth, halfLength, roofHeight] = VEHICLE_DIMENSIONS[car.kind];
+      const model = car.driver ? models?.[i] : undefined;
+      const [x, y, z] = model?.position ?? car.p,
+        yaw = model?.rotation.y ?? car.yaw;
       let collider = this.vehicleColliders[i];
       if (!collider) {
         collider = this.world.createCollider(
@@ -146,32 +153,32 @@ export class Physics {
       const active = i !== occupied,
         previous = this.vehicleColliderState[i];
       if (
-        previous.x === car.p[0] &&
-        previous.y === car.p[1] &&
-        previous.z === car.p[2] &&
-        previous.yaw === car.yaw &&
+        previous.x === x &&
+        previous.y === y &&
+        previous.z === z &&
+        previous.yaw === yaw &&
         previous.active === active
       )
         return;
       collider.setTranslation({
-        x: car.p[0],
-        y: car.p[1] + roofHeight / 2,
-        z: car.p[2],
+        x,
+        y: y + roofHeight / 2,
+        z,
       });
       collider.setRotation({
         x: 0,
-        y: Math.sin(car.yaw / 2),
+        y: Math.sin(yaw / 2),
         z: 0,
-        w: Math.cos(car.yaw / 2),
+        w: Math.cos(yaw / 2),
       });
       collider.setCollisionGroups(active ? WORLD_GROUPS : 0);
       const box = this.vehicleBoxes[i];
-      box.p = [car.p[0], car.p[1] + roofHeight / 2, car.p[2]];
+      box.p = [x, y + roofHeight / 2, z];
       this.vehicleColliderState[i] = {
-        x: car.p[0],
-        y: car.p[1],
-        z: car.p[2],
-        yaw: car.yaw,
+        x,
+        y,
+        z,
+        yaw,
         active,
       };
       changed = true;
@@ -215,7 +222,7 @@ export class Physics {
             return false;
     return true;
   }
-  ray(o: Vector3, d: Vector3, max = 65) {
+  ray(o: Vector3, d: Vector3, max = 65, skipVehicles = false) {
     this.refreshQueries();
     const hit = this.world.castRayAndGetNormal(
       new RAPIER.Ray(o, d),
@@ -224,9 +231,13 @@ export class Physics {
       RAPIER.QueryFilterFlags.EXCLUDE_KINEMATIC,
       WORLD_GROUPS,
       this.collider,
+      undefined,
+      skipVehicles
+        ? (collider) => !this.vehicleHandles.has(collider.handle)
+        : undefined,
     );
     const fallen = this.rubble.ray(o, d, hit?.timeOfImpact ?? max);
-    if (fallen) return fallen;
+    if (fallen) return { ...fallen, normal: undefined };
     if (!hit) return null;
     let box = this.boxHandles.get(hit.collider.handle);
     const vehicleIndex = this.vehicleHandles.get(hit.collider.handle);
@@ -257,6 +268,7 @@ export class Physics {
     }
     return box
       ? {
+          normal: hit.normal,
           distance: hit.timeOfImpact,
           box,
           point: o.clone().addScaledVector(d, hit.timeOfImpact).toArray() as V3,

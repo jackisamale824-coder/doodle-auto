@@ -196,6 +196,19 @@ function aimBone(bone: Object3D, a: Vector3, b: Vector3) {
 }
 
 export class CountyRagdolls {
+  private playerBodies = new WeakSet<Doodle>();
+  playerDeath(model: Doodle, yaw: number, eye: Vector3) {
+    if (
+      this.hit(
+        model,
+        [Math.sin(yaw) * 1.8, 0.6, Math.cos(yaw) * 1.8],
+        eye,
+        true,
+      )
+    )
+      this.playerBodies.add(model);
+    else model.fall(1);
+  }
   private bodies = new Map<Doodle, Body>();
   constructor(private physics: Pick<Physics, "ray">) {}
   has(model: Doodle) {
@@ -385,6 +398,7 @@ export class CountyRagdolls {
   update(dt: number, eye: Vector3) {
     for (const [m, b] of this.bodies) {
       b.age += Math.max(0, dt);
+      if (b.age >= KNOCKDOWN_TIME && this.playerBodies.has(m)) continue;
       if (
         b.age >= KNOCKDOWN_TIME ||
         eye.distanceToSquared(m.group.position) > RANGE * RANGE
@@ -403,6 +417,7 @@ export class CountyRagdolls {
   }
 
   remove(model: Doodle) {
+    this.playerBodies.delete(model);
     const b = this.bodies.get(model);
     if (!b) return;
     for (const { bone, q } of b.rest) bone.quaternion.copy(q);
