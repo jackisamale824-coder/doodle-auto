@@ -166,7 +166,7 @@ export default {
     // The Pages game host forwards to this prefix. Restore the public origin
     // before handing account requests or WebSocket upgrades to the game.
     if (url.pathname.startsWith("/play/")) {
-      const gamePath = /^\/play\/(doodle-auto|gta|pool|drive-mad)(\/.*)$/.exec(url.pathname);
+      const gamePath = /^\/play\/(doodle-auto|gta|pool|drive-mad|revenge)(\/.*)$/.exec(url.pathname);
       if (!gamePath) return new Response("Unknown game", { status: 404 });
       const [, game, path] = gamePath;
       url.hostname = game + ".sully6.com";
@@ -177,8 +177,8 @@ export default {
         url.hostname = "doodle-auto.sully6.com";
         return Response.redirect(url.href, 308);
       }
-      if (game === "drive-mad") {
-        url.pathname = "/drive-mad" + path;
+      if (game === "drive-mad" || game === "revenge") {
+        url.pathname = "/" + game + path;
         return env.ASSETS.fetch(new Request(url, request));
       }
       if (game === "pool" && path === "/") url.pathname = "/pool/";

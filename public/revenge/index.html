@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#202c37">
+  <meta name="description" content="Play Revenge, a one-button game of royal suspicion. Take the crown and survive the court.">
+  <title>Revenge</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' fill='%23222e38'/%3E%3Cpath d='M5 10l9 8 6-12 6 12 9-8-4 21H9z' fill='%23edc27a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header><a href="https://sully6.com/">‹ &nbsp; Sully6 Arcade</a><div class="options"><button id="sound" aria-label="Mute sound" aria-pressed="true">Sound on</button><button id="pause" hidden>Pause</button></div></header>
+    <div class="cabinet">
+      <div class="topline"><span id="act">THE ROYAL GALLERY</span><span id="score">BEST REIGN · 0</span></div>
+      <div id="stage">
+        <canvas id="scene" width="960" height="420" role="img" aria-label="A cloaked adviser follows the crowned monarch through a moonlit palace."></canvas>
+        <section id="curtain" aria-labelledby="name"><div class="copy">
+          <h1 id="name">Revenge</h1><p id="brief">The king has your crown. Take it back when his eyes are on the road.</p>
+          <button id="start">Enter the court <span aria-hidden="true">→</span></button>
+        </div></section>
+      </div>
+      <div class="console">
+        <div class="instruction"><small id="label">HOW TO PLAY</small><strong id="tip" aria-live="polite">Hold to raise the blade. Release before the king looks back.</strong>
+          <div id="meter" role="progressbar" aria-label="Blade charge" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+        </div>
+        <button id="action" disabled aria-label="Hold to raise blade"><span id="verb">Raise blade</span><kbd>SPACE</kbd></button>
+      </div>
+    </div>
+    <footer>Play with Space, a mouse, or touch.</footer>
+    <noscript>This game needs JavaScript to play.</noscript>
+  </main>
+  <script type="module" src="./game.js"></script>
+</body></html>

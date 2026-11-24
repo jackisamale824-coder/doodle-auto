@@ -1,0 +1,294 @@
+:root {
+  color-scheme: dark;
+  --ivory: #f9ecd1;
+  --gold: #e7bd76;
+  --ink: #202c37;
+  color: var(--ivory);
+  font:
+    16px/1.4 system-ui,
+    sans-serif;
+  background: radial-gradient(ellipse at 54% 37%, #394750, #1b2530 72%);
+  min-height: 100%;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  min-height: 100svh;
+  display: grid;
+  align-items: center;
+}
+main {
+  width: min(1140px, 96%);
+  margin: auto;
+  padding: clamp(10px, 3vw, 36px) max(4px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom)) max(4px, env(safe-area-inset-left));
+}
+button,
+a {
+  font: inherit;
+  touch-action: manipulation;
+}
+button {
+  cursor: pointer;
+  color: inherit;
+  -webkit-user-select: none;
+  user-select: none;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #ffdf94;
+  outline-offset: 3px;
+}
+header,
+.options,
+.topline,
+.console {
+  display: flex;
+  align-items: center;
+}
+header {
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+header a {
+  color: #e8dcca;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.options {
+  gap: 4px;
+}
+.options button {
+  background: none;
+  border: 0;
+  font-size: 0.78rem;
+  color: #d5ccbc;
+  padding: 10px;
+}
+.cabinet {
+  border: 1px solid #a58e69;
+  box-shadow:
+    0 15px 50px #0d172485,
+    0 0 0 4px #2b353c;
+  overflow: hidden;
+  background: var(--ink);
+}
+.topline {
+  background: #252e37;
+  justify-content: space-between;
+  padding: 10px clamp(12px, 2.5vw, 32px);
+  border-bottom: 1px solid #b29a70;
+  color: #e4c591;
+  font:
+    700 11px/1.2 ui-monospace,
+    monospace;
+  letter-spacing: 0.15em;
+}
+#stage {
+  position: relative;
+  background: #283742;
+}
+#scene {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16/7;
+  touch-action: none;
+}
+#curtain {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 5%;
+  background: linear-gradient(90deg, #172534ed, #192736c9 28%, transparent 63%);
+}
+[hidden] {
+  display: none !important;
+}
+.copy {
+  width: 46%;
+  max-width: 450px;
+}
+.copy h1 {
+  font:
+    italic 700 clamp(36px, 7.4vw, 98px)/0.97 Georgia,
+    "Times New Roman",
+    serif;
+  letter-spacing: -0.07em;
+  margin: 0;
+  color: #ffedca;
+  text-shadow: 3px 4px 0 #703e50;
+  text-wrap: balance;
+}
+.copy p {
+  max-width: 32ch;
+  margin: 15px 0 19px;
+  color: #f1e3ca;
+  font-size: clamp(14px, 1.5vw, 18px);
+}
+#start {
+  border: 1px solid #f5d99e;
+  background: #ecc584;
+  color: #2a2730;
+  padding: 11px 19px;
+  font-weight: 750;
+  border-radius: 3px;
+  box-shadow: 0 3px 0 #976f47;
+}
+#start span {
+  margin-left: 10px;
+}
+.console {
+  justify-content: space-between;
+  gap: 16px;
+  padding: clamp(13px, 2vw, 24px);
+  border-top: 2px solid #b59c73;
+  background: #27343c;
+}
+.instruction {
+  flex: 1;
+}
+.instruction small {
+  display: block;
+  font:
+    700 10px ui-monospace,
+    monospace;
+  letter-spacing: 0.14em;
+  color: #dfbe86;
+  margin-bottom: 5px;
+}
+.instruction strong {
+  display: block;
+  font-family: Georgia, serif;
+  font-size: clamp(15px, 1.7vw, 22px);
+  font-weight: normal;
+}
+.instruction #meter {
+  height: 5px;
+  background: #465156;
+  width: min(100%, 290px);
+  margin-top: 10px;
+}
+.instruction #meter i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--gold);
+}
+#action {
+  border: 1px solid #b59d78;
+  border-radius: 4px;
+  background: #36464c;
+  color: var(--ivory);
+  padding: 12px 17px;
+  min-height: 48px;
+  font-weight: 750;
+  white-space: nowrap;
+  touch-action: none;
+}
+#action:disabled {
+  opacity: 0.52;
+}
+#action.active {
+  background: var(--gold);
+  color: #302b39;
+}
+kbd {
+  display: inline-block;
+  margin-left: 6px;
+  border: 1px solid #b6a589;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+footer {
+  text-align: center;
+  color: #c4bbac;
+  font-size: 12px;
+  margin: 14px 0 0;
+}
+@media (any-pointer: coarse) {
+  kbd {
+    display: none;
+  }
+  #action {
+    min-width: 116px;
+  }
+}
+@media (max-width: 620px) and (orientation: portrait) {
+  main {
+    width: 95%;
+  }
+  #scene {
+    aspect-ratio: 16/9;
+    object-fit: cover;
+  }
+  #curtain {
+    position: relative;
+    padding: 18px 20px;
+    background: #293740;
+    border-top: 1px solid #74817d;
+  }
+  .copy {
+    max-width: none;
+    width: 100%;
+  }
+  .copy p {
+    margin: 7px 0 14px;
+  }
+  .copy h1 {
+    font-size: 50px;
+  }
+  .console {
+    align-items: end;
+    gap: 10px;
+  }
+  #action {
+    min-width: 84px;
+    padding: 12px 8px;
+  }
+  .topline {
+    font-size: 9px;
+  }
+}
+@media (max-height: 520px) and (orientation: landscape) {
+  main {
+    width: min(100%, calc(100dvh * 2.05));
+    padding: 4px;
+  }
+  header {
+    margin: 0;
+  }
+  .options button,
+  header a {
+    font-size: 11px;
+    padding: 3px 6px;
+  }
+  .topline {
+    padding: 4px 12px;
+    font-size: 9px;
+  }
+  .console {
+    padding: 6px 12px;
+  }
+  #scene {
+    height: min(59dvh, 420px);
+    object-fit: cover;
+  }
+  footer {
+    display: none;
+  }
+  .copy h1 {
+    font-size: 42px;
+  }
+  .copy p {
+    margin: 5px 0 9px;
+    font-size: 13px;
+  }
+  #start {
+    padding: 5px 12px;
+  }
+}
