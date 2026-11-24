@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#112d36" />
+    <title>Drive Mad · Ridge Run</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%23132d36'/%3E%3Cpath d='m6 28 13-18h7L13 28zm13 0 13-18h4L23 28z' fill='%23ffc65b'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./game.css" />
+  </head>
+  <body>
+    <main id="game">
+      <canvas
+        id="scene"
+        aria-label="Side-view off-road driving course"
+      ></canvas>
+      <header>
+        <div class="brand">
+          <i aria-hidden="true"></i>
+          <div><strong>DRIVE MAD</strong><small>RIDGE RUN</small></div>
+        </div>
+        <nav aria-label="Game controls">
+          <button
+            id="audio"
+            aria-label="Turn sound on"
+            aria-pressed="false"
+            title="Sound"
+          >
+            <svg viewBox="0 0 24 24">
+              <path d="M4 9h4l5-4v14l-5-4H4z" />
+              <path id="sound-mark" d="m17 9 5 6m0-6-5 6" />
+            </svg>
+          </button>
+          <button id="restart" aria-label="Restart course" title="Restart (R)">
+            <svg viewBox="0 0 24 24">
+              <path d="M4 10a8 8 0 1 1 1 7M4 4v6h6" />
+            </svg>
+          </button>
+          <button id="pause" aria-label="Pause game" title="Pause (Esc)">
+            <svg viewBox="0 0 24 24">
+              <path d="M8 5v14m8-14v14" stroke-width="4" />
+            </svg>
+          </button>
+        </nav>
+      </header>
+      <section class="course" aria-label="Current course">
+        <div class="tag">
+          <span class="flag"></span><span id="course-num"></span>
+        </div>
+        <h1 id="course-title"></h1>
+        <div class="progress"><i id="fill"></i></div>
+      </section>
+      <div class="timer" aria-label="Elapsed time">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="14" r="7" />
+          <path d="M12 10v4l3 1M9 3h6m-3 0v4" /></svg
+        ><span id="time">00:00.00</span>
+      </div>
+      <div id="tip">Hold to drive <span>·</span> Ease off to land</div>
+      <footer>
+        <button class="pedal" id="back" aria-label="Brake or reverse">
+          <b aria-hidden="true">❮</b><span>REVERSE <kbd>A</kbd></span>
+        </button>
+        <button class="pedal gas" id="gas" aria-label="Accelerate">
+          <span>DRIVE <kbd>D</kbd></span
+          ><b aria-hidden="true">❯</b>
+        </button>
+      </footer>
+    </main>
+    <dialog id="panel"><div id="panel-body"></div></dialog>
+    <script type="module" src="./game.js"></script>
+  </body>
+</html>
