@@ -4,6 +4,19 @@
 @import "@fontsource/dm-sans/latin-500.css";
 @import "@fontsource/dm-sans/latin-700.css";
 :root {
+  color-scheme: light;
+  --marker-text: #805e14;
+  --sheet: #faf8f0;
+  --field: #fffdf6;
+  --label: #394875;
+  --link: #355085;
+  --body-text: #41506a;
+  --selected: #e1e6fa;
+  --hover: #eef0fa;
+  --border: #8790b9;
+  --wash: #f7f5e95e;
+  --scrim: #f7f5e982;
+  --hud-panel: #f7f5e9d9;
   --ink: #222bc3;
   --muted: #727792;
   --paper: #f7f5e9;
@@ -14,6 +27,27 @@
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #c1caff;
+  --paper: #191e2c;
+  --muted: #aeb8d0;
+  --red: #ff929e;
+  --gold: #e8bb66;
+  --line: #aabae340;
+  --marker-text: #ffda8f;
+  --sheet: #22293b;
+  --field: #171d2d;
+  --label: #c8d1eb;
+  --link: #afc9ff;
+  --body-text: #d1d7e7;
+  --selected: #384567;
+  --hover: #2e3850;
+  --border: #73829f;
+  --wash: #0b102473;
+  --scrim: #080c16a6;
+  --hud-panel: #192132ed;
 }
 * {
   box-sizing: border-box;
@@ -247,7 +281,7 @@ h1 > span {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #f7f5e990;
+  background: var(--hud-panel);
   border: 1.5px solid var(--ink);
   border-radius: 5px 3px 6px 3px;
   padding: 15px 20px;
@@ -451,6 +485,8 @@ kbd {
   letter-spacing: 1.4px;
 }
 .district-label b {
+  color: #202650;
+  text-shadow: none;
   background: var(--gold);
   padding: 4px 6px;
 }
@@ -467,7 +503,7 @@ kbd {
 }
 #mission {
   font-size: 11px;
-  color: #696e89;
+  color: var(--body-text);
   margin-top: 3px;
 }
 #mission-progress {
@@ -479,7 +515,7 @@ kbd {
 }
 #mission-progress span {
   padding: 7px 9px;
-  background: #f7f5e9ab;
+  background: var(--hud-panel);
   border-bottom: 1px solid var(--line);
 }
 #compass {
@@ -521,7 +557,7 @@ kbd {
 #room-badge {
   font-size: 10px;
   letter-spacing: 1px;
-  background: #f7f5e9aa;
+  background: var(--hud-panel);
 }
 .hud-bottom-left {
   position: absolute;
@@ -663,7 +699,7 @@ kbd {
 #weapon-slots .active {
   opacity: 1;
   border-bottom: 2px solid var(--ink);
-  background: #f7f5e9b5;
+  background: var(--hud-panel);
 }
 #crosshair {
   position: absolute;
@@ -760,8 +796,8 @@ kbd {
 #world-markers > div {
   position: absolute;
   font-size: 9px;
-  background: #f7f5e9c7;
-  color: #987016;
+  background: var(--hud-panel);
+  color: var(--marker-text);
   padding: 5px 7px;
   transform: translate(-50%, -50%);
   border: 1px solid #bd8d3160;
@@ -827,7 +863,7 @@ dialog {
   z-index: 50;
 }
 dialog::backdrop {
-  background: #f7f5e982;
+  background: var(--scrim);
   backdrop-filter: blur(6px);
 }
 .close-button {
@@ -853,7 +889,7 @@ dialog h2 {
 dialog p {
   font-size: 12px;
   line-height: 1.8;
-  color: #6c7188;
+  color: var(--body-text);
 }
 dialog .primary-button {
   margin-top: 24px;
@@ -1120,8 +1156,6 @@ dialog input[type="checkbox"] {
 /* Notebook composition: handwritten hierarchy and a single sheet over the city. */
 :root {
   font-family: "Patrick Hand", cursive;
-  --ink: #222bc3;
-  --paper: #f7f5e9;
 }
 #menu {
   display: flex;
@@ -1129,7 +1163,7 @@ dialog input[type="checkbox"] {
   justify-content: flex-start;
   overflow: auto;
   padding: clamp(16px, 5vw, 86px);
-  background: linear-gradient(90deg, #f7f5e95e, transparent 70%);
+  background: linear-gradient(90deg, var(--wash), transparent 70%);
 }
 #menu::before {
   display: none;
@@ -1142,7 +1176,7 @@ dialog input[type="checkbox"] {
   padding: clamp(21px, 3vw, 36px);
   border: 2px solid var(--ink);
   border-radius: 6px 11px 7px 5px;
-  background: #faf8f0;
+  background: var(--sheet);
   box-shadow: 5px 6px 0 #35457926;
 }
 #menu h1 {
@@ -1162,15 +1196,16 @@ dialog input[type="checkbox"] {
   font:
     700 12px/1.4 "DM Sans",
     sans-serif;
-  color: #394875;
+  color: var(--label);
   margin-bottom: 6px;
 }
-.map-field select {
+.map-field select,
+#ui-theme {
   width: 100%;
   padding: 5px 9px;
-  border: 1px solid #8790b9;
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: #fffdf6;
+  background: var(--field);
   color: var(--ink);
   font:
     25px "Patrick Hand",
@@ -1187,7 +1222,7 @@ dialog input[type="checkbox"] {
     500 13px/1.45 "DM Sans",
     sans-serif;
   letter-spacing: 0;
-  color: #355085;
+  color: var(--link);
   cursor: pointer;
 }
 #seed-options .seed-row {
@@ -1219,7 +1254,7 @@ dialog input[type="checkbox"] {
 }
 .mode-options button {
   flex: 1 0 auto;
-  border: 1px solid #a5adc6;
+  border: 1px solid var(--border);
   border-radius: 4px;
   background: transparent;
   padding: 8px 7px;
@@ -1228,18 +1263,18 @@ dialog input[type="checkbox"] {
     sans-serif;
 }
 .mode-options button[aria-pressed="true"] {
-  background: #e1e6fa;
+  background: var(--selected);
   border-color: var(--ink);
   box-shadow: inset 0 0 0 1px var(--ink);
   font-weight: 700;
 }
 .mode-options button:hover {
-  background: #eef0fa;
+  background: var(--hover);
 }
 #mode-detail {
   margin: 9px 0 20px;
   min-height: 2.9em;
-  color: #41506a;
+  color: var(--body-text);
   font:
     400 14px/1.45 "DM Sans",
     sans-serif;
@@ -1262,7 +1297,7 @@ dialog input[type="checkbox"] {
   background: transparent;
 }
 #menu #online:hover {
-  background: #eef0fa;
+  background: var(--hover);
 }
 .notebook-footer {
   display: flex;
@@ -1363,12 +1398,13 @@ dialog .secondary-button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  background: #f7f5e9d9;
+  background: var(--hud-panel);
   border: 1px solid var(--ink);
   padding: 5px;
   border-radius: 4px 8px 4px 6px;
 }
 #city-map {
+  background: #f7f5e9;
   width: 155px;
   height: 155px;
 }
@@ -1486,7 +1522,7 @@ dialog .secondary-button {
   font-size: 11px;
   font-weight: bold;
   letter-spacing: 1px;
-  color: #d23c45;
+  color: var(--red);
   pointer-events: none;
   opacity: 0;
 }

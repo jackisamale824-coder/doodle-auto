@@ -69,6 +69,26 @@ const settings = safeRead("dc.settings", {
   quality: true,
   invert: false,
 });
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+function applyTheme() {
+  const theme =
+    settings.theme === "light" || settings.theme === "dark"
+      ? settings.theme
+      : systemDark.matches
+        ? "dark"
+        : "light";
+  document.documentElement.dataset.theme = theme;
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute(
+      "content",
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--paper")
+        .trim(),
+    );
+}
+applyTheme();
+systemDark.addEventListener("change", applyTheme);
 function saveSettings() {
   localStorage.setItem("dc.settings", JSON.stringify(settings));
 }
@@ -1388,9 +1408,18 @@ class Game {
   }
   showSettings(paused = false) {
     this.showDialog(
-      `<h2>Settings</h2><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label><button id="settings-done" class="primary-button">Done</button>`,
+      `<h2>Settings</h2><label for="ui-theme">Appearance</label><select id="ui-theme"><option value="system">Use system setting</option><option value="light">Light</option><option value="dark">Dark</option></select><label for="sensitivity">LOOK SENSITIVITY <span id="sensitivity-value">${settings.sensitivity.toFixed(1)}</span></label><input id="sensitivity" type="range" min=".2" max="2.5" step=".1" value="${settings.sensitivity}"><label for="fov">FIELD OF VIEW <span id="fov-value">${settings.fov}°</span></label><input id="fov" type="range" min="65" max="105" value="${settings.fov}"><label for="volume">SOUND VOLUME</label><input id="volume" type="range" min="0" max="1" step=".05" value="${settings.volume}"><label><input id="reduced" type="checkbox" ${settings.reduced ? "checked" : ""}> REDUCE CAMERA MOTION</label><label><input id="invert" type="checkbox" ${settings.invert ? "checked" : ""}> INVERT VERTICAL LOOK</label><label><input id="quality" type="checkbox" ${settings.quality ? "checked" : ""}> HIGH RESOLUTION RENDERING</label><button id="settings-done" class="primary-button">Done</button>`,
       () => (paused ? this.showPause() : this.closeDialog()),
     );
+    const theme = $<HTMLSelectElement>("ui-theme");
+    theme.value = ["light", "dark"].includes(settings.theme)
+      ? settings.theme
+      : "system";
+    theme.onchange = () => {
+      settings.theme = theme.value;
+      applyTheme();
+      saveSettings();
+    };
     for (const key of ["sensitivity", "fov", "volume"])
       $<HTMLInputElement>(key).oninput = (e) => {
         settings[key] = Number((e.target as HTMLInputElement).value);
